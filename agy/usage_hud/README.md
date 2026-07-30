@@ -1,4 +1,4 @@
-# AGY Statusline Usage Indicator (Pure ASCII)
+# AGY Usage HUD
 
 專為 **Antigravity CLI (`agy`)** TUI 設計的純 ASCII 狀態列，監控 **5 小時滾動視窗** 與 **每週** 的 AI 配額使用率與重置倒數。
 
@@ -40,13 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_h
 
 可用環境變數：`AGY_HUD_DIR`（安裝目錄）、`AGY_HUD_RAW_BASE`（下載來源，供 fork 使用）。
 
-### 方式二：`agy plugin install`
-
-```bash
-agy plugin install https://github.com/CTJ425/script-docs.git
-```
-
-### 方式三：本地 clone
+### 方式二：本地 clone
 
 從 clone 出來的目錄執行同一支腳本（會額外跑一次測試套件）：
 
@@ -105,7 +99,7 @@ agy plugin install https://github.com/CTJ425/script-docs.git
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（25 案例，Tier 1-6）
+# 1. 完整邊界測試套件（26 案例，Tier 1-6）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 送出的載荷
@@ -120,7 +114,7 @@ echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 ~/.gemini/antigravity-cl
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 25 | Passed: 25 | Failed: 0` 並回傳 exit code 0。
+測試套件預期輸出 `Total: 26 | Passed: 26 | Failed: 0` 並回傳 exit code 0。
 
 ---
 
@@ -129,7 +123,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 1-6，25 案例）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 1-6，26 案例）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

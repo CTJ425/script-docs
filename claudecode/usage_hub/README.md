@@ -15,7 +15,7 @@ Claude Code doesn't include rate-limit data until a session's first API response
 so the last known values are cached in `~/.claude/usage_hub/cache.json` and shown
 meanwhile — a new session opens with real numbers instead of `N/A`. A cached
 window whose reset time has already passed shows `0.0%`; a cache older than 7
-days is ignored.
+days is ignored and is not carried forward into a newer one.
 
 ## One-click install
 ```bash

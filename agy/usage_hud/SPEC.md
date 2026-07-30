@@ -1,4 +1,4 @@
-# AGY Pure-ASCII Usage Statusline — Spec
+# AGY Usage HUD — Spec
 
 ## Purpose
 A statusline for Antigravity CLI (`agy`) that shows, on one line:
@@ -68,7 +68,8 @@ never return non-zero — a crash here would disrupt the TUI, not just the line.
 > the authoritative check.
 
 Accepted shapes, in order of preference:
-- Buckets under `quota`, else at the top level.
+- Buckets under `quota`, else at the top level (either window's key is enough
+  to treat the payload itself as the bucket container).
 - 5h bucket key: `rolling_5h`, `5h`, `rolling5h`, `five_hour`, `5_hour`.
 - Weekly bucket key: `weekly`, `week`, `7d`, `seven_days`.
 - One extra level of nesting is tolerated (buckets under a model/plan key).
@@ -80,7 +81,7 @@ Accepted shapes, in order of preference:
 
 ## Testing
 `test_statusline.py` runs the script as a subprocess and asserts on stdout,
-stderr and exit code. Six tiers, 25 cases:
+stderr and exit code. Six tiers, 26 cases:
 
 | Tier | Covers |
 |---|---|

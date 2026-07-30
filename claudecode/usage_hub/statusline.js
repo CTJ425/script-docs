@@ -180,9 +180,13 @@ function sameCachePayload(a, b) {
  */
 function writeCache(liveRateLimits, liveContextSize, previous) {
   try {
-    const next = buildCacheContents(liveRateLimits, liveContextSize, previous);
+    // Only carry values forward from a cache that is still fresh. Merging from
+    // an expired one and stamping saved_at = now would launder a >7-day-old
+    // figure into a "fresh" cache, and the age limit could then never expire it.
+    const usable = cacheIsFresh(previous) ? previous : null;
+    const next = buildCacheContents(liveRateLimits, liveContextSize, usable);
     if (!next) return;
-    if (sameCachePayload(next, previous)) return;
+    if (sameCachePayload(next, usable)) return;
 
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
     const tmp = `${CACHE_FILE}.tmp.${process.pid}`;
@@ -211,9 +215,13 @@ function resolveBucket(liveBucket, cache, key) {
 
   // A cached window whose reset time has passed has rolled over: no usage has
   // accrued since (nothing ran), so show 0% and drop the misleading countdown.
-  const expired =
-    !isFiniteNumber(bucket.resets_at) || bucket.resets_at <= Date.now() / 1000;
-  if (expired) return { pct: 0, resetsAt: null };
+  // Only a *known* past reset proves that. A cached bucket with no resets_at
+  // says nothing about rollover, and rendering it as a green 0.0% would turn
+  // "85% used, reset time unknown" into "quota barely touched" -- show the
+  // cached figure without a countdown instead.
+  const rolledOver =
+    isFiniteNumber(bucket.resets_at) && bucket.resets_at <= Date.now() / 1000;
+  if (rolledOver) return { pct: 0, resetsAt: null };
 
   return { pct: clampPercent(bucket.used_percentage), resetsAt: bucket.resets_at };
 }

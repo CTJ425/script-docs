@@ -360,6 +360,16 @@ def run_all_tests() -> bool:
             }),
             "check_starts_with": "5h 35.0%",
             "check_no_bar": True
+        },
+        {
+            "id": "TC-26",
+            "tier": "Tier 2: Field Variation",
+            "name": "Top-Level Weekly Bucket Without A 'quota' Wrapper Is Read",
+            "payload": json.dumps({
+                "active_model": "gemini-3.6-flash",
+                "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
+            }),
+            "check_str_part": "Wk \033[1;32m50.0%\033[0m"
         }
     ]
 

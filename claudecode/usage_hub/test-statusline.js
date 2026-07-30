@@ -484,6 +484,58 @@ test("cache dir is created when missing", () => {
   assert.ok(fs.existsSync(nested), "nested cache file was not created");
 });
 
+test("an expired cache is never re-stamped as fresh by a later write", () => {
+  const cachePath = freshCachePath();
+  writeCacheFile(cachePath, {
+    version: 1,
+    saved_at: nowSeconds() - 10 * 86400,
+    rate_limits: {
+      five_hour: { used_percentage: 85.0, resets_at: nowSeconds() + 3600 },
+    },
+    context_window_size: 200000,
+  });
+
+  // No live rate_limits, but a different context size -> the cache does get
+  // rewritten. It must not carry the >7-day-old bucket into the new file.
+  const payload = JSON.stringify({
+    model: { display_name: "M" },
+    context_window: { used_percentage: 10, context_window_size: 300000 },
+  });
+
+  const first = run(payload, cachePath);
+  assert.ok(stripAnsi(first.stdout).includes("5h N/A"), `expected 5h N/A in: ${stripAnsi(first.stdout)}`);
+
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.ok(
+    !cache.rate_limits || !cache.rate_limits.five_hour,
+    `expired bucket was laundered into a fresh cache: ${JSON.stringify(cache)}`
+  );
+
+  const second = run(payload, cachePath);
+  assert.ok(
+    stripAnsi(second.stdout).includes("5h N/A"),
+    `expired usage resurfaced on the next render: ${stripAnsi(second.stdout)}`
+  );
+});
+
+test("cached bucket without resets_at shows the usage, not a green 0.0%", () => {
+  const cachePath = freshCachePath();
+  writeCacheFile(cachePath, {
+    version: 1,
+    saved_at: nowSeconds() - 60,
+    rate_limits: {
+      five_hour: { used_percentage: 85.0, resets_at: null },
+    },
+    context_window_size: 200000,
+  });
+
+  const r = run(JSON.stringify({ model: { display_name: "M" } }), cachePath);
+  const out = stripAnsi(r.stdout);
+  assert.ok(out.includes("5h 85.0%"), `expected cached 5h 85.0% in: ${out}`);
+  assert.ok(!out.includes("5h 0.0%"), `unknown reset time rendered as 0.0% in: ${out}`);
+  assert.ok(!/5h 85\.0% \(/.test(out), `expected no countdown without resets_at in: ${out}`);
+});
+
 fs.rmSync(TMP_DIR, { recursive: true, force: true });
 
 console.log(`\n${passed} passed, ${failed} failed`);

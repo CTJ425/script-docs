@@ -24,7 +24,7 @@ A global Claude Code `statusLine` that shows, in one line:
 - Model name truncated to 20 chars.
 - Percentage only (no progress bar), always one decimal place.
 - Color thresholds: green <70%, yellow 70-89.9%, red >=90% (ANSI codes).
-- Reset countdown format: `Xd0Yh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`.
+- Reset countdown format: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`.
 - Any missing/unparseable field with no usable cache renders as `N/A` for that
   segment only — the rest of the line still renders.
 - Cached values are rendered identically to live ones (no staleness marker).
@@ -54,15 +54,19 @@ Documented caveats:
   context_window_size }`. Each bucket stores `used_percentage` + `resets_at`.
 - Read on every invocation. Resolution order per bucket: live payload value ->
   fresh cached value -> `N/A`.
-- A cache is "fresh" for 7 days (`saved_at`); older than that is ignored.
+- A cache is "fresh" for 7 days (`saved_at`); older than that is ignored — both
+  for rendering *and* for the write below, so an expired cache can never be
+  merged forward under a new `saved_at` and thereby outlive its own age limit.
 - A cached bucket whose `resets_at` has already passed has rolled over: renders
-  `0.0%` with no countdown (nothing ran to accrue usage since).
+  `0.0%` with no countdown (nothing ran to accrue usage since). This needs a
+  *known* past reset time; a cached bucket with no `resets_at` renders its
+  stored percentage with no countdown, never a `0.0%` it cannot justify.
 - `context_window_size` is also cached, so a payload with no `context_window`
   still renders `Ctx 0/200K` instead of `Ctx N/A`.
 - Written after the line is printed, only when a live bucket was present and the
   values actually changed (this runs on every render — avoid pointless writes).
-  Buckets merge over the previous cache so a payload carrying only `five_hour`
-  doesn't drop `seven_day`. Write is `mkdirSync -p` -> temp file -> `renameSync`.
+  Buckets merge over the previous *fresh* cache so a payload carrying only
+  `five_hour` doesn't drop `seven_day`. Write is `mkdirSync -p` -> temp file -> `renameSync`.
 - Every cache read/write failure (missing, corrupt, unwritable, wrong version) is
   swallowed: the line still renders and the exit code stays 0.
 
@@ -91,5 +95,6 @@ Documented caveats:
   >100, NaN/Infinity-equivalent via string), long model name truncation,
   ASCII-only output; plus cache behaviour: file written, cold start uses cache,
   live wins over cache, expired window -> `0.0%` with no countdown, >7-day cache
-  ignored, corrupt cache, unknown cache version, unwritable cache path, per-bucket
-  merge, no rewrite when unchanged, cache dir created.
+  ignored (and never re-stamped as fresh by a later write), corrupt cache,
+  unknown cache version, unwritable cache path, per-bucket merge, a cached
+  bucket without `resets_at`, no rewrite when unchanged, cache dir created.

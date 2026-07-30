@@ -104,6 +104,10 @@ def extract_quota_item(quota_dict: dict, possible_keys: list):
     return None
 
 
+FIVE_HOUR_KEYS = ["rolling_5h", "5h", "rolling5h", "five_hour", "5_hour"]
+WEEKLY_KEYS = ["weekly", "week", "7d", "seven_days"]
+
+
 def parse_quota_data(data: dict):
     """Extracts 5h and Weekly quota info."""
     if not isinstance(data, dict):
@@ -113,11 +117,14 @@ def parse_quota_data(data: dict):
     if not isinstance(quota, dict):
         quota = {}
 
-    if not quota and ("rolling_5h" in data or "5h" in data):
+    # No "quota" wrapper: the buckets may sit at the top level. Check both
+    # window's aliases -- a payload carrying only the weekly bucket is just as
+    # valid as one carrying only the 5h bucket.
+    if not quota and any(k in data for k in FIVE_HOUR_KEYS + WEEKLY_KEYS):
         quota = data
 
-    five_h = extract_quota_item(quota, ["rolling_5h", "5h", "rolling5h", "five_hour", "5_hour"])
-    weekly = extract_quota_item(quota, ["weekly", "week", "7d", "seven_days"])
+    five_h = extract_quota_item(quota, FIVE_HOUR_KEYS)
+    weekly = extract_quota_item(quota, WEEKLY_KEYS)
 
     def parse_item(item):
         """Parses one window, or returns None when the payload carries no

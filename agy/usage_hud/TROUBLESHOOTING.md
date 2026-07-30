@@ -1,4 +1,4 @@
-# AGY Pure-ASCII Usage Statusline 疑難排解手冊 (TROUBLESHOOTING)
+# AGY Usage HUD 疑難排解手冊 (TROUBLESHOOTING)
 
 本手冊提供 Antigravity CLI (`agy`) 之純 ASCII 狀態列攔截器 (`statusline_hud.py`) 的問題排查與診斷指南，包含快速診斷流程樹、常見 7 大問題排查矩陣、Raw JSON 載荷抓取技巧及單元測試迴歸維護指引。
 
@@ -124,7 +124,7 @@ cat /tmp/agy_statusline_payload.log | python3 ~/.gemini/antigravity-cli/statusli
 
 ## 第四章：單元測試與迴歸維護 (Unit Testing & Regression Maintenance)
 
-本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 6 大層級共 25 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
+本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 6 大層級共 26 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
 
 ### 1. 執行完整測試套件
 
@@ -138,8 +138,8 @@ python3 ./test_statusline.py
 
 - **Tier 1: Core Usage & Indicator Formatting (TC-01 ~ TC-03)**
   驗證標準用量、綠/黃/紅三段 ANSI 色彩轉換門檻 (`<70%` 綠色、`70%~90%` 黃色、`>=90%` 紅色)。
-- **Tier 2: Field Variations & Compatibility (TC-04 ~ TC-05)**
-  驗證舊版欄位如 `remaining_fraction` 換算 (`(1.0 - rem) * 100`) 及多元 Key 名稱適應 (`5h`, `week`, `model`)。
+- **Tier 2: Field Variations & Compatibility (TC-04 ~ TC-05、TC-26)**
+  驗證舊版欄位如 `remaining_fraction` 換算 (`(1.0 - rem) * 100`)、多元 Key 名稱適應 (`5h`, `week`, `model`)，以及沒有 `quota` 外層、bucket 直接放在頂層的載荷。
 - **Tier 3: Boundary Values & Input Sanitization (TC-06 ~ TC-13)**
   驗證超長模型名稱裁切 (<=20 字元)、Unicode/Emoji 非 ASCII 清理、`used_percent` 邊界夾持 (`<0%` 與 `>100%`)、負數與浮點字串 (`"3600.5"`) 重置秒數解析、`inf` / `nan` 特殊浮點數防護。
 - **Tier 4: Malformed Payload & Error Defense (TC-14 ~ TC-18)**
@@ -151,11 +151,11 @@ python3 ./test_statusline.py
 
 ### 3. 如何擴充與新增自訂測試案例
 
-若在未來維護過程中發現新邊界情境，可在 `test_statusline.py` 中的 `test_cases` 列表末端新增測試條目（如 `TC-26`）：
+若在未來維護過程中發現新邊界情境，可在 `test_statusline.py` 中的 `test_cases` 列表末端新增測試條目（如 `TC-27`）：
 
 ```python
 {
-    "id": "TC-26",
+    "id": "TC-27",
     "tier": "Tier 4: Defense",
     "name": "Custom Edge Case Description",
     "payload": json.dumps({"custom_key": "val"}),
