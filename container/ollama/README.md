@@ -8,7 +8,7 @@
 
 ```bash
 git clone https://github.com/CTJ425/script-docs.git
-cd script-docs/Container/ollama
+cd script-docs/container/ollama
 
 # GPU 模式（預設）
 docker compose up -d

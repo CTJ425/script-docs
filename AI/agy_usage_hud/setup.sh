@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="setup.sh"
-RAW_BASE="${AGY_HUD_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud}"
+RAW_BASE="${AGY_HUD_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usage_hud}"
 INSTALL_DIR="${AGY_HUD_DIR:-$HOME/.gemini/antigravity-cli}"
 SCRIPT_FILE="statusline_hud.py"
 SETTINGS_FILE="$INSTALL_DIR/settings.json"

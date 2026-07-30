@@ -9,13 +9,13 @@
 
 ```bash
 # 先看看會連結哪些檔案，不做任何變更
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/pve_link_iso/pve_link_iso.sh | sudo bash -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh | sudo bash -s -- --dry-run
 
 # 實際執行（預設來源 /mnt/pve/ISO、目標 /mnt/pve/ISO/template/iso）
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/pve_link_iso/pve_link_iso.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh | sudo bash
 
 # 自訂目錄
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/pve_link_iso/pve_link_iso.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh | sudo bash -s -- \
   -s /mnt/nas/iso -t /var/lib/vz/template/iso
 ```
 

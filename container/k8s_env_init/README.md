@@ -10,10 +10,10 @@
 
 ```bash
 # 互動模式（有終端機時會問要不要重開機）
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_env_init/k8s_env_initialization.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh | sudo bash
 
 # 全自動：設定完直接重開機
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_env_init/k8s_env_initialization.sh | sudo bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh | sudo bash -s -- --yes
 ```
 
 | 參數 | 說明 |
@@ -60,7 +60,7 @@ sudo firewall-cmd --reload
 節點重開機後，用 [k8s_install](../k8s_install) 建立叢集：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_install/k8s_cluster_install.sh | sudo bash -s -- --role cp --yes
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_install/k8s_cluster_install.sh | sudo bash -s -- --role cp --yes
 ```
 
 ---

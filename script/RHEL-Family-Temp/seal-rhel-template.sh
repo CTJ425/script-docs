@@ -17,7 +17,7 @@ DO_POWEROFF=0
 # Where to fetch the wizard files from when they are not next to this script.
 # Override for a fork or a different branch:
 #   SCD_RAW_BASE=https://raw.githubusercontent.com/me/my-fork/dev/RHEL-Family-Temp
-SCD_RAW_BASE="${SCD_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/RHEL-Family-Temp}"
+SCD_RAW_BASE="${SCD_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/script/RHEL-Family-Temp}"
 
 # Directory holding this script, or "" when it was piped in (curl | bash).
 LOCAL_DIR=""

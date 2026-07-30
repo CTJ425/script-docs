@@ -36,8 +36,21 @@ const IGNORED = new Set([
   'dist',
 ]);
 
-/** How deep below the repo root to look for a README.md (Container/ollama is depth 2). */
-const MAX_DEPTH = 2;
+/**
+ * Every subproject lives at `<category>/<project>/README.md` — exactly two
+ * levels. The first level is the category, and it is the *only* thing that
+ * decides the sidebar group, so putting the folder in the right place is the
+ * whole classification step. Anything shallower or deeper is rejected below
+ * rather than silently dropped from the site.
+ */
+const DOC_DEPTH = 2;
+
+/**
+ * Sidebar order of the categories. A category not listed here still works —
+ * it sorts after these, alphabetically — so adding a fourth category means
+ * creating a folder, and listing it here only when its position matters.
+ */
+const CATEGORY_ORDER = ['AI', 'container', 'script'];
 
 /** Per-folder optional overrides. Absent for most folders — defaults are fine. */
 const META_FILE = 'docs.json';
@@ -48,19 +61,54 @@ function isIgnored(name) {
   return IGNORED.has(name) || name.startsWith('.');
 }
 
-/** Recursively collect directories (relative, posix) that contain a README.md. */
-function findDocDirs(absDir, relDir = '', depth = 0) {
+/**
+ * Collect every directory (relative, posix) holding a README.md, one level
+ * deeper than a valid doc so a too-deep README is found and reported instead
+ * of quietly never appearing.
+ */
+function findReadmeDirs(absDir, relDir = '', depth = 0) {
   const found = [];
-  if (depth > 0 && existsSync(join(absDir, 'README.md'))) found.push(relDir);
-  if (depth >= MAX_DEPTH) return found;
+  if (depth > 0 && existsSync(join(absDir, 'README.md'))) found.push({ relDir, depth });
+  if (depth > DOC_DEPTH) return found;
 
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || isIgnored(entry.name)) continue;
     found.push(
-      ...findDocDirs(join(absDir, entry.name), relDir ? posix.join(relDir, entry.name) : entry.name, depth + 1)
+      ...findReadmeDirs(join(absDir, entry.name), relDir ? posix.join(relDir, entry.name) : entry.name, depth + 1)
     );
   }
   return found;
+}
+
+/**
+ * The doc dirs, with anything at the wrong depth turned into a build failure.
+ * Being off by one level is the one mistake that used to cost nothing at build
+ * time and produce a page nobody could reach.
+ */
+function findDocDirs(root = REPO_ROOT) {
+  const all = findReadmeDirs(root);
+
+  const misplaced = all.filter((d) => d.depth !== DOC_DEPTH);
+  if (misplaced.length) {
+    const lines = misplaced.map((d) =>
+      d.depth < DOC_DEPTH
+        ? `  ${d.relDir}/README.md sits at the repo root — move it into a category, e.g. ${CATEGORY_ORDER[2]}/${d.relDir}/`
+        : `  ${d.relDir}/README.md is nested too deep — the site only publishes <category>/<project>/README.md`
+    );
+    throw new Error(
+      `[sync-content] ${misplaced.length} README.md in the wrong place:\n${lines.join('\n')}\n` +
+        `Categories in use: ${CATEGORY_ORDER.join(', ')} (a new top-level folder becomes a new category).`
+    );
+  }
+
+  return all.map((d) => d.relDir);
+}
+
+/** Sidebar rank of a category: the root overview first, unknown ones last. */
+function categoryRank(group) {
+  if (!group) return -1;
+  const i = CATEGORY_ORDER.indexOf(group);
+  return i === -1 ? CATEGORY_ORDER.length : i;
 }
 
 function slugify(relDir) {
@@ -207,7 +255,15 @@ export function sync({ quiet = false } = {}) {
     bySlug.set(d.slug, d.file);
   }
 
-  docs.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-Hant'));
+  // Category first, so the sidebar groups keep a fixed order no matter what a
+  // new project happens to be called; then docs.json's `order`, then title.
+  docs.sort(
+    (a, b) =>
+      categoryRank(a.group) - categoryRank(b.group) ||
+      (a.group ?? '').localeCompare(b.group ?? '') ||
+      a.order - b.order ||
+      a.title.localeCompare(b.title, 'zh-Hant')
+  );
 
   const manifest = {
     generatedAt: new Date().toISOString(),

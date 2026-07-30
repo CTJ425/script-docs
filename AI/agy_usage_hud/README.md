@@ -35,7 +35,7 @@ gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
 `setup.sh` 會下載腳本到 `~/.gemini/antigravity-cli/`，並把 `statusLine` **合併**寫入該目錄的 `settings.json`（既有設定保留，並先備份成 `settings.json.bak.<timestamp>`；若該檔不是合法 JSON 會中止而不覆蓋）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usage_hud/setup.sh | bash
 ```
 
 可用環境變數：`AGY_HUD_DIR`（安裝目錄）、`AGY_HUD_RAW_BASE`（下載來源，供 fork 使用）。

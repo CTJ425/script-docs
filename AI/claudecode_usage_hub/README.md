@@ -19,7 +19,7 @@ days is ignored and is not carried forward into a newer one.
 
 ## One-click install
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/claudecode/usage_hub/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/claudecode_usage_hub/install.sh | bash
 ```
 Restart Claude Code afterward. This writes `statusLine` into `~/.claude/settings.json`
 (backing up any existing file first) and copies `statusline.js` to `~/.claude/usage_hub/`.

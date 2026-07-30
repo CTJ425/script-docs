@@ -40,10 +40,10 @@ jobs:
       - name: Scripts must be executable and expose --help
         run: |
           fail=0
-          for f in RHEL-Family-Temp/seal-rhel-template.sh \
-                   k8s_env_init/k8s_env_initialization.sh \
-                   k8s_install/k8s_cluster_install.sh \
-                   pve_link_iso/pve_link_iso.sh; do
+          for f in script/RHEL-Family-Temp/seal-rhel-template.sh \
+                   container/k8s_env_init/k8s_env_initialization.sh \
+                   container/k8s_install/k8s_cluster_install.sh \
+                   script/pve_link_iso/pve_link_iso.sh; do
             [ -x "$f" ] || { echo "::error file=$f::not executable (chmod +x)"; fail=1; }
             bash "$f" --help >/dev/null 2>&1 || { echo "::error file=$f::--help failed"; fail=1; }
           done
@@ -56,11 +56,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate GPU config
-        working-directory: Container/ollama
+        working-directory: container/ollama
         run: docker compose -f docker-compose.yml config >/dev/null
 
       - name: Validate CPU override and confirm it drops the GPU reservation
-        working-directory: Container/ollama
+        working-directory: container/ollama
         run: |
           docker compose -f docker-compose.yml -f docker-compose.cpu.yml config >/dev/null
           if docker compose -f docker-compose.yml -f docker-compose.cpu.yml config | grep -q 'nvidia'; then
@@ -69,7 +69,7 @@ jobs:
           fi
 
       - name: Ollama API must stay on loopback
-        working-directory: Container/ollama
+        working-directory: container/ollama
         run: |
           if ! docker compose -f docker-compose.yml config | grep -q 'host_ip: 127.0.0.1'; then
             echo "::error::port 11434 is not bound to 127.0.0.1 — the Ollama API has no authentication"

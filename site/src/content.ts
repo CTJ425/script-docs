@@ -10,7 +10,7 @@ export interface Doc {
   slug: string;
   /** Repo-relative directory ('' for the root README). */
   dir: string;
-  /** Repo-relative path of the source file, e.g. "k8s_install/README.md". */
+  /** Repo-relative path of the source file, e.g. "container/k8s_install/README.md". */
   file: string;
   title: string;
   icon: string;

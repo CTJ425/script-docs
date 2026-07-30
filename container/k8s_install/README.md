@@ -11,14 +11,14 @@
 
 ```bash
 # 0. 全部節點：前置環境（swap / SELinux / 核心模組 / sysctl）後重開機
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_env_init/k8s_env_initialization.sh | sudo bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh | sudo bash -s -- --yes
 
 # 1. Control Plane：安裝 CRI-O + kubeadm 並初始化，含 Calico
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_install/k8s_cluster_install.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_install/k8s_cluster_install.sh | sudo bash -s -- \
   --role cp --apiserver-advertise-address 10.0.1.10 --yes
 
 # 2. 每個 Worker：貼上 CP 最後印出的 join 指令
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_install/k8s_cluster_install.sh | sudo bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_install/k8s_cluster_install.sh | sudo bash -s -- \
   --role worker --yes \
   --join "kubeadm join 10.0.1.10:6443 --token <TOKEN> --discovery-token-ca-cert-hash sha256:<HASH>"
 ```

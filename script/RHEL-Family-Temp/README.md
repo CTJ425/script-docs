@@ -13,10 +13,10 @@
 
 ```bash
 # 1. 先看看會做什麼，不改動系統
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/RHEL-Family-Temp/seal-rhel-template.sh | sudo bash -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/RHEL-Family-Temp/seal-rhel-template.sh | sudo bash -s -- --dry-run
 
 # 2. 確認後封裝並自動關機，關機後即可轉為 VM 範本
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/RHEL-Family-Temp/seal-rhel-template.sh | sudo bash -s -- --yes --poweroff
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/RHEL-Family-Temp/seal-rhel-template.sh | sudo bash -s -- --yes --poweroff
 ```
 
 | 參數 | 說明 |

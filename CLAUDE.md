@@ -79,6 +79,35 @@ The smoke test asserts the manifest's markdown is byte-identical to the files on
 disk, so a README edited without re-syncing fails here rather than on the
 published site.
 
+<!-- classification -->
+## Where a new subproject goes
+
+Every subproject is `<category>/<project>/README.md` — **exactly two levels**.
+The first level is the category and it is the only thing that decides the
+sidebar group, so choosing the folder *is* the classification step. No front-end
+change is ever needed to add or re-file a project.
+
+| Category | Put it here when the subject is… |
+| --- | --- |
+| `AI/` | something that plugs into an AI CLI or agent — statuslines, plugins, prompt tooling (`agy`, Claude Code) |
+| `container/` | containers or Kubernetes — compose stacks, cluster install, node prep |
+| `script/` | a plain script that runs on a host and exits — VM sealing, ISO linking |
+
+- **Classify by the subject, not the file type.** A shell script that builds a
+  Kubernetes cluster is `container/` — the subject is the cluster. `script/` is
+  for host-level one-offs, not "everything written in bash".
+- **A fourth category is just a new top-level folder.** It becomes a sidebar
+  group automatically. Add it to `CATEGORY_ORDER` in
+  `site/scripts/sync-content.mjs` only when its position in the sidebar matters;
+  unlisted categories sort after the listed ones, alphabetically.
+- **The wrong depth fails the build, on purpose.** A `README.md` left at the
+  repo root (uncategorised) or buried a level too deep used to produce a page
+  that simply never appeared; `sync-content.mjs` now rejects both with the fix
+  spelled out in the error.
+- Re-filing a project is `git mv` plus a sweep of its `raw.githubusercontent.com`
+  URLs — the paths are published install commands, so every one of them, in
+  every README and installer, has to move with the folder.
+
 <!-- these three files are byte-identical mirrors -->
 > [!IMPORTANT]
 > `CLAUDE.md`, `.cursorrules` and `.windsurfrules` are kept byte-identical.

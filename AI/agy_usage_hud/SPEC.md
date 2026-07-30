@@ -33,7 +33,7 @@ gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
 - Countdown: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`; `<=0` is `0m`.
 - Segments joined by a dim ` | `.
 
-This matches the sibling [Claude Code HUD](../../claudecode/usage_hub/SPEC.md)
+This matches the sibling [Claude Code HUD](../claudecode_usage_hub/SPEC.md)
 field for field, so the two tools read identically side by side.
 
 ## Unknown vs zero
@@ -59,7 +59,7 @@ never return non-zero — a crash here would disrupt the TUI, not just the line.
 
 ## Data source (agy statusline stdin JSON)
 > [!NOTE]
-> Unlike the sibling [Claude Code HUD](../../claudecode/usage_hub/SPEC.md), whose
+> Unlike the sibling [Claude Code HUD](../claudecode_usage_hub/SPEC.md), whose
 > field paths are confirmed against published documentation, Antigravity CLI's
 > statusline payload shape is **not publicly documented**. The key names below
 > were derived from observed payloads, which is why the parser accepts several
