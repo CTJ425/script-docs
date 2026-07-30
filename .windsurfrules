@@ -36,3 +36,50 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes_tool` for code review.
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
+
+<!-- docs/site consistency -->
+## The HTML must stay in sync with the READMEs
+
+The site is not a second copy of the docs: `site/scripts/sync-content.mjs`
+renders every `README.md` **verbatim**, and each file's first `#` heading
+becomes that page's title *and* its nav label. So the only text the HTML/TSX
+may hold is chrome — product name, tagline, meta description. Whenever that
+chrome disagrees with a README, the product appears under two different names
+and the site is wrong no matter which one is "right".
+
+**When a README's title or positioning changes, update all of these in the same
+commit:**
+
+| Where | What must match |
+| --- | --- |
+| `README.md` (root) | H1 = the product name; opening line = the tagline. This *is* the landing page. |
+| `site/index.html` | `<title>` = the root H1; `<meta name="description">` = the tagline + what the project contains |
+| `site/src/components/AppShell.tsx` | App bar title = the root H1; subtitle = the tagline |
+| `<subproject>/README.md` | H1 = that page's nav label — renaming the H1 renames the nav entry |
+| `<subproject>/SPEC.md`, `TROUBLESHOOTING.md` | Their headings carry the same product name as the subproject's H1 |
+
+**Rules**
+
+- **One product, one name.** Never leave the tab title, the header and the
+  landing page naming the same thing differently.
+- **Never hand-write doc content into HTML/TSX.** Prose belongs in a `README.md`
+  so the site and the repo cannot drift; the HTML holds chrome only.
+- **Never edit `site/src/content/manifest.json`.** It is generated (and
+  gitignored) — edit the source README instead.
+- Adding a subproject means adding a folder with a `README.md`. Nothing in the
+  front end is hardcoded per project, so no TSX change should be needed.
+
+**Verify before committing**
+
+```bash
+cd site && npm ci && npm run verify   # typecheck + smoke test + production build
+```
+
+The smoke test asserts the manifest's markdown is byte-identical to the files on
+disk, so a README edited without re-syncing fails here rather than on the
+published site.
+
+<!-- these three files are byte-identical mirrors -->
+> [!IMPORTANT]
+> `CLAUDE.md`, `.cursorrules` and `.windsurfrules` are kept byte-identical.
+> Edit one, copy it over the other two in the same commit.
