@@ -2,7 +2,7 @@
 """
 Expanded Automated Boundary Test Suite for AGY Pure-ASCII Statusline.
 Validates code correctness, field compatibility, edge-case handling,
-and 100% pure ASCII compliance across Tiers 1-5.
+and 100% pure ASCII compliance across Tiers 1-6.
 """
 
 import subprocess
@@ -58,7 +58,7 @@ def run_all_tests() -> bool:
                     "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
                 }
             }),
-            "check_str_part": "5h: \033[1;32m[===.....] 35.0%\033[0m",
+            "check_str_part": "5h \033[1;32m35.0%\033[0m",
             "check_color": "\033[1;32m"
         },
         {
@@ -229,38 +229,38 @@ def run_all_tests() -> bool:
             "tier": "Tier 4: Defense",
             "name": "Empty Stdin Payload Handling",
             "payload": "",
-            "check_str_part": "[........] --%"
+            "check_str_part": "5h \033[2m--%\033[0m"
         },
         {
             "id": "TC-15",
             "tier": "Tier 4: Defense",
             "name": "Invalid JSON Syntax Fault Tolerance",
             "payload": "{invalid json syntax payload...",
-            "check_str_part": "[........] --%"
+            "check_str_part": "5h \033[2m--%\033[0m"
         },
         {
             "id": "TC-16",
             "tier": "Tier 4: Defense",
             "name": "Non-Dict JSON Array Payload Defense ([1,2,3])",
             "payload": json.dumps([1, 2, 3, "corrupted"]),
-            "check_str_part": "[........] --%"
+            "check_str_part": "5h \033[2m--%\033[0m"
         },
         {
             "id": "TC-17",
             "tier": "Tier 4: Defense",
             "name": "Non-Dict JSON Primitive Defense (\"string_payload\")",
             "payload": json.dumps("raw_string_payload"),
-            "check_str_part": "[........] --%"
+            "check_str_part": "5h \033[2m--%\033[0m"
         },
         {
             "id": "TC-18",
             "tier": "Tier 4: Defense",
             "name": "Empty JSON Dict Handling ({})",
             "payload": json.dumps({}),
-            "check_str_part": "5h: ",
+            "check_str_part": "5h ",
             # An empty payload tells us nothing about usage; reporting 0.0%
             # would read as "quota barely touched", which we cannot claim.
-            "check_absent_str_part": " 0.0%"
+            "check_absent_str_part": "0.0%"
         },
 
         # --- TIER 5: Unknown vs Zero (missing data must never render as 0%) ---
@@ -274,8 +274,8 @@ def run_all_tests() -> bool:
                     "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400}
                 }
             }),
-            "check_str_part": "Wk: \033[2m[........] --%\033[0m",
-            "check_absent_str_part": " 0.0%"
+            "check_str_part": "Wk \033[2m--%\033[0m",
+            "check_absent_str_part": "0.0%"
         },
         {
             "id": "TC-20",
@@ -285,11 +285,11 @@ def run_all_tests() -> bool:
                 "active_model": "test-model",
                 "quota": {
                     "rolling_5h": {"reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 40.0, "reset_in_seconds": 86400}
+                    "weekly": {"used_percent": 42.5, "reset_in_seconds": 86400}
                 }
             }),
-            "check_str_part": "5h: \033[2m[........] --%\033[0m",
-            "check_absent_str_part": " 0.0%"
+            "check_str_part": "5h \033[2m--%\033[0m",
+            "check_absent_str_part": "0.0%"
         },
         {
             "id": "TC-21",
@@ -299,11 +299,11 @@ def run_all_tests() -> bool:
                 "active_model": "test-model",
                 "quota": {
                     "rolling_5h": {"used_percent": "not-a-number", "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 40.0, "reset_in_seconds": 86400}
+                    "weekly": {"used_percent": 42.5, "reset_in_seconds": 86400}
                 }
             }),
-            "check_str_part": "5h: \033[2m[........] --%\033[0m",
-            "check_absent_str_part": " 0.0%"
+            "check_str_part": "5h \033[2m--%\033[0m",
+            "check_absent_str_part": "0.0%"
         },
         {
             "id": "TC-22",
@@ -316,8 +316,50 @@ def run_all_tests() -> bool:
                     "weekly": {"used_percent": 0.0, "reset_in_seconds": 86400}
                 }
             }),
-            "check_str_part": " 0.0%",
+            "check_str_part": "0.0%",
             "check_absent_str_part": "--%"
+        },
+
+        # --- TIER 6: Line Layout (model first, percentages only) ---
+        {
+            "id": "TC-23",
+            "tier": "Tier 6: Layout",
+            "name": "Model Name Is The First Field On The Line",
+            "payload": json.dumps({
+                "active_model": "gemini-3.6-flash",
+                "quota": {
+                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
+                }
+            }),
+            "check_starts_with": "gemini-3.6-flash |"
+        },
+        {
+            "id": "TC-24",
+            "tier": "Tier 6: Layout",
+            "name": "No Progress Bar Characters Anywhere In The Line",
+            "payload": json.dumps({
+                "active_model": "gemini-3.6-flash",
+                "quota": {
+                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
+                }
+            }),
+            # Checked after ANSI stripping: '[' also opens every escape sequence.
+            "check_no_bar": True
+        },
+        {
+            "id": "TC-25",
+            "tier": "Tier 6: Layout",
+            "name": "Line Without A Model Starts Directly With The 5h Window",
+            "payload": json.dumps({
+                "quota": {
+                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
+                }
+            }),
+            "check_starts_with": "5h 35.0%",
+            "check_no_bar": True
         }
     ]
 
@@ -358,6 +400,23 @@ def run_all_tests() -> bool:
                 f"Unexpected substring present: {repr(tc['check_absent_str_part'])}"
             )
 
+        # 3c. Layout checks operate on the ANSI-stripped line
+        plain = ANSI_REGEX.sub('', out)
+
+        if "check_starts_with" in tc and not plain.startswith(tc["check_starts_with"]):
+            case_passed = False
+            failure_reasons.append(
+                f"Line does not start with {repr(tc['check_starts_with'])}: {repr(plain[:40])}"
+            )
+
+        if tc.get("check_no_bar"):
+            bar_chars = [c for c in plain if c in "[]"]
+            if bar_chars:
+                case_passed = False
+                failure_reasons.append(
+                    f"Progress-bar characters present after ANSI stripping: {bar_chars}"
+                )
+
         # 4. Check color code
         if "check_color" in tc and tc["check_color"] not in out:
             case_passed = False
@@ -366,7 +425,7 @@ def run_all_tests() -> bool:
         # 5. Check model truncation
         if "check_model_max_len" in tc:
             # Model part after '|' in stdout
-            model_match = re.search(r'\|\s*\x1b\[1;36m(.*?)\x1b\[0m', out)
+            model_match = re.search(r'\x1b\[1;36m(.*?)\x1b\[0m', out)
             if model_match:
                 extracted_model = model_match.group(1)
                 if len(extracted_model) > tc["check_model_max_len"]:

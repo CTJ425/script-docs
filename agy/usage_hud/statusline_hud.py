@@ -2,7 +2,13 @@
 """
 AGY Usage Statusline Interceptor (Pure ASCII Version)
 Reads JSON payload from stdin passed by AGY CLI TUI statusline trigger.
-Outputs a pure ASCII formatted statusline showing 5h rolling & Weekly usage.
+Outputs one pure ASCII line:
+
+    <model> | 5h <pct>% (<reset>) | Wk <pct>% (<reset>)
+
+Percentages only -- no progress bar. The usage level is carried entirely by
+the colour of the number (green / yellow / red), which needs no horizontal
+space, so the line stays short on a narrow terminal.
 """
 
 import sys
@@ -20,9 +26,9 @@ COLOR_DIM = "\033[2m"
 # Rendered for a window whose usage is unknown. Deliberately NOT "0.0%": a
 # green zero reads as "plenty of quota left", which is a claim we cannot make
 # when the payload did not carry the figure at all.
-UNKNOWN_SEGMENT = f"{COLOR_DIM}[........] --%{COLOR_RESET}"
+UNKNOWN_SEGMENT = f"{COLOR_DIM}--%{COLOR_RESET}"
 SEPARATOR = f" {COLOR_DIM}|{COLOR_RESET} "
-FALLBACK_LINE = f"5h: {UNKNOWN_SEGMENT}{SEPARATOR}Wk: {UNKNOWN_SEGMENT}"
+FALLBACK_LINE = f"5h {UNKNOWN_SEGMENT}{SEPARATOR}Wk {UNKNOWN_SEGMENT}"
 
 
 def sanitize_ascii(text) -> str:
@@ -57,29 +63,6 @@ def format_duration(seconds) -> str:
         return f"{hours}h{minutes:02d}m"
     else:
         return f"{minutes}m"
-
-
-def make_ascii_progress_bar(percent, length: int = 8) -> str:
-    """Generates a pure ASCII progress bar using '=' and '.' (e.g. [====....])."""
-    try:
-        val = float(percent)
-        if math.isnan(val):
-            clamped = 0.0
-        elif math.isinf(val):
-            clamped = 100.0 if val > 0 else 0.0
-        else:
-            clamped = max(0.0, min(100.0, val))
-    except (ValueError, TypeError, OverflowError):
-        clamped = 0.0
-
-    try:
-        filled_len = int(round((clamped / 100.0) * length))
-        filled_len = max(0, min(length, filled_len))
-    except (ValueError, TypeError, OverflowError):
-        filled_len = 0
-
-    bar = "=" * filled_len + "." * (length - filled_len)
-    return f"[{bar}]"
 
 
 def get_color_code(percent) -> str:
@@ -195,13 +178,12 @@ def parse_quota_data(data: dict):
 def render_window(label: str, item) -> str:
     """Renders one usage window, or the '--%' unknown marker when item is None."""
     if item is None:
-        return f"{label}: {UNKNOWN_SEGMENT}"
+        return f"{label} {UNKNOWN_SEGMENT}"
 
     pct = item["used_percent"]
-    bar = make_ascii_progress_bar(pct, length=8)
     col = get_color_code(pct)
     rst = format_duration(item["reset_in_seconds"])
-    return f"{label}: {col}{bar} {pct:4.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
+    return f"{label} {col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
 
 
 def render_statusline(data: dict) -> str:
@@ -214,19 +196,15 @@ def render_statusline(data: dict) -> str:
     raw_model = data.get("active_model", data.get("model", ""))
     model_name = sanitize_ascii(raw_model)[:20]
 
+    # Model first: it is the one field that is always short and always known,
+    # so it anchors the line when a terminal truncates the tail.
+    parts = []
     if model_name:
-        model_part = f" {COLOR_DIM}|{COLOR_RESET} {COLOR_CYAN}{model_name}{COLOR_RESET}"
-    else:
-        model_part = ""
+        parts.append(f"{COLOR_CYAN}{model_name}{COLOR_RESET}")
+    parts.append(render_window("5h", parsed["5h"]))
+    parts.append(render_window("Wk", parsed["weekly"]))
 
-    line = (
-        render_window("5h", parsed["5h"])
-        + SEPARATOR
-        + render_window("Wk", parsed["weekly"])
-        + model_part
-    )
-
-    return sanitize_ascii(line)
+    return sanitize_ascii(SEPARATOR.join(parts))
 
 
 def main():

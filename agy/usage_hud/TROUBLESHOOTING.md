@@ -124,7 +124,7 @@ cat /tmp/agy_statusline_payload.log | python3 ~/.gemini/antigravity-cli/statusli
 
 ## 第四章：單元測試與迴歸維護 (Unit Testing & Regression Maintenance)
 
-本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 5 大層級共 22 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
+本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 6 大層級共 25 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
 
 ### 1. 執行完整測試套件
 
@@ -143,20 +143,23 @@ python3 ./test_statusline.py
 - **Tier 3: Boundary Values & Input Sanitization (TC-06 ~ TC-13)**
   驗證超長模型名稱裁切 (<=20 字元)、Unicode/Emoji 非 ASCII 清理、`used_percent` 邊界夾持 (`<0%` 與 `>100%`)、負數與浮點字串 (`"3600.5"`) 重置秒數解析、`inf` / `nan` 特殊浮點數防護。
 - **Tier 4: Malformed Payload & Error Defense (TC-14 ~ TC-18)**
-- **Tier 5: Unknown vs Zero (TC-19 ~ TC-22)** —— 資料缺漏必須顯示 `--%`，不得偽裝成 `0.0%`
   驗證空輸入 (`stdin EOF`)、毀損 JSON 語法、JSON Array 陣列 (`[1,2,3]`)、JSON 原始型別 (`"string"`) 及空字典 (`{}`) 的安全降級輸出。
+- **Tier 5: Unknown vs Zero (TC-19 ~ TC-22)**
+  驗證資料缺漏（缺 bucket、缺欄位、值無法解析）必須顯示 `--%`，不得偽裝成 `0.0%`；同時驗證載荷中真正的 `0.0` 仍顯示 `0.0%`。
+- **Tier 6: Line Layout (TC-23 ~ TC-25)**
+  驗證模型名稱位於行首、輸出（去除 ANSI 後）不含任何進度條字元 `[` `]`，以及無模型資訊時行首直接是 `5h`。
 
 ### 3. 如何擴充與新增自訂測試案例
 
-若在未來維護過程中發現新邊界情境，可在 `test_statusline.py` 中的 `test_cases` 列表末端新增測試條目（如 `TC-19`）：
+若在未來維護過程中發現新邊界情境，可在 `test_statusline.py` 中的 `test_cases` 列表末端新增測試條目（如 `TC-26`）：
 
 ```python
 {
-    "id": "TC-19",
+    "id": "TC-26",
     "tier": "Tier 4: Defense",
     "name": "Custom Edge Case Description",
     "payload": json.dumps({"custom_key": "val"}),
-    "check_str_part": "[........] --%"
+    "check_str_part": "5h \033[2m--%\033[0m"
 }
 ```
 

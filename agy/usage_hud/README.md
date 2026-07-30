@@ -3,7 +3,7 @@
 專為 **Antigravity CLI (`agy`)** TUI 設計的純 ASCII 狀態列，監控 **5 小時滾動視窗** 與 **每週** 的 AI 配額使用率與重置倒數。
 
 ```text
-5h: [===.....] 35.0% (1h30m) | Wk: [====....] 50.0% (2d00h) | gemini-3.6-flash
+gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
 ```
 
 設計與資料契約見 [SPEC.md](./SPEC.md)；疑難排解見 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
@@ -15,7 +15,9 @@
 - **100% 純 ASCII**（不含 ANSI 色碼）：相容所有終端字型與編碼，不會有寬度錯位或亂碼。
 - **無背景服務、無網路請求**：只在 agy 更新狀態列時被動從 stdin 讀一次 JSON。
 - **三段式警示色**：綠 (`<70%`)、黃 (`70~90%`)、紅 (`>=90%`)。
-- **資料缺漏顯示 `--%` 而非 `0.0%`**：payload 沒帶到用量時顯示灰色 `[........] --%`，不會偽裝成「幾乎沒用量」。
+- **只有數字百分比，沒有進度條**：用量高低完全由數字的顏色表達，不佔橫向空間，窄終端也不會被擠掉。
+- **模型名稱置於行首**：它是唯一永遠短且永遠已知的欄位，終端截斷尾巴時仍看得到自己在用哪個模型。
+- **資料缺漏顯示 `--%` 而非 `0.0%`**：payload 沒帶到用量時顯示灰色 `--%`，不會偽裝成「幾乎沒用量」。
 - **絕不崩潰**：空輸入、壞 JSON、非字典載荷一律降級輸出並回傳 exit code 0。
 
 ## 需求
@@ -71,17 +73,16 @@ agy plugin install https://github.com/CTJ425/script-docs.git
 ## 輸出格式
 
 ```text
- 5h: [===.....] 35.0% (1h30m) | Wk: [====....] 50.0% (2d00h) | gemini-3.6-flash
- (1)     (2)      (3)    (4)  (5) (6)                            (7)
+ gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
+ (1)             (2) (3) (4)   (5)     (6)
 ```
 
-1. 5 小時滾動視窗標示
-2. 8 格 ASCII 進度條（`=` 已用、`.` 剩餘）
-3. 用量百分比，固定 1 位小數，依門檻上色
-4. 重置倒數
-5. 分隔符（暗色）
+1. 模型名稱（青色，非 ASCII 字元會被移除，上限 20 字元）。無模型資訊時整段省略，行首直接是 `5h`
+2. 分隔符（暗色）
+3. 5 小時滾動視窗標示
+4. 用量百分比，固定 1 位小數，依門檻上色
+5. 重置倒數（暗色）
 6. 每週配額，欄位同上
-7. 模型名稱（青色，非 ASCII 字元會被移除，上限 20 字元）
 
 **重置倒數格式**：`<=0` → `0m`；有天數 → `2d04h`；有小時 → `1h30m`；否則 `45m`。
 
@@ -93,10 +94,10 @@ agy plugin install https://github.com/CTJ425/script-docs.git
 | `70.0% ~ 89.9%` | 黃 | `\033[1;33m` |
 | `>= 90.0%` | 紅 | `\033[1;31m` |
 
-**未知與降級**：某個視窗沒有可用數據時該段顯示 `[........] --%`；整包載荷無法解析時輸出
+**未知與降級**：某個視窗沒有可用數據時該段顯示暗色 `--%`（不附倒數）；整包載荷無法解析時輸出
 
 ```text
-5h: [........] --% | Wk: [........] --%
+5h --% | Wk --%
 ```
 
 ---
@@ -104,7 +105,7 @@ agy plugin install https://github.com/CTJ425/script-docs.git
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（22 案例，Tier 1-5）
+# 1. 完整邊界測試套件（25 案例，Tier 1-6）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 送出的載荷
@@ -119,7 +120,7 @@ echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 ~/.gemini/antigravity-cl
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 22 | Passed: 22 | Failed: 0` 並回傳 exit code 0。
+測試套件預期輸出 `Total: 25 | Passed: 25 | Failed: 0` 並回傳 exit code 0。
 
 ---
 
@@ -128,7 +129,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 1-5，22 案例）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 1-6，25 案例）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |
