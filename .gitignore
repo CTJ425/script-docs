@@ -1,0 +1,10 @@
+# Knowledge-graph cache (local tooling)
+.code-review-graph/
+
+# Node
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp

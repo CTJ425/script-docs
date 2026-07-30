@@ -1,0 +1,129 @@
+name: CI
+
+# Guards the things that actually break these scripts: shell bugs, invalid
+# compose files, and the one-liner curl URLs going stale after a repo rename.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Syntax check
+        run: |
+          fail=0
+          while IFS= read -r -d '' f; do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; fail=1; }
+          done < <(find . -name '*.sh' -not -path './site/node_modules/*' -print0)
+          exit $fail
+
+      - name: ShellCheck
+        run: |
+          fail=0
+          while IFS= read -r -d '' f; do
+            shellcheck -s bash "$f" || fail=1
+          done < <(find . -name '*.sh' -not -path './site/node_modules/*' -print0)
+          exit $fail
+
+      - name: Scripts must be executable and expose --help
+        run: |
+          fail=0
+          for f in RHEL-Family-Temp/seal-rhel-template.sh \
+                   k8s_env_init/k8s_env_initialization.sh \
+                   k8s_install/k8s_cluster_install.sh \
+                   pve_link_iso/pve_link_iso.sh; do
+            [ -x "$f" ] || { echo "::error file=$f::not executable (chmod +x)"; fail=1; }
+            bash "$f" --help >/dev/null 2>&1 || { echo "::error file=$f::--help failed"; fail=1; }
+          done
+          exit $fail
+
+  compose:
+    name: Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate GPU config
+        working-directory: Container/ollama
+        run: docker compose -f docker-compose.yml config >/dev/null
+
+      - name: Validate CPU override and confirm it drops the GPU reservation
+        working-directory: Container/ollama
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.cpu.yml config >/dev/null
+          if docker compose -f docker-compose.yml -f docker-compose.cpu.yml config | grep -q 'nvidia'; then
+            echo "::error::the CPU override still requests an NVIDIA device"
+            exit 1
+          fi
+
+      - name: Ollama API must stay on loopback
+        working-directory: Container/ollama
+        run: |
+          if ! docker compose -f docker-compose.yml config | grep -q 'host_ip: 127.0.0.1'; then
+            echo "::error::port 11434 is not bound to 127.0.0.1 — the Ollama API has no authentication"
+            exit 1
+          fi
+
+  links:
+    name: README one-liners
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A repo rename silently breaks every documented curl command, and the
+      # failure only shows up for whoever copy-pastes it. Check them here.
+      - name: raw.githubusercontent URLs must point at this repo and resolve
+        run: |
+          fail=0
+          urls=$(grep -rhoE 'https://raw\.githubusercontent\.com/[^ )"'"'"']+' \
+                   --include='*.md' --include='*.sh' . \
+                 | grep -F "${GITHUB_REPOSITORY}" | sort -u)
+          if [ -z "$urls" ]; then
+            echo "::error::no raw URLs found for ${GITHUB_REPOSITORY} — did the repo move?"
+            exit 1
+          fi
+          for u in $urls; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$u")
+            if [ "$code" = "200" ]; then
+              echo "ok   $u"
+            else
+              echo "::error::HTTP $code for $u"
+              fail=1
+            fi
+          done
+          # Any raw URL naming a *different* CTJ425 repo is a leftover after the move.
+          if grep -rhoE 'https://raw\.githubusercontent\.com/CTJ425/[^/]+' \
+               --include='*.md' --include='*.sh' . \
+             | sort -u | grep -v "CTJ425/${GITHUB_REPOSITORY#*/}$"; then
+            echo "::error::the URLs above reference a different repository"
+            fail=1
+          fi
+          exit $fail
+
+  site:
+    name: Site build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run verify

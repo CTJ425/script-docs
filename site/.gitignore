@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# Generated from the repo's README.md files by scripts/sync-content.mjs.
+# Regenerated on every dev start and every build, so it is not committed —
+# the READMEs are the source of truth, this is only a build artifact.
+src/content/manifest.json
