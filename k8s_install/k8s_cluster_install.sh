@@ -167,14 +167,17 @@ check_prerequisites() {
   log "Checking node prerequisites..."
   local problems=0
 
-  if swapon --noheadings --show 2>/dev/null | grep -q .; then
+  # Command substitution rather than '| grep -q .': grep exits on the first
+  # line, and under 'set -o pipefail' the SIGPIPE that kills swapon upstream
+  # would be reported as a failed pipeline.
+  if [ -n "$(swapon --noheadings --show 2>/dev/null || true)" ]; then
     warn "swap is still active. Run k8s_env_initialization.sh first (kubelet refuses to start with swap on)."
     problems=$((problems + 1))
   fi
 
   local m
   for m in overlay br_netfilter; do
-    if ! lsmod 2>/dev/null | awk '{print $1}' | grep -qx "$m"; then
+    if ! lsmod 2>/dev/null | awk -v m="$m" '$1 == m { found = 1 } END { exit found ? 0 : 1 }'; then
       warn "kernel module '$m' is not loaded."
       problems=$((problems + 1))
     fi
@@ -277,8 +280,13 @@ install_calico() {
   local manifests="https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests"
   local kubectl_cmd=(kubectl --kubeconfig=/etc/kubernetes/admin.conf)
 
-  run "${kubectl_cmd[@]}" create -f "${manifests}/v1_crd_projectcalico_org.yaml"
-  run "${kubectl_cmd[@]}" create -f "${manifests}/tigera-operator.yaml"
+  # 'apply --server-side', not 'create': installs fail here often enough (image
+  # pull, transient network) that re-running the script has to work, and plain
+  # 'create' dies with AlreadyExists. Server-side apply is also what avoids the
+  # "metadata.annotations: Too long" error that client-side apply hits on
+  # Calico's very large CRD bundle.
+  run "${kubectl_cmd[@]}" apply --server-side --force-conflicts -f "${manifests}/v1_crd_projectcalico_org.yaml"
+  run "${kubectl_cmd[@]}" apply --server-side --force-conflicts -f "${manifests}/tigera-operator.yaml"
   run "${kubectl_cmd[@]}" wait --for=condition=Available deployment/tigera-operator \
     -n tigera-operator --timeout=120s
 
@@ -288,15 +296,18 @@ install_calico() {
   if [ "$DRY_RUN" -eq 1 ]; then
     log "[dry-run] download ${manifests}/custom-resources.yaml, replace the pod CIDR with ${POD_CIDR}, then apply it"
   else
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
+    tmp="$(mktemp -d)" || die "Could not create a temporary directory."
+    # EXIT, not RETURN: a RETURN trap set inside a function is not scoped to
+    # that function, and would linger in the shell's trap environment (firing
+    # on later function returns) after this one is done.
+    trap 'rm -rf "$tmp"' EXIT
     curl -fsSL "${manifests}/custom-resources.yaml" -o "$tmp/custom-resources.yaml" ||
       die "Could not download custom-resources.yaml"
     sed -i "s#cidr: 192\.168\.0\.0/16#cidr: ${POD_CIDR}#" "$tmp/custom-resources.yaml"
     if ! grep -q "cidr: ${POD_CIDR}" "$tmp/custom-resources.yaml"; then
       die "Could not set the pod CIDR in custom-resources.yaml; upstream format may have changed. Apply it manually."
     fi
-    "${kubectl_cmd[@]}" create -f "$tmp/custom-resources.yaml"
+    "${kubectl_cmd[@]}" apply --server-side --force-conflicts -f "$tmp/custom-resources.yaml"
   fi
 
   log "Waiting for Calico to become available (up to 5 minutes)..."

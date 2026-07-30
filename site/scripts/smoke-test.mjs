@@ -90,6 +90,12 @@ const silence = (fn) => (...args) => {
 console.warn = silence(realWarn);
 console.error = silence(realError);
 
+// Read once: this was being re-read and re-parsed inside a filter callback,
+// i.e. once per relative link on every page.
+const { dirToSlug } = JSON.parse(
+  readFileSync(join(SITE_ROOT, 'src/content/manifest.json'), 'utf8')
+);
+
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -127,8 +133,9 @@ for (const doc of docs) {
     missing.length ? 'missing: ' + missing.map((h) => h.id).join(', ') : ''
   );
 
-  // Fenced code blocks -> a CodeBlock each, with a copy button.
-  const fences = (doc.markdown.match(/^\s*```/gm) || []).length / 2;
+  // Fenced code blocks -> a CodeBlock each, with a copy button. The `>` prefix
+  // matters: fences inside a GFM alert are rendered as real code blocks too.
+  const fences = (doc.markdown.match(/^[ \t]*(?:>[ \t]?)*```/gm) || []).length / 2;
   const copyButtons = (html.match(/>Copy</g) || []).length;
   check(
     `${fences} fenced block(s) -> ${copyButtons} copy button(s)`,
@@ -160,9 +167,9 @@ for (const doc of docs) {
   const relLinks = [...doc.markdown.matchAll(/\[[^\]]+\]\((\.\/[^)\s]+)\)/g)].map((m) => m[1]);
   const inAppExpected = relLinks
     .map((h) => h.replace(/^\.\//, '').replace(/\/$/, '').split('#')[0])
-    .filter((p) => Object.prototype.hasOwnProperty.call(JSON.parse(readFileSync(join(SITE_ROOT, 'src/content/manifest.json'), 'utf8')).dirToSlug, p));
+    .filter((p) => Object.prototype.hasOwnProperty.call(dirToSlug, p));
   const routed = inAppExpected.filter((p) => {
-    const slug = JSON.parse(readFileSync(join(SITE_ROOT, 'src/content/manifest.json'), 'utf8')).dirToSlug[p];
+    const slug = dirToSlug[p];
     return html.includes(`href="/${slug}"`) || html.includes(`href="#/${slug}"`);
   });
   check(

@@ -15,7 +15,9 @@
 - **三段式 ANSI 警示色彩**：
   - 綠色 (`<70%`)、黃色 (`70%~90%`)、紅色 (`>=90%`)。
 - **嚴格驗證**：
-  - 附帶 [test_statusline.py](file:///home/ivan/project/script-docs/agy/usage_hud/test_statusline.py) 自動化審查與純 ASCII 驗證測試。
+  - 附帶 [test_statusline.py](./test_statusline.py) 自動化審查與純 ASCII 驗證測試。
+- **資料缺漏時顯示 `--%` 而非 `0.0%`**：
+  - payload 沒帶到某個視窗的用量時，該段顯示灰色 `[........] --%`，不會偽裝成「幾乎沒用量」。
 
 ---
 
@@ -28,48 +30,38 @@
 agy plugin install https://github.com/CTJ425/script-docs.git
 ```
 
-### 方式二：一鍵下載與設定 (Raw 指令 / 無需預先 Clone)
+### 方式二：一行指令安裝 (推薦 / 無需預先 Clone)
 
-透過 Raw 網址直接下載 `statusline_hud.py` 腳本並持久化至 `~/.gemini/antigravity-cli/settings.json`：
+`setup.sh` 會下載腳本到 `~/.gemini/antigravity-cli/`，並自動把 `statusLine` **合併**寫入該目錄的 `settings.json`（既有設定會保留，並先備份成 `settings.json.bak.<timestamp>`）：
 
 ```bash
-# 下載 statusline 腳本
-mkdir -p ~/.gemini/antigravity-cli
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/statusline_hud.py -o ~/.gemini/antigravity-cli/statusline_hud.py
-chmod +x ~/.gemini/antigravity-cli/statusline_hud.py
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/setup.sh | bash
 ```
 
-於 `~/.gemini/antigravity-cli/settings.json` 中配置：
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "~/.gemini/antigravity-cli/statusline_hud.py"
-  }
-}
-```
+可用環境變數調整：`AGY_HUD_DIR`（安裝目錄）、`AGY_HUD_RAW_BASE`（下載來源，供 fork 使用）。
+
+> [!IMPORTANT]
+> `settings.json` 的 `command` 必須是**絕對路徑**——Antigravity CLI 不會展開 `~`。
+> `setup.sh` 會自動寫入展開後的絕對路徑，手動設定時請自行用 `realpath` 取得。
 
 ### 方式三：本地 Clone 專案套用
 
-在 `agy` TUI 終端內輸入：
+從 clone 出來的目錄直接執行同一支腳本（會額外跑一次測試套件）：
+
 ```bash
-/statusline /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
+./setup.sh
 ```
 
-寫入 `~/.gemini/antigravity-cli/settings.json` 持久化：
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py"
-  }
-}
+或在 `agy` TUI 終端內臨時套用（`$(pwd)` 會展開成絕對路徑）：
+
+```bash
+/statusline $(pwd)/statusline_hud.py
 ```
 
 ---
 
 ## 📁 檔案結構
 
-- [statusline_hud.py](file:///home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py): 純 ASCII 狀態列主腳本。
-- [test_statusline.py](file:///home/ivan/project/script-docs/agy/usage_hud/test_statusline.py): 自動化審查與 100% ASCII 驗證測試套件。
-- [setup.sh](file:///home/ivan/project/script-docs/agy/usage_hud/setup.sh): 安裝與驗證腳本。
+- [statusline_hud.py](./statusline_hud.py): 純 ASCII 狀態列主腳本。
+- [test_statusline.py](./test_statusline.py): 自動化審查與 100% ASCII 驗證測試套件。
+- [setup.sh](./setup.sh): 一鍵安裝腳本（下載 + 合併寫入 `settings.json`，clone 執行時另跑測試）。

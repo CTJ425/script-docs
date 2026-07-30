@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "//typecheck": "manifest.json is generated and not committed, so it must exist before tsc can resolve it on a clean checkout.",
+    "typecheck": "npm run sync && tsc --noEmit",
     "test": "node scripts/smoke-test.mjs",
     "verify": "npm run typecheck && npm run test && npm run build"
   },
@@ -32,6 +33,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
+    "esbuild": "^0.21.5",
     "typescript": "^5.9.2",
     "vite": "^5.4.20"
   }

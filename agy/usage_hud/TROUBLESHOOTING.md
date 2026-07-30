@@ -50,8 +50,8 @@
 
 | 序號 | 問題現象 (Issue) | 根本原因 (Root Cause) | 診斷與解決方案 (Solution) |
 |---|---|---|---|
-| **1** | **Permission Denied / 狀態列無視訊輸出** | 腳本檔缺少 POSIX 可執行權限 (`+x`)。 | 執行 `chmod +x /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py` 賦予權限。 |
-| **2** | **`settings.json` 修改後未生效** | 在 `settings.json` 中使用了相對路徑 (如 `./statusline_hud.py`) 或波浪號路徑。 | 修改 `settings.json` 中的 `"command"` 為絕對路徑：`/home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py`。可用 `realpath statusline_hud.py` 驗證絕對路徑。 |
+| **1** | **Permission Denied / 狀態列無視訊輸出** | 腳本檔缺少 POSIX 可執行權限 (`+x`)。 | 執行 `chmod +x ~/.gemini/antigravity-cli/statusline_hud.py` 賦予權限。 |
+| **2** | **`settings.json` 修改後未生效** | 在 `settings.json` 中使用了相對路徑 (如 `./statusline_hud.py`) 或波浪號路徑。 | 修改 `settings.json` 中的 `"command"` 為絕對路徑：`~/.gemini/antigravity-cli/statusline_hud.py`。可用 `realpath statusline_hud.py` 驗證絕對路徑。 |
 | **3** | **JSON Key 大小寫寫錯導致設定無效** | 配置文件中的 JSON 鍵名寫成 `statusline` 或 `Statusline`，未遵循 CamelCase。 | 修正 `settings.json` 鍵名為小駝峰 `"statusLine"` (注意 `L` 大寫)。 |
 | **4** | **顯示 `\033[1;32m` 等 ANSI 色彩亂碼** | 終端模擬器不支援 ANSI 色彩，或環境變數 `TERM` 未正確設定。 | 在 Shell 配置文件 (`~/.bashrc` 或 `~/.zshrc`) 中新增 `export TERM=xterm-256color` 並重新載入。 |
 | **5** | **配額全數顯示 `--%` 降級輸出** | `agy` CLI 傳入的 `stdin` 載荷為空、格式非合法 JSON，或鍵名改變。 | 參考第三章使用 `debug_interceptor.sh` 抓取 Raw JSON 載荷，分析 `quota` 資料結構。 |
@@ -72,7 +72,7 @@
 #!/usr/bin/env bash
 # 除錯攔截器：/tmp/debug_interceptor.sh
 LOG_FILE="/tmp/agy_statusline_payload.log"
-cat - | tee "$LOG_FILE" | python3 /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
+cat - | tee "$LOG_FILE" | python3 ~/.gemini/antigravity-cli/statusline_hud.py
 ```
 
 在 `settings.json` 中將 `"command"` 臨時替換為除錯腳本路徑：
@@ -117,21 +117,21 @@ cat /tmp/agy_statusline_payload.log | python3 -m json.tool
 抓取到歷史 Raw JSON 檔案後，可用以下指令隨時回放重現問題：
 
 ```bash
-cat /tmp/agy_statusline_payload.log | python3 /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
+cat /tmp/agy_statusline_payload.log | python3 ~/.gemini/antigravity-cli/statusline_hud.py
 ```
 
 ---
 
 ## 第四章：單元測試與迴歸維護 (Unit Testing & Regression Maintenance)
 
-本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 4 大層級共 18 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
+本專案附帶完備的自動化測試套件 `test_statusline.py`，包含 5 大層級共 22 個邊界測試案例。在對 `statusline_hud.py` 進行任何修改或擴充時，必須執行此測試套件以確保沒有引入迴歸 (Regression)。
 
 ### 1. 執行完整測試套件
 
 在專案目錄下執行以下指令：
 
 ```bash
-python3 /home/ivan/project/script-docs/agy/usage_hud/test_statusline.py
+python3 ./test_statusline.py
 ```
 
 ### 2. 測試層級分級說明 (Test Tiers)
@@ -143,6 +143,7 @@ python3 /home/ivan/project/script-docs/agy/usage_hud/test_statusline.py
 - **Tier 3: Boundary Values & Input Sanitization (TC-06 ~ TC-13)**
   驗證超長模型名稱裁切 (<=20 字元)、Unicode/Emoji 非 ASCII 清理、`used_percent` 邊界夾持 (`<0%` 與 `>100%`)、負數與浮點字串 (`"3600.5"`) 重置秒數解析、`inf` / `nan` 特殊浮點數防護。
 - **Tier 4: Malformed Payload & Error Defense (TC-14 ~ TC-18)**
+- **Tier 5: Unknown vs Zero (TC-19 ~ TC-22)** —— 資料缺漏必須顯示 `--%`，不得偽裝成 `0.0%`
   驗證空輸入 (`stdin EOF`)、毀損 JSON 語法、JSON Array 陣列 (`[1,2,3]`)、JSON 原始型別 (`"string"`) 及空字典 (`{}`) 的安全降級輸出。
 
 ### 3. 如何擴充與新增自訂測試案例

@@ -2,7 +2,7 @@
 
 ## Status: READY FOR EXECUTION
 
-The expanded E2E Automated Boundary Test Suite for the AGY Pure-ASCII Usage Statusline has been fully engineered, validated, and published to `/home/ivan/project/script-docs/agy/usage_hud/test_statusline.py`.
+The expanded E2E Automated Boundary Test Suite for the AGY Pure-ASCII Usage Statusline has been fully engineered, validated, and published to `agy/usage_hud/test_statusline.py`.
 
 ---
 

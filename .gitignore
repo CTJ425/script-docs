@@ -8,3 +8,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Backups written by the installers (settings.json.bak.<timestamp>) and by hand
+*.bak
+*.bak.*

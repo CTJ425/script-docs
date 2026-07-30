@@ -11,7 +11,7 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
-import { useMemo } from 'react';
+import { Fragment, cloneElement, isValidElement, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link as RouterLink } from 'react-router-dom';
 import rehypeSlug from 'rehype-slug';
@@ -59,6 +59,42 @@ function textOf(node: React.ReactNode): string {
   }
   return '';
 }
+
+/**
+ * Remove the leading `[!NOTE]` marker from the first text node of a subtree,
+ * leaving the rest of the tree (links, code, lists) intact.
+ */
+function stripMarker(node: React.ReactNode, marker: string): React.ReactNode {
+  let done = false;
+
+  const walk = (n: React.ReactNode): React.ReactNode => {
+    if (done) return n;
+    if (typeof n === 'string') {
+      const i = n.indexOf(marker);
+      if (i === -1) return n;
+      done = true;
+      // The marker sits on its own line; drop the newline it leaves behind.
+      return n.slice(i + marker.length).replace(/^[ \t]*\r?\n?/, '');
+    }
+    if (Array.isArray(n)) {
+      return n.map((child, i) => <Fragment key={i}>{walk(child)}</Fragment>);
+    }
+    if (isValidElement(n)) {
+      const children = (n.props as { children?: React.ReactNode }).children;
+      if (children == null) return n;
+      return cloneElement(n, undefined, walk(children));
+    }
+    return n;
+  };
+
+  return walk(node);
+}
+
+/**
+ * Protocols a README link may use. Anything else (notably `javascript:` and
+ * `data:`) is rendered as plain text rather than a clickable link.
+ */
+const SAFE_PROTOCOL = /^(https?|mailto|ftp|tel):/i;
 
 interface Props {
   markdown: string;
@@ -126,8 +162,13 @@ export default function Markdown({ markdown, baseDir }: Props) {
             </Link>
           );
         }
-        // absolute / mailto
+        // Absolute URL (or protocol-relative). Only well-known navigable
+        // protocols become links; a README carrying `javascript:` or a
+        // `file://` path that means nothing to a reader renders as text.
         if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) {
+          if (!SAFE_PROTOCOL.test(href) && !href.startsWith('//')) {
+            return <>{children}</>;
+          }
           return (
             <Link href={href} target="_blank" rel="noreferrer">
               {children}
@@ -206,11 +247,14 @@ export default function Markdown({ markdown, baseDir }: Props) {
 
         if (severity && marker) {
           const label = marker[1].toUpperCase();
-          const body = text.slice(marker[0].length).trim();
+          // Render the real children, not textOf(children): flattening to a
+          // string would drop every link, code span and fenced block inside
+          // the alert. Only the "[!NOTE]" marker itself is stripped, from the
+          // first text node it appears in.
           return (
             <Alert severity={severity} sx={{ my: 2 }}>
               <AlertTitle sx={{ textTransform: 'capitalize' }}>{label.toLowerCase()}</AlertTitle>
-              {body}
+              {stripMarker(children, marker[0])}
             </Alert>
           );
         }

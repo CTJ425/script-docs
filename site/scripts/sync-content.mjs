@@ -156,17 +156,20 @@ export function sync({ quiet = false } = {}) {
   if (existsSync(rootReadme)) {
     const markdown = readFileSync(rootReadme, 'utf8');
     docs.push({
-      slug: 'overview',
-      dir: '',
-      file: 'README.md',
       title: titleOf(markdown, 'Overview'),
       icon: 'home',
       group: null,
       tags: [],
       order: -1,
+      ...readMeta(REPO_ROOT),
+      // Never overridable: identity and content. Spread order matters — with
+      // the meta spread last, a root docs.json could replace the markdown and
+      // break the verbatim guarantee this file exists to keep.
+      slug: 'overview',
+      dir: '',
+      file: 'README.md',
       bytes: Buffer.byteLength(markdown),
       markdown,
-      ...readMeta(REPO_ROOT),
     });
   }
 
@@ -188,6 +191,20 @@ export function sync({ quiet = false } = {}) {
       bytes: Buffer.byteLength(markdown),
       markdown,
     });
+  }
+
+  // Two different folders can slugify to the same value (a/b_c and a_b/c both
+  // become "a-b-c"). getDoc() would silently serve the first and the second
+  // page would be unreachable, so fail the build instead.
+  const bySlug = new Map();
+  for (const d of docs) {
+    if (bySlug.has(d.slug)) {
+      throw new Error(
+        `[sync-content] duplicate slug "${d.slug}": ${bySlug.get(d.slug)} and ${d.file}. ` +
+          'Rename one of the folders, or set a distinct "slug" in its docs.json.'
+      );
+    }
+    bySlug.set(d.slug, d.file);
   }
 
   docs.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-Hant'));

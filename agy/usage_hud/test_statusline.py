@@ -2,7 +2,7 @@
 """
 Expanded Automated Boundary Test Suite for AGY Pure-ASCII Statusline.
 Validates code correctness, field compatibility, edge-case handling,
-and 100% pure ASCII compliance across Tiers 1-4.
+and 100% pure ASCII compliance across Tiers 1-5.
 """
 
 import subprocess
@@ -257,7 +257,67 @@ def run_all_tests() -> bool:
             "tier": "Tier 4: Defense",
             "name": "Empty JSON Dict Handling ({})",
             "payload": json.dumps({}),
-            "check_str_part": "5h: "
+            "check_str_part": "5h: ",
+            # An empty payload tells us nothing about usage; reporting 0.0%
+            # would read as "quota barely touched", which we cannot claim.
+            "check_absent_str_part": " 0.0%"
+        },
+
+        # --- TIER 5: Unknown vs Zero (missing data must never render as 0%) ---
+        {
+            "id": "TC-19",
+            "tier": "Tier 5: Unknown",
+            "name": "Missing Weekly Bucket Renders --% Not 0.0%",
+            "payload": json.dumps({
+                "active_model": "test-model",
+                "quota": {
+                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400}
+                }
+            }),
+            "check_str_part": "Wk: \033[2m[........] --%\033[0m",
+            "check_absent_str_part": " 0.0%"
+        },
+        {
+            "id": "TC-20",
+            "tier": "Tier 5: Unknown",
+            "name": "Bucket Present But No Usage Field Renders --%",
+            "payload": json.dumps({
+                "active_model": "test-model",
+                "quota": {
+                    "rolling_5h": {"reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 40.0, "reset_in_seconds": 86400}
+                }
+            }),
+            "check_str_part": "5h: \033[2m[........] --%\033[0m",
+            "check_absent_str_part": " 0.0%"
+        },
+        {
+            "id": "TC-21",
+            "tier": "Tier 5: Unknown",
+            "name": "Unparseable Percentage Renders --% Not 0.0%",
+            "payload": json.dumps({
+                "active_model": "test-model",
+                "quota": {
+                    "rolling_5h": {"used_percent": "not-a-number", "reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 40.0, "reset_in_seconds": 86400}
+                }
+            }),
+            "check_str_part": "5h: \033[2m[........] --%\033[0m",
+            "check_absent_str_part": " 0.0%"
+        },
+        {
+            "id": "TC-22",
+            "tier": "Tier 5: Unknown",
+            "name": "Genuine Zero Usage Still Renders 0.0%",
+            "payload": json.dumps({
+                "active_model": "test-model",
+                "quota": {
+                    "rolling_5h": {"used_percent": 0.0, "reset_in_seconds": 5400},
+                    "weekly": {"used_percent": 0.0, "reset_in_seconds": 86400}
+                }
+            }),
+            "check_str_part": " 0.0%",
+            "check_absent_str_part": "--%"
         }
     ]
 
@@ -290,6 +350,13 @@ def run_all_tests() -> bool:
         if "check_str_part" in tc and tc["check_str_part"] not in out:
             case_passed = False
             failure_reasons.append(f"Missing expected substring: {repr(tc['check_str_part'])}")
+
+        # 3b. Check a substring is absent (e.g. "unknown" must not print as 0.0%)
+        if "check_absent_str_part" in tc and tc["check_absent_str_part"] in out:
+            case_passed = False
+            failure_reasons.append(
+                f"Unexpected substring present: {repr(tc['check_absent_str_part'])}"
+            )
 
         # 4. Check color code
         if "check_color" in tc and tc["check_color"] not in out:

@@ -68,13 +68,13 @@ chmod +x ~/.gemini/antigravity-cli/statusline_hud.py
 若已 Clone 專案至本地，可執行專案內附之 `./setup.sh`：
 
 ```bash
-cd /home/ivan/project/script-docs/agy/usage_hud
+cd <clone>/agy/usage_hud
 ./setup.sh
 ```
 
 `setup.sh` 執行流程包括：
 1. 為 `statusline_hud.py` 自動添加可執行權限 (`chmod +x statusline_hud.py`)。
-2. 自動執行 `test_statusline.py` 完整測試套件 (涵蓋 18 個邊界與防護測試案例)。
+2. 自動執行 `test_statusline.py` 完整測試套件 (涵蓋 22 個邊界與防護測試案例)。
 3. 印出設定說明與配置指引。
 
 ---
@@ -88,7 +88,7 @@ cd /home/ivan/project/script-docs/agy/usage_hud
 在 `agy` CLI TUI 會話介面中，直接輸入以下 slash 命令：
 
 ```text
-/statusline /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
+/statusline ~/.gemini/antigravity-cli/statusline_hud.py
 ```
 
 - **適用場景**：臨時測試、開發偵錯或單次 session 快速驗證。
@@ -105,13 +105,13 @@ cd /home/ivan/project/script-docs/agy/usage_hud
 {
   "statusLine": {
     "type": "command",
-    "command": "/home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py"
+    "command": "~/.gemini/antigravity-cli/statusline_hud.py"
   }
 }
 ```
 
 > ⚠️ **重要絕對路徑規範 (Absolute Path Rule)**：
-> `"command"` 欄位 **必須** 填寫 `statusline_hud.py` 的完整絕對路徑 (`/home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py`)。
+> `"command"` 欄位 **必須** 填寫 `statusline_hud.py` 的完整絕對路徑 (`~/.gemini/antigravity-cli/statusline_hud.py`)。
 > 請勿使用相對路徑 (如 `./statusline_hud.py`) 或波浪號路徑 (如 `~/...`)，否則在不同工作目錄下啟動 agy 時，CLI 將無法定位與執行腳本。
 
 ---
@@ -177,20 +177,20 @@ cd /home/ivan/project/script-docs/agy/usage_hud
 
 ### 步驟一：執行全套邊界自動化單元測試
 
-執行內建單元測試套件，確認 18 個邊界測試全數通過 (PASS)：
+執行內建單元測試套件，確認 22 個邊界測試全數通過 (PASS)：
 
 ```bash
-python3 /home/ivan/project/script-docs/agy/usage_hud/test_statusline.py
+python3 ./test_statusline.py
 ```
 
-預期結果：印出 `📊 SUMMARY: Total: 18 | Passed: 18 | Failed: 0` 並返回 Exit Code `0`。
+預期結果：印出 `📊 SUMMARY: Total: 22 | Passed: 22 | Failed: 0` 並返回 Exit Code `0`。
 
 ### 步驟二：管道 Pipe 手動載荷模擬測試
 
 模擬 agy CLI 傳送標準 JSON 載荷給狀態列：
 
 ```bash
-echo '{"active_model":"gemini-3.6-flash","quota":{"rolling_5h":{"used_percent":35.0,"reset_in_seconds":5400},"weekly":{"used_percent":50.0,"reset_in_seconds":172800}}}' | python3 /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
+echo '{"active_model":"gemini-3.6-flash","quota":{"rolling_5h":{"used_percent":35.0,"reset_in_seconds":5400},"weekly":{"used_percent":50.0,"reset_in_seconds":172800}}}' | python3 ~/.gemini/antigravity-cli/statusline_hud.py
 ```
 
 預期輸出：
@@ -201,7 +201,7 @@ echo '{"active_model":"gemini-3.6-flash","quota":{"rolling_5h":{"used_percent":3
 利用 `grep` 檢查輸出字元是否含有非 ASCII 字元 (`ord >= 128`)：
 
 ```bash
-echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py | LC_ALL=C grep -P "[\x80-\xFF]" && echo "FAIL: Non-ASCII detected" || echo "PASS: 100% Pure ASCII Verified"
+echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 ~/.gemini/antigravity-cli/statusline_hud.py | LC_ALL=C grep -P "[\x80-\xFF]" && echo "FAIL: Non-ASCII detected" || echo "PASS: 100% Pure ASCII Verified"
 ```
 
 預期結果：印出 `PASS: 100% Pure ASCII Verified`。
@@ -214,4 +214,4 @@ echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 /home/ivan/project/scrip
 python3 -c "import json, os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); data=json.load(open(p)); print('Config valid:', data.get('statusLine', {}))"
 ```
 
-預期結果：印出 `Config valid: {'type': 'command', 'command': '/home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py'}`。
+預期結果：印出 `Config valid: {'type': 'command', 'command': '~/.gemini/antigravity-cli/statusline_hud.py'}`。

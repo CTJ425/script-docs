@@ -16,7 +16,7 @@ The test harness (`test_statusline.py`) executes `statusline_hud.py` as an isola
 
 ## 2. 4-Tier Test Classification Methodology
 
-The test suite is structured into 4 distinct testing tiers, covering happy paths, schema variations, extreme boundaries, and structural fault tolerance:
+The test suite is structured into 5 distinct testing tiers, covering happy paths, schema variations, extreme boundaries, and structural fault tolerance:
 
 | Tier | Category | Focus Area | Objective |
 |------|----------|------------|-----------|
@@ -48,7 +48,11 @@ The test suite is structured into 4 distinct testing tiers, covering happy paths
 | **TC-15** | Tier 4 | Invalid JSON Syntax | `"{invalid json syntax..."` | Fallback display `5h: [........] --% ...` | ✅ **PASS** |
 | **TC-16** | Tier 4 | Non-Dict JSON Array ([1,2,3]) | `[1, 2, 3, "corrupted"]` | Fallback display without exception crash | ✅ **PASS** |
 | **TC-17** | Tier 4 | Non-Dict JSON Primitive | `"raw_string_payload"` | Fallback display without exception crash | ✅ **PASS** |
-| **TC-18** | Tier 4 | Empty Dict Payload (`{}`) | `{}` | Safe default rendering (`0.0%`, `0m`) | ✅ **PASS** |
+| **TC-18** | Tier 4 | Empty Dict Payload (`{}`) | `{}` | Unknown rendering (`--%`), never `0.0%` | ✅ **PASS** |
+| **TC-19** | Tier 5 | Missing Weekly Bucket | 5h only | `Wk` renders `--%` | ✅ **PASS** |
+| **TC-20** | Tier 5 | Bucket Without Usage Field | `{reset_in_seconds}` only | `5h` renders `--%` | ✅ **PASS** |
+| **TC-21** | Tier 5 | Unparseable Percentage | `"not-a-number"` | `5h` renders `--%` | ✅ **PASS** |
+| **TC-22** | Tier 5 | Genuine Zero Usage | `0.0` | still renders `0.0%` | ✅ **PASS** |
 
 ---
 

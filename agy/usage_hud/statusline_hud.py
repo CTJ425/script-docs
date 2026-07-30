@@ -7,7 +7,6 @@ Outputs a pure ASCII formatted statusline showing 5h rolling & Weekly usage.
 
 import sys
 import json
-import re
 import math
 
 # ANSI Color definitions
@@ -17,6 +16,13 @@ COLOR_YELLOW = "\033[1;33m"
 COLOR_RED = "\033[1;31m"
 COLOR_CYAN = "\033[1;36m"
 COLOR_DIM = "\033[2m"
+
+# Rendered for a window whose usage is unknown. Deliberately NOT "0.0%": a
+# green zero reads as "plenty of quota left", which is a claim we cannot make
+# when the payload did not carry the figure at all.
+UNKNOWN_SEGMENT = f"{COLOR_DIM}[........] --%{COLOR_RESET}"
+SEPARATOR = f" {COLOR_DIM}|{COLOR_RESET} "
+FALLBACK_LINE = f"5h: {UNKNOWN_SEGMENT}{SEPARATOR}Wk: {UNKNOWN_SEGMENT}"
 
 
 def sanitize_ascii(text) -> str:
@@ -106,7 +112,7 @@ def extract_quota_item(quota_dict: dict, possible_keys: list):
             if isinstance(item, dict):
                 return item
 
-    # Recursive check for nested model/bucket structures
+    # One level down, for payloads that nest the buckets under a model/plan key.
     for val in quota_dict.values():
         if isinstance(val, dict):
             for key in possible_keys:
@@ -131,35 +137,37 @@ def parse_quota_data(data: dict):
     weekly = extract_quota_item(quota, ["weekly", "week", "7d", "seven_days"])
 
     def parse_item(item):
+        """Parses one window, or returns None when the payload carries no
+        usable usage figure for it (missing bucket, missing field, garbage
+        value). None means 'unknown' and is rendered as '--%', never as 0%."""
         if not isinstance(item, dict):
-            return {"used_percent": 0.0, "reset_in_seconds": 0}
+            return None
 
         used_pct = item.get("used_percent")
         rem_frac = item.get("remaining_fraction")
         reset_sec = item.get("reset_in_seconds", item.get("reset_in", 0))
 
-        if used_pct is None and rem_frac is not None:
+        if used_pct is None and rem_frac is None:
+            return None
+
+        if used_pct is None:
             try:
                 rf = float(rem_frac)
-                if math.isnan(rf) or math.isinf(rf):
-                    used_pct = 0.0
-                else:
-                    used_pct = (1.0 - rf) * 100.0
             except (ValueError, TypeError, OverflowError):
-                used_pct = 0.0
-        elif used_pct is None:
-            used_pct = 0.0
+                return None
+            if math.isnan(rf) or math.isinf(rf):
+                return None
+            used_pct = (1.0 - rf) * 100.0
 
         try:
             val = float(used_pct)
-            if math.isnan(val):
-                used_pct = 0.0
-            elif math.isinf(val):
-                used_pct = 100.0 if val > 0 else 0.0
-            else:
-                used_pct = round(max(0.0, min(100.0, val)), 1)
         except (ValueError, TypeError, OverflowError):
-            used_pct = 0.0
+            return None
+        if math.isnan(val):
+            return None
+        if math.isinf(val):
+            val = 100.0 if val > 0 else 0.0
+        used_pct = round(max(0.0, min(100.0, val)), 1)
 
         try:
             if reset_sec is None:
@@ -184,27 +192,24 @@ def parse_quota_data(data: dict):
     }
 
 
+def render_window(label: str, item) -> str:
+    """Renders one usage window, or the '--%' unknown marker when item is None."""
+    if item is None:
+        return f"{label}: {UNKNOWN_SEGMENT}"
+
+    pct = item["used_percent"]
+    bar = make_ascii_progress_bar(pct, length=8)
+    col = get_color_code(pct)
+    rst = format_duration(item["reset_in_seconds"])
+    return f"{label}: {col}{bar} {pct:4.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
+
+
 def render_statusline(data: dict) -> str:
     """Renders pure ASCII statusline string."""
     if not isinstance(data, dict):
         data = {}
 
     parsed = parse_quota_data(data)
-
-    q5 = parsed["5h"]
-    qw = parsed["weekly"]
-
-    pct5 = q5["used_percent"]
-    pctw = qw["used_percent"]
-
-    bar5 = make_ascii_progress_bar(pct5, length=8)
-    barw = make_ascii_progress_bar(pctw, length=8)
-
-    col5 = get_color_code(pct5)
-    colw = get_color_code(pctw)
-
-    rst5 = format_duration(q5["reset_in_seconds"])
-    rstw = format_duration(qw["reset_in_seconds"])
 
     raw_model = data.get("active_model", data.get("model", ""))
     model_name = sanitize_ascii(raw_model)[:20]
@@ -215,10 +220,10 @@ def render_statusline(data: dict) -> str:
         model_part = ""
 
     line = (
-        f"5h: {col5}{bar5} {pct5:4.1f}%{COLOR_RESET} {COLOR_DIM}({rst5}){COLOR_RESET} "
-        f"{COLOR_DIM}|{COLOR_RESET} "
-        f"Wk: {colw}{barw} {pctw:4.1f}%{COLOR_RESET} {COLOR_DIM}({rstw}){COLOR_RESET}"
-        f"{model_part}"
+        render_window("5h", parsed["5h"])
+        + SEPARATOR
+        + render_window("Wk", parsed["weekly"])
+        + model_part
     )
 
     return sanitize_ascii(line)
@@ -228,21 +233,20 @@ def main():
     try:
         raw_input = sys.stdin.read()
         if not raw_input or not raw_input.strip():
-            # Fallback pure ASCII display
-            print(f"5h: {COLOR_DIM}[........] --%{COLOR_RESET} {COLOR_DIM}|{COLOR_RESET} Wk: {COLOR_DIM}[........] --%{COLOR_RESET}")
+            print(FALLBACK_LINE)
             return
 
         data = json.loads(raw_input)
         if not isinstance(data, dict):
-            # Fallback pure ASCII display for non-dict JSON payloads
-            print(f"5h: {COLOR_DIM}[........] --%{COLOR_RESET} {COLOR_DIM}|{COLOR_RESET} Wk: {COLOR_DIM}[........] --%{COLOR_RESET}")
+            # Non-dict JSON payloads (arrays, primitives) carry nothing usable.
+            print(FALLBACK_LINE)
             return
 
         status_line = render_statusline(data)
         print(status_line)
     except Exception:
-        # Fallback pure ASCII display on error
-        print(f"5h: {COLOR_DIM}[........] --%{COLOR_RESET} {COLOR_DIM}|{COLOR_RESET} Wk: {COLOR_DIM}[........] --%{COLOR_RESET}")
+        # This runs on every prompt render: never crash, never hang the TUI.
+        print(FALLBACK_LINE)
 
 
 if __name__ == "__main__":

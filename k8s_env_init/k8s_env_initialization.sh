@@ -6,13 +6,16 @@
 # - Verifies every change and optionally reboots
 # =================================================================
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
+# Abort on error, on an unset variable, and on a failing stage of a pipeline.
+# This script disables the firewall, SELinux and swap and then reboots, so a
+# typo'd variable silently expanding to "" is the last thing we want.
+set -euo pipefail
 
 SCRIPT_NAME="$(basename "${0#-}")"
 ASSUME_YES=0
 NO_REBOOT=0
 KEEP_FIREWALL=0
+KEEP_SELINUX=0
 DRY_RUN=0
 
 usage() {
@@ -26,6 +29,9 @@ Options:
       --no-reboot      Never reboot, and do not ask.
       --keep-firewall  Leave firewalld/ufw running. You then have to open the
                        Kubernetes ports yourself.
+      --keep-selinux   Leave SELinux enabled (RHEL family). CRI-O and kubelet
+                       do support enforcing mode; you may need container-selinux
+                       and the right labels on any hostPath volumes.
   -n, --dry-run        Print every change instead of making it. Never reboots.
   -h, --help           Show this help.
 
@@ -39,6 +45,7 @@ while [ "$#" -gt 0 ]; do
         -y|--yes) ASSUME_YES=1 ;;
         --no-reboot) NO_REBOOT=1 ;;
         --keep-firewall) KEEP_FIREWALL=1 ;;
+        --keep-selinux) KEEP_SELINUX=1 ;;
         -n|--dry-run) DRY_RUN=1 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1 (try --help)" >&2; exit 1 ;;
@@ -152,6 +159,15 @@ disable_firewall() {
 
 # Function: Disable SELinux through kernel argument
 disable_selinux() {
+    if [ "$OS_FAMILY" = "rhel" ] && [ "$KEEP_SELINUX" -eq 1 ]; then
+        echo "=== 2. Keeping SELinux (--keep-selinux) ==="
+        echo "SELinux left as configured. CRI-O and kubelet run under enforcing"
+        echo "mode, but make sure container-selinux is installed and that any"
+        echo "hostPath volumes carry a suitable label (e.g. container_file_t)."
+        echo ""
+        return 0
+    fi
+
     if [ "$OS_FAMILY" = "rhel" ]; then
         echo "=== 2. Disabling SELinux ==="
         # Disable SELinux at boot by adding the kernel argument.
@@ -288,8 +304,21 @@ verify_security_module() {
         runtime_selinux="$(getenforce 2>/dev/null || true)"
     fi
 
+    if [ "$KEEP_SELINUX" -eq 1 ]; then
+        print_check "INFO" "SELinux" "left enabled on request (--keep-selinux); runtime state: $runtime_selinux."
+        return
+    fi
+
+    # Capture first rather than piping into 'grep -q': under 'set -o pipefail'
+    # grep exiting early on a match can leave grubby killed by SIGPIPE, which
+    # would turn a successful check into a false WARN.
+    local grubby_info=""
+    if command -v grubby >/dev/null 2>&1; then
+        grubby_info="$(grubby --info=ALL 2>/dev/null || true)"
+    fi
+
     if command -v grubby >/dev/null 2>&1 &&
-        grubby --info=ALL 2>/dev/null | grep -q 'selinux=0'; then
+        printf '%s' "$grubby_info" | grep -q 'selinux=0'; then
         print_check "OK" "SELinux kernel argument" "selinux=0 found; reboot is required to apply fully."
     elif command -v grubby >/dev/null 2>&1; then
         print_check "WARN" "SELinux kernel argument" "selinux=0 not found in grubby output."
@@ -301,7 +330,8 @@ verify_security_module() {
 }
 
 verify_swap() {
-    if swapon --noheadings --show 2>/dev/null | grep -q .; then
+    # Command substitution rather than '| grep -q .': see verify_security_module.
+    if [ -n "$(swapon --noheadings --show 2>/dev/null || true)" ]; then
         print_check "WARN" "Swap runtime" "swap is still active."
     else
         print_check "OK" "Swap runtime" "no active swap detected."
@@ -321,7 +351,10 @@ verify_kernel_modules() {
     local config_ok="yes"
 
     for module in overlay br_netfilter; do
-        if lsmod | awk '{print $1}' | grep -qx "$module"; then
+        # One awk instead of 'lsmod | awk | grep -qx': grep -q exits on the
+        # first match, and under pipefail the resulting SIGPIPE upstream would
+        # be reported as a pipeline failure.
+        if lsmod | awk -v m="$module" '$1 == m { found = 1 } END { exit found ? 0 : 1 }'; then
             print_check "OK" "Kernel module ($module)" "loaded."
         else
             print_check "WARN" "Kernel module ($module)" "not loaded."

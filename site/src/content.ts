@@ -24,7 +24,7 @@ export interface Doc {
 
 export interface Manifest {
   generatedAt: string;
-  repo: { url: string | null; branch: string };
+  repo: { url: string | null; branch: string; slug: string | null };
   /** Repo directory -> doc slug, for rewriting relative README links. */
   dirToSlug: Record<string, string>;
   docs: Doc[];
