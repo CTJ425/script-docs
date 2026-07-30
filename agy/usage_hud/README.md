@@ -21,16 +21,42 @@
 
 ## 🚀 啟用步驟
 
-### 1. 於 `agy` CLI 終端套用
+### 方式一：直接透過 `agy plugin install` 安裝 (推薦)
+
+在終端執行外掛安裝指令：
+```bash
+agy plugin install https://github.com/CTJ425/script-docs.git
+```
+
+### 方式二：一鍵下載與設定 (Raw 指令 / 無需預先 Clone)
+
+透過 Raw 網址直接下載 `statusline_hud.py` 腳本並持久化至 `~/.gemini/antigravity-cli/settings.json`：
+
+```bash
+# 下載 statusline 腳本
+mkdir -p ~/.gemini/antigravity-cli
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/statusline_hud.py -o ~/.gemini/antigravity-cli/statusline_hud.py
+chmod +x ~/.gemini/antigravity-cli/statusline_hud.py
+```
+
+於 `~/.gemini/antigravity-cli/settings.json` 中配置：
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.gemini/antigravity-cli/statusline_hud.py"
+  }
+}
+```
+
+### 方式三：本地 Clone 專案套用
 
 在 `agy` TUI 終端內輸入：
 ```bash
 /statusline /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
 ```
 
-### 2. 持久化設定 (選用)
-
-寫入 `~/.gemini/antigravity-cli/settings.json`：
+寫入 `~/.gemini/antigravity-cli/settings.json` 持久化：
 ```json
 {
   "statusLine": {

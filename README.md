@@ -11,6 +11,7 @@
 
 | 用途 | 指令 |
 | --- | --- |
+| **Antigravity CLI (`agy`) 用量狀態列**<br>純 ASCII 雙視窗 (5h / 每週) AI 配額狀態列 | `agy plugin install https://github.com/CTJ425/script-docs.git`<br>或 `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/setup.sh \| bash` |
 | **RHEL/Rocky VM 封裝成範本**<br>清理機器識別碼並裝上開機設定精靈 | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/RHEL-Family-Temp/seal-rhel-template.sh \| sudo bash -s -- --yes --poweroff` |
 | **Kubernetes 節點前置環境**<br>關閉 swap、載入核心模組、設定 sysctl | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_env_init/k8s_env_initialization.sh \| sudo bash -s -- --yes` |
 | **建立 Kubernetes Control Plane**<br>CRI-O + kubeadm + Calico | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/k8s_install/k8s_cluster_install.sh \| sudo bash -s -- --role cp --yes` |
@@ -29,6 +30,7 @@
 
 | 專案 | 說明 |
 | --- | --- |
+| 🤖 [agy/usage_hud](./agy/usage_hud) | Antigravity CLI (`agy`) 純 ASCII 5h 與每週用量狀態列 (配額監控 + 重置倒數) |
 | 📦 [RHEL-Family-Temp](./RHEL-Family-Temp) | RHEL/Rocky/Alma 虛擬機範本封裝 + 首次開機互動式網路設定精靈 |
 | ☸️ [k8s_env_init](./k8s_env_init) | Kubernetes 節點前置環境（swap、SELinux、核心模組、sysctl），支援 RHEL 與 Debian 家族 |
 | ☸️ [k8s_install](./k8s_install) | Kubernetes 1.36 叢集部署（CRI-O + Calico），含 MetalLB / KubeVirt / Gateway API / TrueNAS CSI |

@@ -43,11 +43,29 @@
 
 ## 第三章：一鍵部署 (One-Click Deployment)
 
-本專案提供自動化部署腳本 `./setup.sh`，可一鍵完成檔案權限賦予與邊界單元測試。
+本專案支援外掛安裝指令 `agy plugin install`，以及透過 Raw 網址一鍵下載部署。
 
-### 方式一：自動化一鍵部署 (推薦)
+### 方式一：`agy plugin install` 外掛安裝 (推薦)
 
-切換至專案根目錄並執行 `./setup.sh`：
+在終端執行以下指令直接安裝：
+
+```bash
+agy plugin install https://github.com/CTJ425/script-docs.git
+```
+
+### 方式二：Raw 網址一鍵下載與設定
+
+無需預先 Git Clone，直接透過 GitHub Raw 網址下載並置於 `~/.gemini/antigravity-cli/` 目錄：
+
+```bash
+mkdir -p ~/.gemini/antigravity-cli
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/agy/usage_hud/statusline_hud.py -o ~/.gemini/antigravity-cli/statusline_hud.py
+chmod +x ~/.gemini/antigravity-cli/statusline_hud.py
+```
+
+### 方式三：專案內部自動化部署 (setup.sh)
+
+若已 Clone 專案至本地，可執行專案內附之 `./setup.sh`：
 
 ```bash
 cd /home/ivan/project/script-docs/agy/usage_hud
@@ -58,14 +76,6 @@ cd /home/ivan/project/script-docs/agy/usage_hud
 1. 為 `statusline_hud.py` 自動添加可執行權限 (`chmod +x statusline_hud.py`)。
 2. 自動執行 `test_statusline.py` 完整測試套件 (涵蓋 18 個邊界與防護測試案例)。
 3. 印出設定說明與配置指引。
-
-### 方式二：手動部署
-
-若需手動設定，請在終端執行以下指令：
-
-```bash
-chmod +x /home/ivan/project/script-docs/agy/usage_hud/statusline_hud.py
-```
 
 ---
 
