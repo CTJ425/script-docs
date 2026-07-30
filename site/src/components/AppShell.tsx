@@ -172,11 +172,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <DescriptionIcon fontSize="small" />
             </Box>
             <Box>
+              {/* Keep in step with <title> in index.html and the root README's
+                  H1 — the tab, the header and the landing page are the same
+                  product and must not name it three different things. */}
               <Typography sx={{ fontSize: '1.125rem', fontWeight: 500, lineHeight: 1.25 }}>
-                Script &amp; Container Docs
+                Script Docs
               </Typography>
               <Typography sx={{ fontSize: '0.75rem', opacity: 0.75, display: { xs: 'none', sm: 'block' } }}>
-                內容直接渲染自各專案 README.md
+                可以直接執行的維運手冊，內容渲染自各專案 README.md
               </Typography>
             </Box>
           </Box>
