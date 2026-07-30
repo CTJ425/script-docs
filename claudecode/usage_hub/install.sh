@@ -3,7 +3,7 @@
 # Usage: curl -fsSL <raw-url>/install.sh | bash
 set -euo pipefail
 
-REPO_RAW_BASE="${USAGE_HUB_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/cluadecode/usage_hub}"
+REPO_RAW_BASE="${USAGE_HUB_RAW_BASE:-https://raw.githubusercontent.com/CTJ425/script-docs/main/claudecode/usage_hub}"
 CLAUDE_DIR="$HOME/.claude"
 INSTALL_DIR="$CLAUDE_DIR/usage_hub"
 SCRIPT_NAME="statusline.js"

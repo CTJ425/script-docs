@@ -12,3 +12,7 @@ Thumbs.db
 # Backups written by the installers (settings.json.bak.<timestamp>) and by hand
 *.bak
 *.bak.*
+
+# Agent working directories (briefings, dispatches, handoffs). Scratch output
+# of how a change was produced, not documentation of what it does.
+.agents/

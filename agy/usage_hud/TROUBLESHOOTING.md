@@ -51,7 +51,7 @@
 | 序號 | 問題現象 (Issue) | 根本原因 (Root Cause) | 診斷與解決方案 (Solution) |
 |---|---|---|---|
 | **1** | **Permission Denied / 狀態列無視訊輸出** | 腳本檔缺少 POSIX 可執行權限 (`+x`)。 | 執行 `chmod +x ~/.gemini/antigravity-cli/statusline_hud.py` 賦予權限。 |
-| **2** | **`settings.json` 修改後未生效** | 在 `settings.json` 中使用了相對路徑 (如 `./statusline_hud.py`) 或波浪號路徑。 | 修改 `settings.json` 中的 `"command"` 為絕對路徑：`~/.gemini/antigravity-cli/statusline_hud.py`。可用 `realpath statusline_hud.py` 驗證絕對路徑。 |
+| **2** | **`settings.json` 修改後未生效** | 在 `settings.json` 中使用了相對路徑 (如 `./statusline_hud.py`) 或未展開的波浪號路徑 (`~/...`)——Antigravity CLI 不會展開 `~`。 | `"command"` 必須是**已展開的**絕對路徑，例如 `/home/alice/.gemini/antigravity-cli/statusline_hud.py`。用 `realpath ~/.gemini/antigravity-cli/statusline_hud.py` 取得。`setup.sh` 會自動寫入正確的絕對路徑。 |
 | **3** | **JSON Key 大小寫寫錯導致設定無效** | 配置文件中的 JSON 鍵名寫成 `statusline` 或 `Statusline`，未遵循 CamelCase。 | 修正 `settings.json` 鍵名為小駝峰 `"statusLine"` (注意 `L` 大寫)。 |
 | **4** | **顯示 `\033[1;32m` 等 ANSI 色彩亂碼** | 終端模擬器不支援 ANSI 色彩，或環境變數 `TERM` 未正確設定。 | 在 Shell 配置文件 (`~/.bashrc` 或 `~/.zshrc`) 中新增 `export TERM=xterm-256color` 並重新載入。 |
 | **5** | **配額全數顯示 `--%` 降級輸出** | `agy` CLI 傳入的 `stdin` 載荷為空、格式非合法 JSON，或鍵名改變。 | 參考第三章使用 `debug_interceptor.sh` 抓取 Raw JSON 載荷，分析 `quota` 資料結構。 |

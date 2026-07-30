@@ -75,7 +75,7 @@ Documented caveats:
 
 ## Install
 - `install.sh`: one-click installer, run via
-  `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/cluadecode/usage_hub/install.sh | bash`
+  `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/claudecode/usage_hub/install.sh | bash`
 - Downloads `statusline.js` to `~/.claude/usage_hub/statusline.js`.
 - Backs up any existing `~/.claude/settings.json` before writing, then merges in
   `statusLine: { type: "command", command: "node ~/.claude/usage_hub/statusline.js" }`
