@@ -13,6 +13,7 @@ SCRIPT_NAME="$(basename "${0#-}")"
 ASSUME_YES=0
 NO_REBOOT=0
 KEEP_FIREWALL=0
+DRY_RUN=0
 
 usage() {
     cat <<USAGE
@@ -25,6 +26,7 @@ Options:
       --no-reboot      Never reboot, and do not ask.
       --keep-firewall  Leave firewalld/ufw running. You then have to open the
                        Kubernetes ports yourself.
+  -n, --dry-run        Print every change instead of making it. Never reboots.
   -h, --help           Show this help.
 
 With no options the script asks before rebooting when it has a terminal, and
@@ -37,11 +39,34 @@ while [ "$#" -gt 0 ]; do
         -y|--yes) ASSUME_YES=1 ;;
         --no-reboot) NO_REBOOT=1 ;;
         --keep-firewall) KEEP_FIREWALL=1 ;;
+        -n|--dry-run) DRY_RUN=1 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1 (try --help)" >&2; exit 1 ;;
     esac
     shift
 done
+
+# Run a command, or describe it under --dry-run.
+run() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run]'
+        printf ' %q' "$@"
+        printf '\n'
+        return 0
+    fi
+    "$@"
+}
+
+# Write a here-doc style file, honouring --dry-run.
+write_file() {
+    local dest="$1" content="$2"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run] write %s:\n' "$dest"
+        printf '%s\n' "$content" | sed 's/^/          | /'
+        return 0
+    fi
+    printf '%s\n' "$content" > "$dest"
+}
 
 if [ "$ASSUME_YES" -eq 1 ] && [ "$NO_REBOOT" -eq 1 ]; then
     echo "--yes and --no-reboot cannot be combined." >&2
@@ -107,14 +132,14 @@ disable_firewall() {
     case "$OS_FAMILY" in
         debian)
             echo "Detected Debian/Ubuntu family. Disabling ufw..."
-            systemctl stop ufw || echo "ufw already stopped or not found."
-            systemctl disable ufw || echo "ufw already disabled or not found."
+            run systemctl stop ufw || echo "ufw already stopped or not found."
+            run systemctl disable ufw || echo "ufw already disabled or not found."
             echo "Firewall (ufw) has been stopped and disabled."
             ;;
         rhel)
             echo "Detected RHEL/Rocky family. Disabling firewalld..."
-            systemctl stop firewalld || echo "firewalld already stopped or not found."
-            systemctl disable firewalld || echo "firewalld already disabled or not found."
+            run systemctl stop firewalld || echo "firewalld already stopped or not found."
+            run systemctl disable firewalld || echo "firewalld already disabled or not found."
             echo "Firewall (firewalld) has been stopped and disabled."
             ;;
         *)
@@ -131,9 +156,13 @@ disable_selinux() {
         echo "=== 2. Disabling SELinux ==="
         # Disable SELinux at boot by adding the kernel argument.
         if command -v grubby >/dev/null 2>&1; then
-            grubby --update-kernel ALL --args selinux=0
+            run grubby --update-kernel ALL --args selinux=0
             echo "Updated kernel arguments via grubby to include 'selinux=0'."
             echo "A reboot is required to fully apply SELinux changes."
+        elif [ "$DRY_RUN" -eq 1 ]; then
+            # Keep --dry-run previewable from any host instead of aborting on a
+            # missing tool: nothing is being changed, so this is not yet fatal.
+            echo "[dry-run] grubby not found here; a real run on this host would abort."
         else
             echo "grubby not found. This RHEL/Rocky family system does not have grubby installed." >&2
             echo "Cannot continue because SELinux kernel argument selinux=0 was not configured." >&2
@@ -151,13 +180,13 @@ disable_selinux() {
 disable_swap() {
     echo "=== 3. Disabling Swap ==="
     # Turn off all running swap partitions
-    swapoff -a
+    run swapoff -a
 
     # Back up /etc/fstab once. Using sed -i.bak would overwrite the backup on
     # every run, so after a second run the ".bak" would already have swap
     # commented out and no longer represent the original file.
     if [ ! -f /etc/fstab.orig ]; then
-        cp -a /etc/fstab /etc/fstab.orig
+        run cp -a /etc/fstab /etc/fstab.orig
         echo "Saved original /etc/fstab to /etc/fstab.orig."
     else
         echo "/etc/fstab.orig already exists; keeping the original backup."
@@ -167,7 +196,7 @@ disable_swap() {
     # '\s+swap\s+' matches lines whose filesystem type field is swap.
     # 's/^#*/#/' collapses any leading hashes into exactly one, so re-running
     # the script never stacks up "###".
-    sed -r -i '/\s+swap\s+/s/^#*/#/' /etc/fstab
+    run sed -r -i '/\s+swap\s+/s/^#*/#/' /etc/fstab
 
     echo "Swap has been disabled and commented out in /etc/fstab."
     echo ""
@@ -177,16 +206,14 @@ disable_swap() {
 load_kernel_modules() {
     echo "=== 4. Loading Kernel Modules ==="
     # Minimal images may not ship this directory, and 'cat >' would then fail.
-    mkdir -p /etc/modules-load.d
+    run mkdir -p /etc/modules-load.d
     # Create a configuration file to load modules on boot
-    cat > /etc/modules-load.d/crio.conf <<EOF
-overlay
-br_netfilter
-EOF
+    write_file /etc/modules-load.d/crio.conf 'overlay
+br_netfilter'
 
     # Load the modules immediately
-    modprobe overlay
-    modprobe br_netfilter
+    run modprobe overlay
+    run modprobe br_netfilter
     echo "Kernel modules overlay and br_netfilter have been loaded."
     echo ""
 }
@@ -194,20 +221,18 @@ EOF
 # Function: Configure Kernel Parameters
 setup_kernel_params() {
     echo "=== 5. Configuring Kernel Parameters (sysctl) ==="
-    mkdir -p /etc/sysctl.d
+    run mkdir -p /etc/sysctl.d
     # Create the kernel parameters configuration file for K8s
-    cat > /etc/sysctl.d/99-kubernetes-cri.conf <<EOF
-net.bridge.bridge-nf-call-iptables  = 1
+    write_file /etc/sysctl.d/99-kubernetes-cri.conf 'net.bridge.bridge-nf-call-iptables  = 1
 net.ipv4.ip_forward                 = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-EOF
+net.bridge.bridge-nf-call-ip6tables = 1'
 
     # Apply sysctl settings without rebooting.
     # 'sysctl --system' reads every file under /etc/sysctl.d, /run/sysctl.d and
     # friends. One unrelated pre-existing file with an unknown key makes it exit
     # non-zero, which under 'set -e' would abort the script before the
     # verification stage ever ran. Our own keys are checked in verify_sysctl_params.
-    if ! sysctl --system; then
+    if ! run sysctl --system; then
         echo "Warning: 'sysctl --system' reported an error (usually an unrelated" >&2
         echo "         pre-existing entry under /etc/sysctl.d). The verification" >&2
         echo "         section below shows whether the Kubernetes keys applied." >&2
@@ -360,6 +385,16 @@ main() {
     disable_swap
     load_kernel_modules
     setup_kernel_params
+
+    # Verification inspects live system state. Under --dry-run nothing was
+    # changed, so every check would report WARN and read as a failure.
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "=== Verification skipped (--dry-run made no changes) ==="
+        echo ""
+        echo "Dry run complete. No changes were made and no reboot was performed."
+        return 0
+    fi
+
     verify_setup
 
     echo "Setup is complete."

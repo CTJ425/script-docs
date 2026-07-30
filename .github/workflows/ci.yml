@@ -87,7 +87,7 @@ jobs:
       - name: raw.githubusercontent URLs must point at this repo and resolve
         run: |
           fail=0
-          urls=$(grep -rhoE 'https://raw\.githubusercontent\.com/[^ )"'"'"']+' \
+          urls=$(grep -rhoE 'https://raw\.githubusercontent\.com/[^ )"'"'"'}{]+' \
                    --include='*.md' --include='*.sh' . \
                  | grep -F "${GITHUB_REPOSITORY}" | sort -u)
           if [ -z "$urls" ]; then
