@@ -95,11 +95,20 @@ jobs:
             exit 1
           fi
           for u in $urls; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$u")
+            # Installers hold a *base* URL and append the filename at runtime
+            # (so a fork can point AGY_HUD_RAW_BASE / USAGE_HUB_RAW_BASE
+            # elsewhere). raw.githubusercontent has no directory listing, so a
+            # base always 404s on its own — probe the README that lives in it,
+            # which still proves the path exists at this commit.
+            case "$u" in
+              *.sh|*.py|*.js|*.mjs|*.md|*.yml|*.yaml|*.json) target="$u" ;;
+              *) target="$u/README.md" ;;
+            esac
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$target")
             if [ "$code" = "200" ]; then
-              echo "ok   $u"
+              echo "ok   $target"
             else
-              echo "::error::HTTP $code for $u"
+              echo "::error::HTTP $code for $target"
               fail=1
             fi
           done
