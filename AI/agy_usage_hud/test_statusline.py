@@ -770,7 +770,7 @@ def build_test_cases() -> list:
             },
             "payload": json.dumps({"agent_state": "idle"}),
             "check_str_part": f"5h {GREEN}0.0%{RESET}",
-            "check_absent_str_part": "88.0%",
+            "check_absent_str_part": ["88.0%", "(0m)"],
         },
         {
             "id": "TC-52",
@@ -831,16 +831,9 @@ def run_all_tests() -> bool:
     passed_count = 0
     failed_count = 0
 
-    # Ensure user home default cache is cleaned up before testing
-    default_user_cache = Path.home() / ".gemini" / "antigravity-cli" / "usage_hud_cache.json"
-    if default_user_cache.exists():
-        try:
-            default_user_cache.unlink()
-        except Exception:
-            pass
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         for idx, tc in enumerate(test_cases):
+
             tc_id, tier, name = tc["id"], tc["tier"], tc["name"]
             
             cache_file_path = Path(tmp_dir) / f"cache_{idx}.json"

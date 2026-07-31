@@ -261,7 +261,7 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
 
 
 def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
-    """Looks up a cached bucket key (e.g. gemini-5h)."""
+    """Looks up a cached bucket key (e.g. gemini-5h) strictly matching the target family."""
     if not isinstance(cache, dict):
         return None
     quota = cache.get("quota")
@@ -269,9 +269,9 @@ def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
         return None
     key = f"{family}-{canonical_name}".lower()
     bucket = quota.get(key)
-    if not isinstance(bucket, dict):
-        return None
-    return bucket
+    if isinstance(bucket, dict):
+        return bucket
+    return None
 
 
 def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
@@ -302,12 +302,6 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
         return None
 
     cb = cached_bucket(cache, family, canonical_name)
-    if cb is None:
-        # Fallback search across aliases or unprefixed in cache
-        c_quota = cache.get("quota", {})
-        if isinstance(c_quota, dict):
-            cb = select_bucket(c_quota, names, family)
-
     if cb is None or not isinstance(cb, dict):
         return None
 
@@ -331,10 +325,10 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
             r_at = float(resets_at)
             if not math.isnan(r_at) and not math.isinf(r_at):
                 if r_at <= now:
-                    # Window rolled over
+                    # Window rolled over -> used_percent = 0.0, countdown omitted
                     return {
                         "used_percent": 0.0,
-                        "reset_in_seconds": 0,
+                        "reset_in_seconds": None,
                         "resets_at": None,
                         "is_live": False,
                         "family": family,
@@ -355,7 +349,7 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
 
     return {
         "used_percent": used_pct,
-        "reset_in_seconds": 0,
+        "reset_in_seconds": None,
         "resets_at": None,
         "is_live": False,
         "family": family,
@@ -437,8 +431,12 @@ def render_window(label: str, item) -> str:
 
     pct = item["used_percent"]
     col = get_color_code(pct)
-    rst = format_duration(item["reset_in_seconds"])
-    return f"{label} {col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
+    reset_sec = item.get("reset_in_seconds")
+    if reset_sec is not None:
+        rst = format_duration(reset_sec)
+        return f"{label} {col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
+    return f"{label} {col}{pct:.1f}%{COLOR_RESET}"
+
 
 
 def render_statusline(data: dict) -> str:
