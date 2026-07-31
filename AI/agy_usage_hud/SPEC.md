@@ -91,13 +91,19 @@ Upgrade `statusline_hud.py` to incorporate a **Local Cold-Start Cache** and **Dy
 - **TC-53 (Bucket Merging)**: Verify `gemini-*` payload does not wipe out cached `3p-*` buckets.
 - **TC-54 (Fault Tolerance)**: Verify corrupted JSON or unwritable cache directory degrades silently to normal rendering with exit code 0.
 
+### 5. Live Quota API Fetch & Background Refresh
+- Real-time quota updates directly fetch from `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` using the OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` (overridable via `USAGE_HUD_TOKEN_PATH`).
+- Statusline renders instantly using local cache (<10ms).
+- When `now - last_api_fetch >= 5` seconds, statusline spawns a non-blocking, detached background subprocess (`--bg-fetch`) to update `usage_hud_cache.json` in ~150ms without hanging prompt render.
+- On API error or offline status, a 60-second cooldown is recorded to prevent subprocess thrashing.
+
 ## Out of Scope
 
-1. **Background Daemon / Network Polling**: No background processes or active HTTP calls to Antigravity API servers.
-2. **CLI Binary Modifications**: No modifications to `agy` CLI binary or internal source code.
-3. **Multi-User Cache Sharing**: Cache is strictly local to user profile or designated test path.
+1. **CLI Binary Modifications**: No modifications to `agy` CLI binary or internal source code.
+2. **Multi-User Cache Sharing**: Cache is strictly local to user profile or designated test path.
 
 ## Further Notes
 
 - Full backwards compatibility with CLI `stdin` contracts is preserved.
 - Output format remains 100% pure ASCII with ANSI color coding.
+

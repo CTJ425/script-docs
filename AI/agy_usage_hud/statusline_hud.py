@@ -43,12 +43,16 @@ CACHE_FILE = os.environ.get(
 CACHE_VERSION = 1
 CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
-TOKEN_FILE = os.environ.get(
-    "USAGE_HUD_TOKEN_PATH",
-    os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
-)
+DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
 QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
+API_ERROR_COOLDOWN = 60.0  # seconds cooldown on API fetch failure
+
+
+def get_token_path() -> str:
+    """Returns the effective OAuth token file path dynamically."""
+    return os.environ.get("USAGE_HUD_TOKEN_PATH", DEFAULT_TOKEN_FILE)
+
 
 
 
@@ -413,7 +417,7 @@ def is_cache_equivalent(previous_cache: dict, next_cache: dict) -> bool:
 def fetch_live_quota_from_api() -> Optional[dict]:
     """Fetches real-time usage quota from Google Cloud Code PA API directly using OAuth token."""
     try:
-        token_path = os.environ.get("USAGE_HUD_TOKEN_PATH", TOKEN_FILE)
+        token_path = get_token_path()
         if not os.path.isfile(token_path):
             return None
         with open(token_path, "r", encoding="utf-8") as f:
@@ -479,12 +483,22 @@ def do_background_fetch():
     """Background entry point: fetches live quota and updates cache atomically."""
     try:
         now = time.time()
-        live_quota = fetch_live_quota_from_api()
-        if not live_quota:
-            return
-
         cache_path = get_cache_path()
         existing_cache = read_cache() or {}
+
+        live_quota = fetch_live_quota_from_api()
+        if not live_quota:
+            # Update last_api_fetch on failure to prevent process thrashing on subsequent renders
+            next_cache = dict(existing_cache) if isinstance(existing_cache, dict) else {
+                "version": CACHE_VERSION,
+                "saved_at": int(now),
+                "model": "",
+                "quota": {}
+            }
+            next_cache["last_api_fetch"] = now
+            atomic_write_json(cache_path, next_cache)
+            return
+
         new_quota = {}
         if isinstance(existing_cache.get("quota"), dict):
             new_quota.update(existing_cache["quota"])
@@ -501,6 +515,7 @@ def do_background_fetch():
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
+
 
 
 def maybe_trigger_bg_fetch(cache: Optional[dict], now: float):
