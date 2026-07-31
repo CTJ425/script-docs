@@ -100,7 +100,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（47 案例，Tier 0-8）
+# 1. 完整邊界測試套件（55 案例，Tier 0-9）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
@@ -115,7 +115,7 @@ echo '{"quota":{"gemini-5h":{"remaining_fraction":0.58}}}' | python3 ~/.gemini/a
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 47 | Passed: 47 | Failed: 0` 並回傳 exit code 0。
+測試套件預期輸出 `Total: 55 | Passed: 55 | Failed: 0` 並回傳 exit code 0。
 
 ---
 
@@ -124,7 +124,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-8，47 案例，含 agy 1.1.8 實測 payload）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-9，55 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

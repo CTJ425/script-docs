@@ -242,8 +242,8 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
     return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
 
 
-def cached_bucket(cache: dict, family: str, canonical_name: str) -> Optional[dict]:
-    """Looks up a cached bucket key (e.g. gemini-5h) strictly matching the target family."""
+def cached_bucket(cache: dict, family: str, canonical_name: str, names=None) -> Optional[dict]:
+    """Looks up a cached bucket key (e.g. gemini-5h) matching target family, or alias fallback."""
     if not isinstance(cache, dict):
         return None
     quota = cache.get("quota")
@@ -253,6 +253,10 @@ def cached_bucket(cache: dict, family: str, canonical_name: str) -> Optional[dic
     bucket = quota.get(key)
     if isinstance(bucket, dict):
         return bucket
+    if names:
+        item = select_bucket(quota, names, family)
+        if isinstance(item, dict):
+            return item
     return None
 
 
@@ -283,7 +287,7 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float) -> O
     if not cache_is_fresh(cache, now):
         return None
 
-    cached_item = cached_bucket(cache, family, canonical_name)
+    cached_item = cached_bucket(cache, family, canonical_name, names=names)
     if cached_item is None or not isinstance(cached_item, dict):
         return None
 
@@ -361,42 +365,41 @@ def atomic_write_json(file_path: str, data: dict):
                 pass
 
 
-def is_cache_equivalent(prev_cache: dict, next_cache: dict) -> bool:
+def is_cache_equivalent(previous_cache: dict, next_cache: dict) -> bool:
     """Checks if new cache content is functionally equivalent to previous cache."""
-    if not isinstance(prev_cache, dict) or not isinstance(next_cache, dict):
+    if not isinstance(previous_cache, dict) or not isinstance(next_cache, dict):
         return False
-    if prev_cache.get("model") != next_cache.get("model"):
-        return False
-
-    prev_q = prev_cache.get("quota")
-    next_q = next_cache.get("quota")
-    if not isinstance(prev_q, dict) or not isinstance(next_q, dict):
-        return prev_q == next_q
-
-    if set(prev_q.keys()) != set(next_q.keys()):
+    if previous_cache.get("model") != next_cache.get("model"):
         return False
 
-    for k, next_item in next_q.items():
-        prev_item = prev_q.get(k)
-        if not isinstance(prev_item, dict) or not isinstance(next_item, dict):
+    previous_quota = previous_cache.get("quota")
+    next_quota = next_cache.get("quota")
+    if not isinstance(previous_quota, dict) or not isinstance(next_quota, dict):
+        return previous_quota == next_quota
+
+    if set(previous_quota.keys()) != set(next_quota.keys()):
+        return False
+
+    for key, next_item in next_quota.items():
+        previous_item = previous_quota.get(key)
+        if not isinstance(previous_item, dict) or not isinstance(next_item, dict):
             return False
-        if prev_item.get("used_percent") != next_item.get("used_percent"):
+        if previous_item.get("used_percent") != next_item.get("used_percent"):
             return False
 
-        p_res = prev_item.get("resets_at")
-        n_res = next_item.get("resets_at")
-        if p_res != n_res:
-            if p_res is None or n_res is None:
+        previous_resets_at = previous_item.get("resets_at")
+        next_resets_at = next_item.get("resets_at")
+        if previous_resets_at != next_resets_at:
+            if previous_resets_at is None or next_resets_at is None:
                 return False
-            # Allow up to 3 seconds difference to prevent redundant writes per tick
-            if abs(float(p_res) - float(n_res)) > 3:
+            if abs(float(previous_resets_at) - float(next_resets_at)) > 3:
                 return False
 
     return True
 
 
 def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
-    """Safely updates disk cache with live buckets, rolled-over states, and model info."""
+    """Safely updates disk cache with live buckets and model info."""
     try:
         cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
         usable_cache = cache if cache_is_fresh(cache, now) else None
@@ -405,20 +408,19 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
         if usable_cache and isinstance(usable_cache.get("quota"), dict):
             new_quota.update(usable_cache["quota"])
 
-        # Update buckets in cache
+        # Update live buckets in cache
         has_updates = False
         for window_key, item in resolved_buckets.items():
-            if isinstance(item, BucketResult):
+            if isinstance(item, BucketResult) and item.is_live:
                 fam = item.family or GEMINI_FAMILY
                 canonical = item.canonical_name or window_key
                 key = f"{fam}-{canonical}".lower()
 
-                if item.is_live or item.resets_at is None:
-                    has_updates = True
-                    bucket_entry = {"used_percent": item.used_percent}
-                    if item.resets_at is not None:
-                        bucket_entry["resets_at"] = item.resets_at
-                    new_quota[key] = bucket_entry
+                has_updates = True
+                bucket_entry = {"used_percent": item.used_percent}
+                if item.resets_at is not None:
+                    bucket_entry["resets_at"] = item.resets_at
+                new_quota[key] = bucket_entry
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
 
@@ -438,6 +440,7 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
+
 
 
 
