@@ -214,10 +214,15 @@ def parse_item(item):
     }
 
 
+def get_cache_path() -> str:
+    """Returns the effective cache file path."""
+    return os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
+
+
 def read_cache() -> Optional[dict]:
     """Reads disk cache safely. Returns dict or None."""
     try:
-        cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
+        cache_path = get_cache_path()
         if not os.path.isfile(cache_path):
             return None
         with open(cache_path, "r", encoding="utf-8") as f:
@@ -242,7 +247,7 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
     return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
 
 
-def cached_bucket(cache: dict, family: str, canonical_name: str, names=None) -> Optional[dict]:
+def cached_bucket(cache: dict, family: str, canonical_name: str, names: tuple = None) -> Optional[dict]:
     """Looks up a cached bucket key (e.g. gemini-5h) matching target family, or alias fallback."""
     if not isinstance(cache, dict):
         return None
@@ -260,7 +265,7 @@ def cached_bucket(cache: dict, family: str, canonical_name: str, names=None) -> 
     return None
 
 
-def resolve_bucket(data: dict, family: str, names, cache: dict, now: float) -> Optional[BucketResult]:
+def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: float) -> Optional[BucketResult]:
     """Resolves usage bucket for a window: live payload first, then fresh cache."""
     canonical_name = names[0]  # "5h" or "weekly"
 
@@ -398,10 +403,10 @@ def is_cache_equivalent(previous_cache: dict, next_cache: dict) -> bool:
     return True
 
 
-def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
+def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
     """Safely updates disk cache with live buckets and model info."""
     try:
-        cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
+        cache_path = get_cache_path()
         usable_cache = cache if cache_is_fresh(cache, now) else None
 
         new_quota = {}
@@ -444,6 +449,7 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
 
 
 
+
 def render_window(label: str, item: Optional[BucketResult]) -> str:
     """Renders one usage window, or the '--%' unknown marker when item is None."""
     if item is None:
@@ -477,7 +483,7 @@ def render_statusline(data: dict) -> str:
         "weekly": bucket_wk
     }
 
-    write_cache(data, model_name, resolved_buckets, cache, now)
+    write_cache(model_name, resolved_buckets, cache, now)
 
     parts = []
     if model_name:
