@@ -342,16 +342,57 @@ def resolve_model_name(data: dict, cache: dict, now: float) -> str:
 
 
 def atomic_write_json(file_path: str, data: dict):
-    """Atomically writes dictionary as JSON to file_path via temporary file."""
+    """Atomically writes dictionary as JSON to file_path via temporary file with cleanup."""
     cache_dir = os.path.dirname(file_path)
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
 
     tmp_file = f"{file_path}.tmp.{os.getpid()}"
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp_file, file_path)
+    try:
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp_file, file_path)
+    finally:
+        if os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except Exception:
+                pass
+
+
+def is_cache_equivalent(prev_cache: dict, next_cache: dict) -> bool:
+    """Checks if new cache content is functionally equivalent to previous cache."""
+    if not isinstance(prev_cache, dict) or not isinstance(next_cache, dict):
+        return False
+    if prev_cache.get("model") != next_cache.get("model"):
+        return False
+
+    prev_q = prev_cache.get("quota")
+    next_q = next_cache.get("quota")
+    if not isinstance(prev_q, dict) or not isinstance(next_q, dict):
+        return prev_q == next_q
+
+    if set(prev_q.keys()) != set(next_q.keys()):
+        return False
+
+    for k, next_item in next_q.items():
+        prev_item = prev_q.get(k)
+        if not isinstance(prev_item, dict) or not isinstance(next_item, dict):
+            return False
+        if prev_item.get("used_percent") != next_item.get("used_percent"):
+            return False
+
+        p_res = prev_item.get("resets_at")
+        n_res = next_item.get("resets_at")
+        if p_res != n_res:
+            if p_res is None or n_res is None:
+                return False
+            # Allow up to 3 seconds difference to prevent redundant writes per tick
+            if abs(float(p_res) - float(n_res)) > 3:
+                return False
+
+    return True
 
 
 def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
@@ -364,7 +405,7 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
         if usable_cache and isinstance(usable_cache.get("quota"), dict):
             new_quota.update(usable_cache["quota"])
 
-        # Merge live buckets and rolled-over bucket states
+        # Update buckets in cache
         has_updates = False
         for window_key, item in resolved_buckets.items():
             if isinstance(item, BucketResult):
@@ -373,12 +414,11 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
                 key = f"{fam}-{canonical}".lower()
 
                 if item.is_live or item.resets_at is None:
-                    # Update bucket in cache (live data or rolled-over 0.0% state)
                     has_updates = True
-                    new_quota[key] = {
-                        "used_percent": item.used_percent,
-                        "resets_at": item.resets_at
-                    }
+                    bucket_entry = {"used_percent": item.used_percent}
+                    if item.resets_at is not None:
+                        bucket_entry["resets_at"] = item.resets_at
+                    new_quota[key] = bucket_entry
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
 
@@ -392,13 +432,13 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
             "quota": new_quota
         }
 
-        if usable_cache:
-            if usable_cache.get("model") == next_cache["model"] and usable_cache.get("quota") == next_cache["quota"]:
-                return
+        if usable_cache and is_cache_equivalent(usable_cache, next_cache):
+            return
 
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
+
 
 
 def render_window(label: str, item: Optional[BucketResult]) -> str:

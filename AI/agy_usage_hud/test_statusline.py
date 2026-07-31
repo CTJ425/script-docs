@@ -713,6 +713,19 @@ def build_test_cases() -> list:
             "check_starts_with": "5h 35.0%",
             "check_no_bar": True,
         },
+        {
+            "id": "TC-47",
+            "tier": "Tier 8: Layout",
+            "name": "Dynamic layout rendering with complete quota and model formatting",
+            "payload": json.dumps({
+                "model": gemini_model("Gemini 3.6 Pro"),
+                "quota": {
+                    "gemini-5h": {"used_percent": 15.0, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"used_percent": 25.0, "reset_in_seconds": 86400},
+                },
+            }),
+            "check_starts_with": "Gemini 3.6 Pro | 5h 15.0% (1h00m) | Wk 25.0% (1d00h)",
+        },
 
         # --- TIER 9: Cold-start cache & dynamic time-rolling ---------------
         {
