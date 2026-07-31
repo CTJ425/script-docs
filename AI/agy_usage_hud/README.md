@@ -3,7 +3,7 @@
 專為 **Antigravity CLI (`agy`)** TUI 設計的純 ASCII 狀態列，監控 **5 小時滾動視窗** 與 **每週** 的 AI 配額使用率與重置倒數。
 
 ```text
-gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
+Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 ```
 
 設計與資料契約見 [SPEC.md](./SPEC.md)；疑難排解見 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
@@ -17,6 +17,7 @@ gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
 - **三段式警示色**：綠 (`<70%`)、黃 (`70~90%`)、紅 (`>=90%`)。
 - **只有數字百分比，沒有進度條**：用量高低完全由數字的顏色表達，不佔橫向空間，窄終端也不會被擠掉。
 - **模型名稱置於行首**：它是唯一永遠短且永遠已知的欄位，終端截斷尾巴時仍看得到自己在用哪個模型。
+- **自動選對配額池**：agy 把 Gemini 模型與第三方模型分開計額（`gemini-*` 與 `3p-*`），依當前模型自動取用對應的那一組。
 - **資料缺漏顯示 `--%` 而非 `0.0%`**：payload 沒帶到用量時顯示灰色 `--%`，不會偽裝成「幾乎沒用量」。
 - **絕不崩潰**：空輸入、壞 JSON、非字典載荷一律降級輸出並回傳 exit code 0。
 
@@ -67,11 +68,11 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 ## 輸出格式
 
 ```text
- gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
- (1)             (2) (3) (4)   (5)     (6)
+ Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
+ (1)                    (2) (3) (4)  (5)     (6)
 ```
 
-1. 模型名稱（青色，非 ASCII 字元會被移除，上限 20 字元）。無模型資訊時整段省略，行首直接是 `5h`
+1. 模型名稱（青色，非 ASCII 字元會被移除，上限 24 字元）。無模型資訊時整段省略，行首直接是 `5h`
 2. 分隔符（暗色）
 3. 5 小時滾動視窗標示
 4. 用量百分比，固定 1 位小數，依門檻上色
@@ -99,22 +100,22 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（26 案例，Tier 1-6）
+# 1. 完整邊界測試套件（47 案例，Tier 0-8）
 python3 ./test_statusline.py
 
-# 2. 管道模擬 agy 送出的載荷
-echo '{"active_model":"gemini-3.6-flash","quota":{"rolling_5h":{"used_percent":35.0,"reset_in_seconds":5400},"weekly":{"used_percent":50.0,"reset_in_seconds":172800}}}' \
+# 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
+echo '{"model":{"id":"Gemini 3.6 Flash (High)","display_name":"Gemini 3.6 Flash (High)"},"quota":{"gemini-5h":{"remaining_fraction":0.9986155,"reset_in_seconds":11515},"gemini-weekly":{"remaining_fraction":0.8492495,"reset_in_seconds":431793}}}' \
   | python3 ~/.gemini/antigravity-cli/statusline_hud.py
 
 # 3. 純 ASCII 合規性
-echo '{"quota":{"5h":{"used_percent":42.0}}}' | python3 ~/.gemini/antigravity-cli/statusline_hud.py \
+echo '{"quota":{"gemini-5h":{"remaining_fraction":0.58}}}' | python3 ~/.gemini/antigravity-cli/statusline_hud.py \
   | LC_ALL=C grep -P "[\x80-\xFF]" && echo "FAIL: Non-ASCII detected" || echo "PASS: Pure ASCII"
 
 # 4. settings.json 語法與路徑
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 26 | Passed: 26 | Failed: 0` 並回傳 exit code 0。
+測試套件預期輸出 `Total: 47 | Passed: 47 | Failed: 0` 並回傳 exit code 0。
 
 ---
 
@@ -123,7 +124,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 1-6，26 案例）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-8，47 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

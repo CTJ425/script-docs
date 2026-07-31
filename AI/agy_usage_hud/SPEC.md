@@ -18,13 +18,14 @@ A statusline for Antigravity CLI (`agy`) that shows, on one line:
 
 ## Output format
 ```text
-gemini-3.6-flash | 5h 35.0% (1h30m) | Wk 50.0% (2d00h)
+Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 ```
 - Model name first: it is the only field that is always short and always
   known, so it anchors the line when a narrow terminal truncates the tail.
-  Non-ASCII stripped, then truncated to 20 characters. Omitted entirely (along
-  with its separator) when the payload carries no model, so the line then
-  starts with `5h`.
+  Non-ASCII stripped, then truncated to 24 characters — the longest observed
+  `display_name`, "Gemini 3.6 Flash (High)", is 23, and a 20-char cap chopped
+  it mid-word. Omitted entirely (along with its separator) when the payload
+  carries no model, so the line then starts with `5h`.
 - Percentage only, no progress bar. Usage level is carried entirely by the
   colour of the number, which costs no horizontal space — a bar spends eight
   columns per window to say what the colour already says.
@@ -41,11 +42,11 @@ A window whose usage cannot be determined renders as a dim `--%` with no
 countdown. This is deliberate and is the one rule worth stating twice:
 a green `0.0%` reads as "quota barely touched", which is a claim the script
 cannot make when the payload simply did not carry the figure. A window is
-unknown when its bucket is missing, is not an object, carries neither
-`used_percent` nor `remaining_fraction`, or carries a value that will not parse
-as a finite number.
+unknown when its bucket is missing, is not an object, carries none of
+`used_percent` / `used_percentage` / `remaining_fraction`, or carries a value
+that will not parse as a finite number.
 
-A genuine `0.0` in the payload still renders as `0.0%`. Tier-5 tests pin both
+A genuine `0.0` in the payload still renders as `0.0%`. Tier-7 tests pin both
 directions.
 
 ## Total failure
@@ -58,38 +59,78 @@ This runs on every prompt render, so it must never raise, never block, and
 never return non-zero — a crash here would disrupt the TUI, not just the line.
 
 ## Data source (agy statusline stdin JSON)
-> [!NOTE]
-> Unlike the sibling [Claude Code HUD](../claudecode_usage_hub/SPEC.md), whose
-> field paths are confirmed against published documentation, Antigravity CLI's
-> statusline payload shape is **not publicly documented**. The key names below
-> were derived from observed payloads, which is why the parser accepts several
-> aliases per field and treats anything unrecognised as unknown rather than
-> guessing. If you can capture a real payload (see TROUBLESHOOTING.md), that is
-> the authoritative check.
+Antigravity CLI's statusline payload is **not publicly documented**. The shape
+below was captured from Antigravity CLI 1.1.8 by teeing the statusline's stdin
+(see TROUBLESHOOTING.md); the same payloads are embedded verbatim as Tier 0
+test fixtures, so the contract is pinned to observation rather than guesswork.
 
-Accepted shapes, in order of preference:
-- Buckets under `quota`, else at the top level (either window's key is enough
-  to treat the payload itself as the bucket container).
-- 5h bucket key: `rolling_5h`, `5h`, `rolling5h`, `five_hour`, `5_hour`.
-- Weekly bucket key: `weekly`, `week`, `7d`, `seven_days`.
-- One extra level of nesting is tolerated (buckets under a model/plan key).
-- Usage within a bucket: `used_percent`, else `remaining_fraction`
-  (converted as `(1 - fraction) * 100`).
-- Reset within a bucket: `reset_in_seconds`, else `reset_in`. Numeric strings
-  are accepted; `NaN`/`inf`/missing become `0`.
-- Model: `active_model`, else `model`.
+Abridged capture, with the fields this script reads:
+```json
+{
+  "model": { "id": "...", "display_name": "Gemini 3.6 Flash (High)", "effort": "high" },
+  "quota": {
+    "gemini-5h":     { "remaining_fraction": 0.9986155, "reset_time": "...Z", "reset_in_seconds": 11515 },
+    "gemini-weekly": { "remaining_fraction": 0.8492495, "reset_time": "...Z", "reset_in_seconds": 431793 },
+    "3p-5h":         { "remaining_fraction": 1, "reset_time": "...Z", "reset_in_seconds": 17996 },
+    "3p-weekly":     { "remaining_fraction": 1, "reset_time": "...Z", "reset_in_seconds": 604796 }
+  },
+  "context_window": { "used_percentage": 0.0139, "remaining_percentage": 99.986, "...": "..." },
+  "agent_state": "idle", "plan_tier": "Google AI Pro", "version": "1.1.8"
+}
+```
+
+### Model
+`active_model`, else `model`. It is an **object**, not a string: the name is
+`display_name`, else `id`. A plain string is still accepted in case the shape
+reverts. Anything else (including the `null` sent while the CLI authenticates)
+yields no model, and the line starts at `5h`. The object is never stringified —
+doing so once rendered `{'id': 'Gemini 3.6 F` as the model name.
+
+### Quota family
+Antigravity meters Gemini models and third-party models against separate pools,
+sent side by side as `gemini-*` and `3p-*`. Only the pool the active model
+draws from is worth showing, so the family is chosen by the model name:
+`gemini` when it contains "gemini" (case-insensitive), else `3p`. Bucket
+lookup, per window, in order:
+
+1. `<family>-<window>`, e.g. `gemini-5h`
+2. the unprefixed `<window>` key
+3. any other family's `<window>` bucket, taken in sorted key order so the
+   choice is deterministic rather than dict-order luck
+
+Bucket keys are matched case-insensitively. Window names accepted after the
+prefix: `5h`, `rolling_5h`, `rolling5h`, `five_hour`, `5_hour`; and `weekly`,
+`week`, `7d`, `seven_days`.
+
+### Within a bucket
+- Usage: `used_percent`, else `used_percentage`, else `remaining_fraction`
+  (a 0–1 fraction, converted as `(1 - fraction) * 100`).
+- Reset: `reset_in_seconds`, else `reset_in`. Numeric strings are accepted;
+  `NaN`/`inf`/missing become `0`. `reset_time` is carried in the payload but is
+  not read — deriving a countdown from it would mean trusting the local clock.
+
+### Not read
+`context_window.used_percentage` measures the **context window**, not quota.
+Reading it as quota would print a confident number for a window the payload
+says nothing about. Tier 0 pins this.
 
 ## Testing
 `test_statusline.py` runs the script as a subprocess and asserts on stdout,
-stderr and exit code. Six tiers, 26 cases:
+stderr and exit code. Nine tiers, 47 cases:
 
 | Tier | Covers |
 |---|---|
-| 1 | Core rendering and the three colour thresholds |
-| 2 | Field variations (`remaining_fraction`, alternative key names) |
-| 3 | Boundaries: clamping, truncation, non-ASCII input, `NaN`/`inf`, string and negative reset values |
-| 4 | Malformed payloads: empty stdin, bad JSON, arrays, primitives, `{}` |
-| 5 | Unknown vs zero: missing bucket, missing field, unparseable value, and a genuine `0.0` |
-| 6 | Line layout: model first, no bar characters, and the model-less line starting at `5h` |
+| 0 | Payloads captured from agy 1.1.8, replayed verbatim (authenticating / initializing / idle), plus context-window-is-not-quota |
+| 1 | Colour thresholds, including the exact 70.0% and 90.0% boundaries |
+| 2 | Quota family selection: gemini vs 3p, key casing, single-family fallback, unprefixed keys, buckets at the top level with no `quota` wrapper |
+| 3 | Model extraction: object vs string, `display_name` over `id`, no-repr regression, truncation, non-ASCII |
+| 4 | Usage field variations: `used_percent`, `used_percentage`, `remaining_fraction`, precedence, reset aliases |
+| 5 | Boundaries: clamping, `NaN`/`inf`, string and negative reset values, day/hour countdown formats |
+| 6 | Malformed payloads: empty stdin, bad JSON, arrays, primitives, `{}`, non-object `quota` and buckets |
+| 7 | Unknown vs zero: missing bucket, missing field, unparseable value, and a genuine `0.0` |
+| 8 | Line layout: model first, no bar characters, and the model-less line starting at `5h` |
 
-Every case additionally asserts exit code 0 and pure-ASCII output.
+Every case additionally asserts exit code 0, empty stderr, and pure-ASCII
+output. The suite is only meaningful because Tier 0 is real: the previous
+suite was written against an invented schema and passed 25/25 while the
+statusline was visibly broken in the TUI.

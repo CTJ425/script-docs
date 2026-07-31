@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Expanded Automated Boundary Test Suite for AGY Pure-ASCII Statusline.
-Validates code correctness, field compatibility, edge-case handling,
-and 100% pure ASCII compliance across Tiers 1-6.
+Automated Boundary Test Suite for the AGY Pure-ASCII Statusline.
+
+Tier 0 replays payloads captured verbatim from Antigravity CLI 1.1.8 (with the
+email, session id and paths replaced by placeholders). Everything above it is
+built on that same shape, so a case can only pass if the script handles the
+payload agy actually sends -- the previous suite was written against an
+invented schema and so went green while the statusline was broken in the TUI.
 """
 
 import subprocess
@@ -16,6 +20,127 @@ SCRIPT_PATH = HUD_DIR / "statusline_hud.py"
 
 # ANSI Escape code removal regex
 ANSI_REGEX = re.compile(r'\x1b\[[0-9;]*m')
+
+GREEN = "\033[1;32m"
+YELLOW = "\033[1;33m"
+RED = "\033[1;31m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+
+# ---------------------------------------------------------------------------
+# Captured payloads (Antigravity CLI 1.1.8), verbatim apart from redaction.
+# ---------------------------------------------------------------------------
+
+CAPTURED_AUTHENTICATING = {
+    "cwd": "/home/user/demo",
+    "session_id": "",
+    "conversation_id": "",
+    "transcript_path": "/home/user/.gemini/antigravity/brain/.system_generated/logs/transcript.jsonl",
+    "model": None,
+    "workspace": {"current_dir": "/home/user/demo", "project_dir": "/home/user/demo"},
+    "version": "1.1.8",
+    "context_window": {
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "context_window_size": 0,
+        "used_percentage": 0,
+        "remaining_percentage": 0,
+        "current_usage": None,
+    },
+    "exceeds_200k_tokens": None,
+    "product": "antigravity",
+    "agent_state": "authenticating",
+    "sandbox": {"enabled": False},
+    "terminal_width": 80,
+}
+
+CAPTURED_INITIALIZING = {
+    "cwd": "/home/user/demo",
+    "session_id": "",
+    "conversation_id": "",
+    "transcript_path": "/home/user/.gemini/antigravity/brain/.system_generated/logs/transcript.jsonl",
+    "model": {
+        "id": "Gemini 3.6 Flash (High)",
+        "display_name": "Gemini 3.6 Flash (High)",
+        "effort": "high",
+    },
+    "workspace": {"current_dir": "/home/user/demo", "project_dir": "/home/user/demo"},
+    "version": "1.1.8",
+    "context_window": {
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "context_window_size": 1048576,
+        "used_percentage": 0,
+        "remaining_percentage": 100,
+        "current_usage": None,
+    },
+    "exceeds_200k_tokens": None,
+    "product": "antigravity",
+    "agent_state": "initializing",
+    "sandbox": {"enabled": False},
+    "email": "user@example.com",
+    "terminal_width": 170,
+}
+
+CAPTURED_IDLE = {
+    "cwd": "/home/user/demo",
+    "session_id": "00000000-0000-0000-0000-000000000000",
+    "conversation_id": "00000000-0000-0000-0000-000000000000",
+    "transcript_path": "/home/user/.gemini/antigravity/brain/00000000/.system_generated/logs/transcript.jsonl",
+    "model": {
+        "id": "Gemini 3.6 Flash (High)",
+        "display_name": "Gemini 3.6 Flash (High)",
+        "effort": "high",
+    },
+    "workspace": {"current_dir": "/home/user/demo", "project_dir": "/home/user/demo"},
+    "version": "1.1.8",
+    "context_window": {
+        "total_input_tokens": 146,
+        "total_output_tokens": 380,
+        "context_window_size": 1048576,
+        "used_percentage": 0.01392364501953125,
+        "remaining_percentage": 99.98607635498047,
+        "current_usage": {
+            "input_tokens": 19477,
+            "output_tokens": 380,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        },
+    },
+    "exceeds_200k_tokens": False,
+    "product": "antigravity",
+    "quota": {
+        "3p-5h": {
+            "remaining_fraction": 1,
+            "reset_time": "2026-07-31T06:35:28Z",
+            "reset_in_seconds": 17996,
+        },
+        "3p-weekly": {
+            "remaining_fraction": 1,
+            "reset_time": "2026-08-07T01:35:28Z",
+            "reset_in_seconds": 604796,
+        },
+        "gemini-5h": {
+            "remaining_fraction": 0.9986155,
+            "reset_time": "2026-07-31T04:47:27Z",
+            "reset_in_seconds": 11515,
+        },
+        "gemini-weekly": {
+            "remaining_fraction": 0.8492495,
+            "reset_time": "2026-08-05T01:32:05Z",
+            "reset_in_seconds": 431793,
+        },
+    },
+    "agent_state": "idle",
+    "sandbox": {"enabled": False},
+    "plan_tier": "Google AI Pro",
+    "email": "user@example.com",
+    "terminal_width": 170,
+}
+
+
+def gemini_model(display_name="Gemini 3.6 Flash (High)"):
+    return {"id": display_name, "display_name": display_name, "effort": "high"}
 
 
 def run_statusline_test(payload_str: str) -> tuple[str, str, int]:
@@ -40,383 +165,601 @@ def verify_ascii(text: str) -> tuple[bool, list]:
     return True, []
 
 
-def run_all_tests() -> bool:
-    print("==================================================")
-    print("🧪 AGY Statusline Expanded Automated Boundary Test Suite")
-    print("==================================================")
+def as_list(value):
+    """Lets check_str_part / check_absent_str_part take a string or a list."""
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
 
-    test_cases = [
-        # --- TIER 1: Core Usage & Indicator Formatting ---
+
+def build_test_cases() -> list:
+    return [
+        # --- TIER 0: Captured payloads, replayed verbatim -------------------
         {
             "id": "TC-01",
-            "tier": "Tier 1: Core",
-            "name": "Standard Usage & Green Indicator (<70%)",
-            "payload": json.dumps({
-                "active_model": "gemini-3.6-flash",
-                "quota": {
-                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
-                }
-            }),
-            "check_str_part": "5h \033[1;32m35.0%\033[0m",
-            "check_color": "\033[1;32m"
+            "tier": "Tier 0: Captured",
+            "name": "Captured 'idle' payload renders model and both windows",
+            "payload": json.dumps(CAPTURED_IDLE),
+            # gemini-5h     1 - 0.9986155 -> 0.1%,  11515s -> 3h11m
+            # gemini-weekly 1 - 0.8492495 -> 15.1%, 431793s -> 4d23h
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+            "check_absent_str_part": ["--%", "{", "'id'"],
         },
         {
             "id": "TC-02",
-            "tier": "Tier 1: Core",
-            "name": "Warning Usage & Yellow Indicator (70% ~ 90%)",
-            "payload": json.dumps({
-                "active_model": "gemini-3.6-pro",
-                "quota": {
-                    "rolling_5h": {"used_percent": 75.5, "reset_in_seconds": 3600},
-                    "weekly": {"used_percent": 88.0, "reset_in_seconds": 86400}
-                }
-            }),
-            "check_color": "\033[1;33m"
+            "tier": "Tier 0: Captured",
+            "name": "Captured 'authenticating' payload (model null, no quota)",
+            "payload": json.dumps(CAPTURED_AUTHENTICATING),
+            "check_starts_with": "5h --%",
+            "check_absent_str_part": ["0.0%", "None"],
         },
         {
             "id": "TC-03",
-            "tier": "Tier 1: Core",
-            "name": "Critical Usage & Red Indicator (>=90%)",
-            "payload": json.dumps({
-                "active_model": "gemini-3.6-flash",
-                "quota": {
-                    "rolling_5h": {"used_percent": 95.2, "reset_in_seconds": 1200},
-                    "weekly": {"used_percent": 98.0, "reset_in_seconds": 43200}
-                }
-            }),
-            "check_color": "\033[1;31m"
+            "tier": "Tier 0: Captured",
+            "name": "Captured 'initializing' payload (model set, quota not yet sent)",
+            "payload": json.dumps(CAPTURED_INITIALIZING),
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h --% | Wk --%",
+            "check_absent_str_part": ["0.0%", "{"],
         },
-
-        # --- TIER 2: Field Variations & Compatibility ---
         {
             "id": "TC-04",
-            "tier": "Tier 2: Compatibility",
-            "name": "Legacy Field Conversion (remaining_fraction)",
+            "tier": "Tier 0: Captured",
+            "name": "context_window.used_percentage is not mistaken for quota",
+            # The payload carries a used_percentage for the *context window*.
+            # Reading it as quota would print 0.0% for a window we know nothing
+            # about; only the quota block may feed the 5h/Wk figures.
             "payload": json.dumps({
-                "active_model": "claude-3-5-sonnet",
-                "quota": {
-                    "5h": {"remaining_fraction": 0.40, "reset_in": 7200},
-                    "week": {"remaining_fraction": 0.10, "reset_in": 259200}
-                }
+                "model": gemini_model(),
+                "context_window": {"used_percentage": 42.0, "remaining_percentage": 58.0},
             }),
-            "check_str_part": "60.0%"
-        },
-        {
-            "id": "TC-05",
-            "tier": "Tier 2: Compatibility",
-            "name": "Alternative Key Schema (5h, week, model)",
-            "payload": json.dumps({
-                "model": "gpt-4o",
-                "quota": {
-                    "5h": {"used_percent": 20.0, "reset_in_seconds": 1800},
-                    "week": {"used_percent": 40.0, "reset_in_seconds": 36000}
-                }
-            }),
-            "check_str_part": "gpt-4o"
+            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}"],
+            "check_absent_str_part": ["42.0%", "58.0%"],
         },
 
-        # --- TIER 3: Boundary Values & Input Sanitization ---
+        # --- TIER 1: Colour thresholds --------------------------------------
+        {
+            "id": "TC-05",
+            "tier": "Tier 1: Colour",
+            "name": "Green below 70% used",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.65, "reset_in_seconds": 5400},
+                    "gemini-weekly": {"remaining_fraction": 0.50, "reset_in_seconds": 172800},
+                },
+            }),
+            "check_str_part": f"5h {GREEN}35.0%{RESET}",
+        },
         {
             "id": "TC-06",
-            "tier": "Tier 3: Boundary",
-            "name": "Overlong Model Name Truncation (>20 chars)",
+            "tier": "Tier 1: Colour",
+            "name": "Yellow between 70% and 90% used",
             "payload": json.dumps({
-                "active_model": "claude-3-5-sonnet-20241022-v1:0",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 10.0, "reset_in_seconds": 3600},
-                    "weekly": {"used_percent": 20.0, "reset_in_seconds": 86400}
-                }
+                    "gemini-5h": {"remaining_fraction": 0.245, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"remaining_fraction": 0.12, "reset_in_seconds": 86400},
+                },
             }),
-            "check_model_max_len": 20,
-            "check_str_part": "claude-3-5-sonnet-20"
+            "check_str_part": f"5h {YELLOW}75.5%{RESET}",
         },
         {
             "id": "TC-07",
-            "tier": "Tier 3: Boundary",
-            "name": "Pure ASCII Sanitization of Non-ASCII Input",
+            "tier": "Tier 1: Colour",
+            "name": "Red at or above 90% used",
             "payload": json.dumps({
-                "active_model": "gemini-3.6-⚡-pro-中文",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 50.0, "reset_in_seconds": 3600},
-                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 86400}
-                }
+                    "gemini-5h": {"remaining_fraction": 0.048, "reset_in_seconds": 1200},
+                    "gemini-weekly": {"remaining_fraction": 0.02, "reset_in_seconds": 43200},
+                },
             }),
-            "enforce_ascii_only_input": True
+            "check_str_part": f"5h {RED}95.2%{RESET}",
         },
         {
             "id": "TC-08",
-            "tier": "Tier 3: Boundary",
-            "name": "Percentage Clamping Underflow (<0%)",
+            "tier": "Tier 1: Colour",
+            "name": "Exact 70.0% and 90.0% land on yellow and red",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": -15.0, "reset_in_seconds": 3600},
-                    "weekly": {"used_percent": 0.0, "reset_in_seconds": 3600}
-                }
+                    "gemini-5h": {"remaining_fraction": 0.30, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"remaining_fraction": 0.10, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "0.0%"
+            "check_str_part": [f"5h {YELLOW}70.0%{RESET}", f"Wk {RED}90.0%{RESET}"],
         },
+
+        # --- TIER 2: Quota family selection ---------------------------------
         {
             "id": "TC-09",
-            "tier": "Tier 3: Boundary",
-            "name": "Percentage Clamping Overflow (>100%)",
+            "tier": "Tier 2: Family",
+            "name": "Gemini model reads the gemini-* pool, not 3p-*",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 125.0, "reset_in_seconds": 3600},
-                    "weekly": {"used_percent": 100.0, "reset_in_seconds": 3600}
-                }
+                    "gemini-5h": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                    "3p-5h": {"remaining_fraction": 0.10, "reset_in_seconds": 3600},
+                    "3p-weekly": {"remaining_fraction": 0.10, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "100.0%"
+            "check_str_part": "40.0%",
+            "check_absent_str_part": "90.0%",
         },
         {
             "id": "TC-10",
-            "tier": "Tier 3: Boundary",
-            "name": "Negative Reset Time Handling (-500s)",
+            "tier": "Tier 2: Family",
+            "name": "Non-Gemini model reads the 3p-* pool",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": {"id": "claude-sonnet-4-5", "display_name": "Claude Sonnet 4.5"},
                 "quota": {
-                    "rolling_5h": {"used_percent": 0.0, "reset_in_seconds": -500},
-                    "weekly": {"used_percent": 0.0, "reset_in_seconds": -100}
-                }
+                    "gemini-5h": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                    "3p-5h": {"remaining_fraction": 0.10, "reset_in_seconds": 3600},
+                    "3p-weekly": {"remaining_fraction": 0.10, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "(0m)"
+            "check_str_part": "90.0%",
+            "check_absent_str_part": "40.0%",
         },
         {
             "id": "TC-11",
-            "tier": "Tier 3: Boundary",
-            "name": "Float String Reset Time Parsing (\"3600.5\")",
+            "tier": "Tier 2: Family",
+            "name": "Bucket key casing is ignored (GEMINI-5H)",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 10.0, "reset_in_seconds": "3600.5"},
-                    "weekly": {"used_percent": 10.0, "reset_in_seconds": "7200.0"}
-                }
+                    "GEMINI-5H": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                    "Gemini-Weekly": {"remaining_fraction": 0.60, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "(1h00m)"
+            "check_str_part": "40.0%",
+            "check_absent_str_part": "--%",
         },
         {
             "id": "TC-12",
-            "tier": "Tier 3: Boundary",
-            "name": "Missing & None Reset Field Robustness",
+            "tier": "Tier 2: Family",
+            "name": "Only the other family present: fall back rather than show --%",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 10.0},
-                    "weekly": {"used_percent": 10.0, "reset_in_seconds": None}
-                }
+                    "3p-5h": {"remaining_fraction": 0.25, "reset_in_seconds": 3600},
+                    "3p-weekly": {"remaining_fraction": 0.25, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "(0m)"
+            "check_str_part": "75.0%",
+            "check_absent_str_part": "--%",
         },
         {
             "id": "TC-13",
-            "tier": "Tier 3: Boundary",
-            "name": "Abnormal Reset Values (Infinity / NaN String)",
+            "tier": "Tier 2: Family",
+            "name": "Unprefixed buckets still resolve",
             "payload": json.dumps({
-                "active_model": "test-model",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 10.0, "reset_in_seconds": "inf"},
-                    "weekly": {"used_percent": 10.0, "reset_in_seconds": "nan"}
-                }
+                    "5h": {"remaining_fraction": 0.80, "reset_in_seconds": 3600},
+                    "weekly": {"remaining_fraction": 0.80, "reset_in_seconds": 3600},
+                },
             }),
-            "check_str_part": "(0m)"
+            "check_str_part": "20.0%",
+            "check_absent_str_part": "--%",
         },
 
-        # --- TIER 4: Malformed Payload & Error Defense ---
+        {
+            "id": "TC-13b",
+            "tier": "Tier 2: Family",
+            "name": "Buckets at the top level with no 'quota' wrapper are read",
+            # Either window's key alone is enough to treat the payload itself
+            # as the bucket container -- a weekly-only payload is as valid as
+            # a 5h-only one.
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "weekly": {"remaining_fraction": 0.50, "reset_in_seconds": 172800},
+            }),
+            "check_str_part": f"Wk {GREEN}50.0%{RESET}",
+        },
+
+        # --- TIER 3: Model extraction ---------------------------------------
         {
             "id": "TC-14",
-            "tier": "Tier 4: Defense",
-            "name": "Empty Stdin Payload Handling",
-            "payload": "",
-            "check_str_part": "5h \033[2m--%\033[0m"
+            "tier": "Tier 3: Model",
+            "name": "Model object never leaks a Python repr into the line",
+            # Regression: sanitize_ascii() used to str() a non-string, which
+            # rendered "{'id': 'Gemini 3.6 F" as the model name.
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.5, "reset_in_seconds": 3600}},
+            }),
+            "check_starts_with": "Gemini 3.6 Flash (High) |",
+            "check_absent_str_part": ["{", "}", "'id'", "'display_name'", "effort"],
         },
         {
             "id": "TC-15",
-            "tier": "Tier 4: Defense",
-            "name": "Invalid JSON Syntax Fault Tolerance",
-            "payload": "{invalid json syntax payload...",
-            "check_str_part": "5h \033[2m--%\033[0m"
+            "tier": "Tier 3: Model",
+            "name": "display_name wins over id",
+            "payload": json.dumps({
+                "model": {"id": "gemini-3.6-flash-internal", "display_name": "Gemini 3.6 Flash"},
+            }),
+            "check_starts_with": "Gemini 3.6 Flash |",
+            "check_absent_str_part": "internal",
         },
         {
             "id": "TC-16",
-            "tier": "Tier 4: Defense",
-            "name": "Non-Dict JSON Array Payload Defense ([1,2,3])",
-            "payload": json.dumps([1, 2, 3, "corrupted"]),
-            "check_str_part": "5h \033[2m--%\033[0m"
+            "tier": "Tier 3: Model",
+            "name": "id is used when display_name is missing or blank",
+            "payload": json.dumps({"model": {"id": "gemini-3.6-pro", "display_name": "   "}}),
+            "check_starts_with": "gemini-3.6-pro |",
         },
         {
             "id": "TC-17",
-            "tier": "Tier 4: Defense",
-            "name": "Non-Dict JSON Primitive Defense (\"string_payload\")",
-            "payload": json.dumps("raw_string_payload"),
-            "check_str_part": "5h \033[2m--%\033[0m"
+            "tier": "Tier 3: Model",
+            "name": "Model object with no usable name is omitted entirely",
+            "payload": json.dumps({"model": {"effort": "high"}}),
+            "check_starts_with": "5h --%",
+            "check_absent_str_part": ["{", "high"],
         },
         {
             "id": "TC-18",
-            "tier": "Tier 4: Defense",
-            "name": "Empty JSON Dict Handling ({})",
-            "payload": json.dumps({}),
-            "check_str_part": "5h ",
-            # An empty payload tells us nothing about usage; reporting 0.0%
-            # would read as "quota barely touched", which we cannot claim.
-            "check_absent_str_part": "0.0%"
+            "tier": "Tier 3: Model",
+            "name": "Legacy plain-string model is still accepted",
+            "payload": json.dumps({"active_model": "gemini-3.6-flash"}),
+            "check_starts_with": "gemini-3.6-flash |",
         },
-
-        # --- TIER 5: Unknown vs Zero (missing data must never render as 0%) ---
         {
             "id": "TC-19",
-            "tier": "Tier 5: Unknown",
-            "name": "Missing Weekly Bucket Renders --% Not 0.0%",
+            "tier": "Tier 3: Model",
+            "name": "Overlong model name truncated to 24 chars",
             "payload": json.dumps({
-                "active_model": "test-model",
-                "quota": {
-                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400}
-                }
+                "model": {"display_name": "Gemini 3.6 Ultra Turbo Max Preview (Highest)"},
             }),
-            "check_str_part": "Wk \033[2m--%\033[0m",
-            "check_absent_str_part": "0.0%"
+            "check_model_max_len": 24,
+            "check_str_part": "Gemini 3.6 Ultra Turbo M",
         },
         {
             "id": "TC-20",
-            "tier": "Tier 5: Unknown",
-            "name": "Bucket Present But No Usage Field Renders --%",
-            "payload": json.dumps({
-                "active_model": "test-model",
-                "quota": {
-                    "rolling_5h": {"reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 42.5, "reset_in_seconds": 86400}
-                }
-            }),
-            "check_str_part": "5h \033[2m--%\033[0m",
-            "check_absent_str_part": "0.0%"
+            "tier": "Tier 3: Model",
+            "name": "Non-ASCII model name is stripped, not escaped",
+            "payload": json.dumps({"model": {"display_name": "Gemini 3.6 ⚡ pro 中文"}}),
+            "enforce_ascii_only_input": True,
+            "check_str_part": "Gemini 3.6",
         },
         {
             "id": "TC-21",
-            "tier": "Tier 5: Unknown",
-            "name": "Unparseable Percentage Renders --% Not 0.0%",
-            "payload": json.dumps({
-                "active_model": "test-model",
-                "quota": {
-                    "rolling_5h": {"used_percent": "not-a-number", "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 42.5, "reset_in_seconds": 86400}
-                }
-            }),
-            "check_str_part": "5h \033[2m--%\033[0m",
-            "check_absent_str_part": "0.0%"
-        },
-        {
-            "id": "TC-22",
-            "tier": "Tier 5: Unknown",
-            "name": "Genuine Zero Usage Still Renders 0.0%",
-            "payload": json.dumps({
-                "active_model": "test-model",
-                "quota": {
-                    "rolling_5h": {"used_percent": 0.0, "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 0.0, "reset_in_seconds": 86400}
-                }
-            }),
-            "check_str_part": "0.0%",
-            "check_absent_str_part": "--%"
+            "tier": "Tier 3: Model",
+            "name": "Garbage model types render no model rather than a repr",
+            "payload": json.dumps({"model": [1, 2, 3]}),
+            "check_starts_with": "5h --%",
+            "check_absent_str_part": ["[", "1, 2, 3"],
         },
 
-        # --- TIER 6: Line Layout (model first, percentages only) ---
+        # --- TIER 4: Usage field variations ---------------------------------
+        {
+            "id": "TC-22",
+            "tier": "Tier 4: Fields",
+            "name": "used_percent is honoured when present",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"used_percent": 33.3, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"used_percent": 44.4, "reset_in_seconds": 3600},
+                },
+            }),
+            "check_str_part": ["33.3%", "44.4%"],
+        },
         {
             "id": "TC-23",
-            "tier": "Tier 6: Layout",
-            "name": "Model Name Is The First Field On The Line",
+            "tier": "Tier 4: Fields",
+            "name": "used_percentage is honoured when present",
             "payload": json.dumps({
-                "active_model": "gemini-3.6-flash",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
-                }
+                    "gemini-5h": {"used_percentage": 61.0, "reset_in_seconds": 3600},
+                    "gemini-weekly": {"used_percentage": 62.0, "reset_in_seconds": 3600},
+                },
             }),
-            "check_starts_with": "gemini-3.6-flash |"
+            "check_str_part": ["61.0%", "62.0%"],
         },
         {
             "id": "TC-24",
-            "tier": "Tier 6: Layout",
-            "name": "No Progress Bar Characters Anywhere In The Line",
+            "tier": "Tier 4: Fields",
+            "name": "used_percent takes precedence over remaining_fraction",
             "payload": json.dumps({
-                "active_model": "gemini-3.6-flash",
+                "model": gemini_model(),
                 "quota": {
-                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
-                }
+                    "gemini-5h": {"used_percent": 10.0, "remaining_fraction": 0.5,
+                                  "reset_in_seconds": 3600},
+                },
             }),
-            # Checked after ANSI stripping: '[' also opens every escape sequence.
-            "check_no_bar": True
+            "check_str_part": "10.0%",
+            "check_absent_str_part": "50.0%",
         },
         {
             "id": "TC-25",
-            "tier": "Tier 6: Layout",
-            "name": "Line Without A Model Starts Directly With The 5h Window",
+            "tier": "Tier 4: Fields",
+            "name": "reset_in is accepted as an alias for reset_in_seconds",
             "payload": json.dumps({
-                "quota": {
-                    "rolling_5h": {"used_percent": 35.0, "reset_in_seconds": 5400},
-                    "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
-                }
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.5, "reset_in": 7200}},
             }),
-            "check_starts_with": "5h 35.0%",
-            "check_no_bar": True
+            "check_str_part": "(2h00m)",
         },
         {
             "id": "TC-26",
-            "tier": "Tier 2: Field Variation",
-            "name": "Top-Level Weekly Bucket Without A 'quota' Wrapper Is Read",
+            "tier": "Tier 4: Fields",
+            "name": "reset_time alone (no seconds) still renders the percentage",
             "payload": json.dumps({
-                "active_model": "gemini-3.6-flash",
-                "weekly": {"used_percent": 50.0, "reset_in_seconds": 172800}
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.5, "reset_time": "2026-07-31T06:35:28Z"},
+                },
             }),
-            "check_str_part": "Wk \033[1;32m50.0%\033[0m"
-        }
+            "check_str_part": ["50.0%", "(0m)"],
+        },
+
+        # --- TIER 5: Boundary values ----------------------------------------
+        {
+            "id": "TC-27",
+            "tier": "Tier 5: Boundary",
+            "name": "Percentage clamped at the low end",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 1.5, "reset_in_seconds": 3600}},
+            }),
+            "check_str_part": "0.0%",
+        },
+        {
+            "id": "TC-28",
+            "tier": "Tier 5: Boundary",
+            "name": "Percentage clamped at the high end",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 125.0, "reset_in_seconds": 3600}},
+            }),
+            "check_str_part": "100.0%",
+        },
+        {
+            "id": "TC-29",
+            "tier": "Tier 5: Boundary",
+            "name": "Negative reset renders 0m",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 1, "reset_in_seconds": -500}},
+            }),
+            "check_str_part": "(0m)",
+        },
+        {
+            "id": "TC-30",
+            "tier": "Tier 5: Boundary",
+            "name": "Numeric-string reset is parsed",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": "3600.5"}},
+            }),
+            "check_str_part": "(1h00m)",
+        },
+        {
+            "id": "TC-31",
+            "tier": "Tier 5: Boundary",
+            "name": "inf / nan reset values degrade to 0m",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": "inf"},
+                    "gemini-weekly": {"remaining_fraction": 0.9, "reset_in_seconds": "nan"},
+                },
+            }),
+            "check_str_part": "(0m)",
+        },
+        {
+            "id": "TC-32",
+            "tier": "Tier 5: Boundary",
+            "name": "Day-scale and hour-scale countdowns format correctly",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 11515},
+                    "gemini-weekly": {"remaining_fraction": 0.9, "reset_in_seconds": 431793},
+                },
+            }),
+            "check_str_part": ["(3h11m)", "(4d23h)"],
+        },
+
+        # --- TIER 6: Malformed payload defence ------------------------------
+        {
+            "id": "TC-33",
+            "tier": "Tier 6: Defence",
+            "name": "Empty stdin",
+            "payload": "",
+            "check_str_part": f"5h {DIM}--%{RESET}",
+        },
+        {
+            "id": "TC-34",
+            "tier": "Tier 6: Defence",
+            "name": "Invalid JSON syntax",
+            "payload": "{invalid json syntax payload...",
+            "check_str_part": f"5h {DIM}--%{RESET}",
+        },
+        {
+            "id": "TC-35",
+            "tier": "Tier 6: Defence",
+            "name": "JSON array payload",
+            "payload": json.dumps([1, 2, 3, "corrupted"]),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+        },
+        {
+            "id": "TC-36",
+            "tier": "Tier 6: Defence",
+            "name": "JSON primitive payload",
+            "payload": json.dumps("raw_string_payload"),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+        },
+        {
+            "id": "TC-37",
+            "tier": "Tier 6: Defence",
+            "name": "Empty JSON object",
+            "payload": json.dumps({}),
+            "check_starts_with": "5h ",
+            "check_absent_str_part": "0.0%",
+        },
+        {
+            "id": "TC-38",
+            "tier": "Tier 6: Defence",
+            "name": "quota present but not an object",
+            "payload": json.dumps({"model": gemini_model(), "quota": "unavailable"}),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_absent_str_part": "unavailable",
+        },
+        {
+            "id": "TC-39",
+            "tier": "Tier 6: Defence",
+            "name": "Bucket present but not an object",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": "n/a", "gemini-weekly": None},
+            }),
+            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}"],
+            "check_absent_str_part": ["n/a", "None"],
+        },
+
+        # --- TIER 7: Unknown vs zero ----------------------------------------
+        {
+            "id": "TC-40",
+            "tier": "Tier 7: Unknown",
+            "name": "Missing weekly bucket renders --%, not 0.0%",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.65, "reset_in_seconds": 5400}},
+            }),
+            "check_str_part": f"Wk {DIM}--%{RESET}",
+            "check_absent_str_part": "0.0%",
+        },
+        {
+            "id": "TC-41",
+            "tier": "Tier 7: Unknown",
+            "name": "Bucket with no usage field renders --%",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"reset_in_seconds": 5400, "reset_time": "2026-07-31T06:35:28Z"},
+                    "gemini-weekly": {"remaining_fraction": 0.575, "reset_in_seconds": 86400},
+                },
+            }),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_absent_str_part": "0.0%",
+        },
+        {
+            "id": "TC-42",
+            "tier": "Tier 7: Unknown",
+            "name": "Unparseable usage renders --%, not 0.0%",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": "not-a-number", "reset_in_seconds": 5400},
+                    "gemini-weekly": {"remaining_fraction": 0.575, "reset_in_seconds": 86400},
+                },
+            }),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_absent_str_part": "0.0%",
+        },
+        {
+            "id": "TC-43",
+            "tier": "Tier 7: Unknown",
+            "name": "Genuine zero usage still renders 0.0%",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 1, "reset_in_seconds": 5400},
+                    "gemini-weekly": {"remaining_fraction": 1.0, "reset_in_seconds": 86400},
+                },
+            }),
+            "check_str_part": "0.0%",
+            "check_absent_str_part": "--%",
+        },
+
+        # --- TIER 8: Line layout --------------------------------------------
+        {
+            "id": "TC-44",
+            "tier": "Tier 8: Layout",
+            "name": "Model is the first field on the line",
+            "payload": json.dumps(CAPTURED_IDLE),
+            "check_starts_with": "Gemini 3.6 Flash (High) |",
+        },
+        {
+            "id": "TC-45",
+            "tier": "Tier 8: Layout",
+            "name": "No progress-bar characters anywhere on the line",
+            "payload": json.dumps(CAPTURED_IDLE),
+            # Checked after ANSI stripping: '[' also opens every escape sequence.
+            "check_no_bar": True,
+        },
+        {
+            "id": "TC-46",
+            "tier": "Tier 8: Layout",
+            "name": "Model-less line starts directly with the 5h window",
+            "payload": json.dumps({
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.65, "reset_in_seconds": 5400},
+                    "gemini-weekly": {"remaining_fraction": 0.50, "reset_in_seconds": 172800},
+                },
+            }),
+            "check_starts_with": "5h 35.0%",
+            "check_no_bar": True,
+        },
     ]
 
+
+def run_all_tests() -> bool:
+    print("==================================================")
+    print("AGY Statusline Boundary Test Suite")
+    print("==================================================")
+
+    test_cases = build_test_cases()
     passed_count = 0
     failed_count = 0
-    results = []
 
     for tc in test_cases:
-        tc_id = tc["id"]
-        tier = tc["tier"]
-        name = tc["name"]
-        payload = tc["payload"]
-
-        out, err, code = run_statusline_test(payload)
+        tc_id, tier, name = tc["id"], tc["tier"], tc["name"]
+        out, err, code = run_statusline_test(tc["payload"])
         case_passed = True
         failure_reasons = []
 
-        # 1. Zero Exit Code Assertion
+        # 1. Zero exit code
         if code != 0:
             case_passed = False
             failure_reasons.append(f"Non-zero exit code: {code}")
 
-        # 2. Pure ASCII Verification
+        # 2. The TUI shares this terminal: nothing may land on stderr.
+        if err:
+            case_passed = False
+            failure_reasons.append(f"Unexpected stderr: {err!r}")
+
+        # 3. Pure ASCII
         is_ascii, non_ascii = verify_ascii(out)
         if not is_ascii:
             case_passed = False
             failure_reasons.append(f"Non-ASCII chars detected: {non_ascii}")
 
-        # 3. Check expected string part
-        if "check_str_part" in tc and tc["check_str_part"] not in out:
-            case_passed = False
-            failure_reasons.append(f"Missing expected substring: {repr(tc['check_str_part'])}")
-
-        # 3b. Check a substring is absent (e.g. "unknown" must not print as 0.0%)
-        if "check_absent_str_part" in tc and tc["check_absent_str_part"] in out:
-            case_passed = False
-            failure_reasons.append(
-                f"Unexpected substring present: {repr(tc['check_absent_str_part'])}"
-            )
-
-        # 3c. Layout checks operate on the ANSI-stripped line
         plain = ANSI_REGEX.sub('', out)
 
+        # 4. Expected substrings (raw, so ANSI colour codes can be asserted)
+        for part in as_list(tc.get("check_str_part")):
+            if part not in out:
+                case_passed = False
+                failure_reasons.append(f"Missing expected substring: {part!r}")
+
+        # 5. Forbidden substrings, checked on the ANSI-stripped line so that
+        #    escape-sequence bytes cannot mask or fake a match.
+        for part in as_list(tc.get("check_absent_str_part")):
+            if part in plain:
+                case_passed = False
+                failure_reasons.append(f"Unexpected substring present: {part!r}")
+
+        # 6. Layout
         if "check_starts_with" in tc and not plain.startswith(tc["check_starts_with"]):
             case_passed = False
             failure_reasons.append(
-                f"Line does not start with {repr(tc['check_starts_with'])}: {repr(plain[:40])}"
+                f"Line does not start with {tc['check_starts_with']!r}: {plain[:70]!r}"
             )
 
         if tc.get("check_no_bar"):
@@ -427,47 +770,33 @@ def run_all_tests() -> bool:
                     f"Progress-bar characters present after ANSI stripping: {bar_chars}"
                 )
 
-        # 4. Check color code
-        if "check_color" in tc and tc["check_color"] not in out:
-            case_passed = False
-            failure_reasons.append(f"Missing expected ANSI color code: {repr(tc['check_color'])}")
-
-        # 5. Check model truncation
+        # 7. Model truncation
         if "check_model_max_len" in tc:
-            # Model part after '|' in stdout
             model_match = re.search(r'\x1b\[1;36m(.*?)\x1b\[0m', out)
             if model_match:
                 extracted_model = model_match.group(1)
                 if len(extracted_model) > tc["check_model_max_len"]:
                     case_passed = False
                     failure_reasons.append(
-                        f"Model name length {len(extracted_model)} > max {tc['check_model_max_len']}: {repr(extracted_model)}"
+                        f"Model name length {len(extracted_model)} > max "
+                        f"{tc['check_model_max_len']}: {extracted_model!r}"
                     )
 
         if case_passed:
             passed_count += 1
-            status_symbol = "✅ PASS"
+            status_symbol = "PASS"
         else:
             failed_count += 1
-            status_symbol = "❌ FAIL"
-
-        results.append({
-            "id": tc_id,
-            "tier": tier,
-            "name": name,
-            "status": status_symbol,
-            "output": out,
-            "reasons": failure_reasons
-        })
+            status_symbol = "FAIL"
 
         print(f"[{status_symbol}] {tc_id} ({tier}) - {name}")
         if not case_passed:
             for r in failure_reasons:
                 print(f"       Reason: {r}")
-            print(f"       RAW Output: {repr(out)}")
+            print(f"       RAW Output: {out!r}")
 
     print("\n==================================================")
-    print(f"📊 SUMMARY: Total: {len(test_cases)} | Passed: {passed_count} | Failed: {failed_count}")
+    print(f"SUMMARY: Total: {len(test_cases)} | Passed: {passed_count} | Failed: {failed_count}")
     print("==================================================")
 
     return failed_count == 0

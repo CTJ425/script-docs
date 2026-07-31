@@ -9,6 +9,9 @@ Outputs one pure ASCII line:
 Percentages only -- no progress bar. The usage level is carried entirely by
 the colour of the number (green / yellow / red), which needs no horizontal
 space, so the line stays short on a narrow terminal.
+
+Field paths are taken from payloads captured from Antigravity CLI 1.1.8; see
+SPEC.md for the recorded shape.
 """
 
 import sys
@@ -30,11 +33,30 @@ UNKNOWN_SEGMENT = f"{COLOR_DIM}--%{COLOR_RESET}"
 SEPARATOR = f" {COLOR_DIM}|{COLOR_RESET} "
 FALLBACK_LINE = f"5h {UNKNOWN_SEGMENT}{SEPARATOR}Wk {UNKNOWN_SEGMENT}"
 
+# Long enough for the longest display_name observed so far,
+# "Gemini 3.6 Flash (High)" (23 chars); at 20 it was chopped mid-word.
+MODEL_MAX_LEN = 24
+
+# Bucket names, after the family prefix is stripped. First entry of each tuple
+# is the canonical name; the rest are tolerated aliases.
+FIVE_H_NAMES = ("5h", "rolling_5h", "rolling5h", "five_hour", "5_hour")
+WEEKLY_NAMES = ("weekly", "week", "7d", "seven_days")
+
+# Antigravity meters Gemini models and third-party models against separate
+# quota pools, exposed side by side as "gemini-5h" and "3p-5h". Only the pool
+# the active model draws from is worth showing.
+GEMINI_FAMILY = "gemini"
+THIRD_PARTY_FAMILY = "3p"
+
 
 def sanitize_ascii(text) -> str:
-    """Strips non-ASCII characters (ord(c) >= 128) from text."""
+    """Strips non-ASCII characters (ord(c) >= 128) from a string.
+
+    Non-strings yield "" rather than str(text): the payload's "model" is an
+    object, and stringifying it would render a Python repr into the statusline.
+    """
     if not isinstance(text, str):
-        text = str(text) if text is not None else ""
+        return ""
     return "".join(c for c in text if ord(c) < 128)
 
 
@@ -84,32 +106,121 @@ def get_color_code(percent) -> str:
         return COLOR_GREEN
 
 
-def extract_quota_item(quota_dict: dict, possible_keys: list):
-    """Finds quota dictionary using multiple possible key names."""
-    if not isinstance(quota_dict, dict):
+def extract_model_name(data: dict) -> str:
+    """Returns the model's display name, or "" when the payload has none.
+
+    "model" is an object ({"id", "display_name", "effort"}) and is null until
+    the CLI finishes authenticating. A bare string is still accepted in case
+    the shape changes back.
+    """
+    raw = data.get("active_model")
+    if raw is None:
+        raw = data.get("model")
+
+    if isinstance(raw, dict):
+        for key in ("display_name", "displayName", "name", "id"):
+            val = raw.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    return ""
+
+
+def model_family(model_name: str) -> str:
+    """Maps a model name to the quota pool it draws from."""
+    return GEMINI_FAMILY if "gemini" in model_name.lower() else THIRD_PARTY_FAMILY
+
+
+def select_bucket(quota: dict, names, family: str):
+    """Finds the quota bucket for one window, preferring the active model's pool.
+
+    Buckets are keyed "<family>-<window>", e.g. "gemini-5h". Resolution order:
+    the active model's family, then an unprefixed key, then any other family
+    (sorted, so the choice is deterministic rather than dict-order luck).
+    """
+    if not isinstance(quota, dict):
         return None
 
-    for key in possible_keys:
-        if key in quota_dict:
-            item = quota_dict[key]
-            if isinstance(item, dict):
-                return item
+    lowered = {}
+    for key, val in quota.items():
+        if isinstance(key, str) and isinstance(val, dict):
+            lowered[key.lower()] = val
 
-    # One level down, for payloads that nest the buckets under a model/plan key.
-    for val in quota_dict.values():
-        if isinstance(val, dict):
-            for key in possible_keys:
-                if key in val and isinstance(val[key], dict):
-                    return val[key]
+    for name in names:
+        item = lowered.get(f"{family}-{name}")
+        if item is not None:
+            return item
+
+    for name in names:
+        item = lowered.get(name)
+        if item is not None:
+            return item
+
+    name_set = set(names)
+    for key in sorted(lowered):
+        if "-" in key and key.rsplit("-", 1)[1] in name_set:
+            return lowered[key]
     return None
 
 
-FIVE_HOUR_KEYS = ["rolling_5h", "5h", "rolling5h", "five_hour", "5_hour"]
-WEEKLY_KEYS = ["weekly", "week", "7d", "seven_days"]
+def parse_item(item):
+    """Parses one window, or returns None when the payload carries no usable
+    usage figure for it (missing bucket, missing field, garbage value). None
+    means 'unknown' and is rendered as '--%', never as 0%."""
+    if not isinstance(item, dict):
+        return None
+
+    used_pct = None
+    for key in ("used_percent", "used_percentage"):
+        if item.get(key) is not None:
+            used_pct = item[key]
+            break
+
+    if used_pct is None:
+        rem_frac = item.get("remaining_fraction")
+        if rem_frac is None:
+            return None
+        try:
+            rf = float(rem_frac)
+        except (ValueError, TypeError, OverflowError):
+            return None
+        if math.isnan(rf) or math.isinf(rf):
+            return None
+        used_pct = (1.0 - rf) * 100.0
+
+    try:
+        val = float(used_pct)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    if math.isnan(val):
+        return None
+    if math.isinf(val):
+        val = 100.0 if val > 0 else 0.0
+    used_pct = round(max(0.0, min(100.0, val)), 1)
+
+    reset_sec = item.get("reset_in_seconds", item.get("reset_in", 0))
+    try:
+        if reset_sec is None:
+            reset_sec = 0
+        else:
+            r_val = float(reset_sec)
+            if math.isnan(r_val) or math.isinf(r_val):
+                reset_sec = 0
+            else:
+                reset_sec = int(r_val)
+    except (ValueError, TypeError, OverflowError):
+        reset_sec = 0
+
+    return {
+        "used_percent": used_pct,
+        "reset_in_seconds": reset_sec
+    }
 
 
-def parse_quota_data(data: dict):
-    """Extracts 5h and Weekly quota info."""
+def parse_quota_data(data: dict, family: str):
+    """Extracts 5h and Weekly quota info for the given model family."""
     if not isinstance(data, dict):
         data = {}
 
@@ -117,64 +228,13 @@ def parse_quota_data(data: dict):
     if not isinstance(quota, dict):
         quota = {}
 
-    # No "quota" wrapper: the buckets may sit at the top level. Check both
-    # window's aliases -- a payload carrying only the weekly bucket is just as
-    # valid as one carrying only the 5h bucket.
-    if not quota and any(k in data for k in FIVE_HOUR_KEYS + WEEKLY_KEYS):
-        quota = data
+    five_h = select_bucket(quota, FIVE_H_NAMES, family)
+    weekly = select_bucket(quota, WEEKLY_NAMES, family)
 
-    five_h = extract_quota_item(quota, FIVE_HOUR_KEYS)
-    weekly = extract_quota_item(quota, WEEKLY_KEYS)
-
-    def parse_item(item):
-        """Parses one window, or returns None when the payload carries no
-        usable usage figure for it (missing bucket, missing field, garbage
-        value). None means 'unknown' and is rendered as '--%', never as 0%."""
-        if not isinstance(item, dict):
-            return None
-
-        used_pct = item.get("used_percent")
-        rem_frac = item.get("remaining_fraction")
-        reset_sec = item.get("reset_in_seconds", item.get("reset_in", 0))
-
-        if used_pct is None and rem_frac is None:
-            return None
-
-        if used_pct is None:
-            try:
-                rf = float(rem_frac)
-            except (ValueError, TypeError, OverflowError):
-                return None
-            if math.isnan(rf) or math.isinf(rf):
-                return None
-            used_pct = (1.0 - rf) * 100.0
-
-        try:
-            val = float(used_pct)
-        except (ValueError, TypeError, OverflowError):
-            return None
-        if math.isnan(val):
-            return None
-        if math.isinf(val):
-            val = 100.0 if val > 0 else 0.0
-        used_pct = round(max(0.0, min(100.0, val)), 1)
-
-        try:
-            if reset_sec is None:
-                reset_sec = 0
-            else:
-                r_val = float(reset_sec)
-                if math.isnan(r_val) or math.isinf(r_val):
-                    reset_sec = 0
-                else:
-                    reset_sec = int(r_val)
-        except (ValueError, TypeError, OverflowError):
-            reset_sec = 0
-
-        return {
-            "used_percent": used_pct,
-            "reset_in_seconds": reset_sec
-        }
+    # Tolerate a payload that drops the buckets at the top level instead.
+    if five_h is None and weekly is None:
+        five_h = select_bucket(data, FIVE_H_NAMES, family)
+        weekly = select_bucket(data, WEEKLY_NAMES, family)
 
     return {
         "5h": parse_item(five_h),
@@ -198,10 +258,9 @@ def render_statusline(data: dict) -> str:
     if not isinstance(data, dict):
         data = {}
 
-    parsed = parse_quota_data(data)
-
-    raw_model = data.get("active_model", data.get("model", ""))
-    model_name = sanitize_ascii(raw_model)[:20]
+    raw_model = extract_model_name(data)
+    model_name = sanitize_ascii(raw_model)[:MODEL_MAX_LEN].strip()
+    parsed = parse_quota_data(data, model_family(raw_model))
 
     # Model first: it is the one field that is always short and always known,
     # so it anchors the line when a terminal truncates the tail.
