@@ -3,6 +3,7 @@ import json
 import math
 import os
 import time
+from typing import NamedTuple, Optional
 
 # ANSI Color definitions
 COLOR_RESET = "\033[0m"
@@ -44,7 +45,17 @@ CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 
 
-def safe_float(value):
+class BucketResult(NamedTuple):
+    """Domain representation of a resolved quota bucket."""
+    used_percent: float
+    reset_in_seconds: Optional[int]
+    resets_at: Optional[int]
+    is_live: bool
+    family: str
+    canonical_name: str
+
+
+def safe_float(value) -> Optional[float]:
     """Safely converts value to float, returning None if invalid or NaN/Inf."""
     if value is None:
         return None
@@ -66,6 +77,11 @@ def sanitize_ascii(text) -> str:
     if not isinstance(text, str):
         return ""
     return "".join(c for c in text if ord(c) < 128)
+
+
+def clean_model_name(text: str) -> str:
+    """Strips non-ASCII and truncates model name to MODEL_MAX_LEN."""
+    return sanitize_ascii(text)[:MODEL_MAX_LEN].strip()
 
 
 def format_duration(seconds) -> str:
@@ -198,7 +214,7 @@ def parse_item(item):
     }
 
 
-def read_cache() -> dict:
+def read_cache() -> Optional[dict]:
     """Reads disk cache safely. Returns dict or None."""
     try:
         cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
@@ -226,7 +242,7 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
     return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
 
 
-def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
+def cached_bucket(cache: dict, family: str, canonical_name: str) -> Optional[dict]:
     """Looks up a cached bucket key (e.g. gemini-5h) strictly matching the target family."""
     if not isinstance(cache, dict):
         return None
@@ -240,19 +256,7 @@ def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
     return None
 
 
-def make_bucket_result(used_percent: float, reset_in_seconds, resets_at, is_live: bool, family: str, canonical_name: str) -> dict:
-    """Helper to consistently format bucket resolution results."""
-    return {
-        "used_percent": used_percent,
-        "reset_in_seconds": reset_in_seconds,
-        "resets_at": resets_at,
-        "is_live": is_live,
-        "family": family,
-        "canonical_name": canonical_name
-    }
-
-
-def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
+def resolve_bucket(data: dict, family: str, names, cache: dict, now: float) -> Optional[BucketResult]:
     """Resolves usage bucket for a window: live payload first, then fresh cache."""
     canonical_name = names[0]  # "5h" or "weekly"
 
@@ -265,8 +269,15 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
         parsed_live = parse_item(live_item)
         if parsed_live is not None:
             reset_sec = parsed_live.get("reset_in_seconds", 0)
-            resets_at = (now + reset_sec) if reset_sec > 0 else None
-            return make_bucket_result(parsed_live["used_percent"], reset_sec, resets_at, True, family, canonical_name)
+            resets_at = int(now + reset_sec) if reset_sec > 0 else None
+            return BucketResult(
+                used_percent=parsed_live["used_percent"],
+                reset_in_seconds=reset_sec,
+                resets_at=resets_at,
+                is_live=True,
+                family=family,
+                canonical_name=canonical_name
+            )
 
     # 2. Check fresh cache
     if not cache_is_fresh(cache, now):
@@ -283,33 +294,68 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
 
     resets_at_val = safe_float(cached_item.get("resets_at"))
     if resets_at_val is not None:
-        if resets_at_val <= now:
+        resets_at_int = int(resets_at_val)
+        if resets_at_int <= now:
             # Window rolled over -> used_percent = 0.0, countdown omitted
-            return make_bucket_result(0.0, None, None, False, family, canonical_name)
+            return BucketResult(
+                used_percent=0.0,
+                reset_in_seconds=None,
+                resets_at=None,
+                is_live=False,
+                family=family,
+                canonical_name=canonical_name
+            )
         else:
-            remaining = int(resets_at_val - now)
-            return make_bucket_result(used_pct, remaining, resets_at_val, False, family, canonical_name)
+            remaining = int(resets_at_int - now)
+            return BucketResult(
+                used_percent=used_pct,
+                reset_in_seconds=remaining,
+                resets_at=resets_at_int,
+                is_live=False,
+                family=family,
+                canonical_name=canonical_name
+            )
 
-    return make_bucket_result(used_pct, None, None, False, family, canonical_name)
+    return BucketResult(
+        used_percent=used_pct,
+        reset_in_seconds=None,
+        resets_at=None,
+        is_live=False,
+        family=family,
+        canonical_name=canonical_name
+    )
 
 
 def resolve_model_name(data: dict, cache: dict, now: float) -> str:
     """Returns model display name, trying live payload first, then fresh cache."""
     raw_model = extract_model_name(data)
-    model_name = sanitize_ascii(raw_model)[:MODEL_MAX_LEN].strip()
+    model_name = clean_model_name(raw_model)
     if model_name:
         return model_name
 
     if cache_is_fresh(cache, now):
-        cached_m = cache.get("model")
-        if isinstance(cached_m, str) and cached_m.strip():
-            return sanitize_ascii(cached_m)[:MODEL_MAX_LEN].strip()
+        cached_model = cache.get("model")
+        if isinstance(cached_model, str) and cached_model.strip():
+            return clean_model_name(cached_model)
 
     return ""
 
 
+def atomic_write_json(file_path: str, data: dict):
+    """Atomically writes dictionary as JSON to file_path via temporary file."""
+    cache_dir = os.path.dirname(file_path)
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+
+    tmp_file = f"{file_path}.tmp.{os.getpid()}"
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp_file, file_path)
+
+
 def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
-    """Safely updates disk cache with live buckets and model info."""
+    """Safely updates disk cache with live buckets, rolled-over states, and model info."""
     try:
         cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
         usable_cache = cache if cache_is_fresh(cache, now) else None
@@ -318,22 +364,25 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
         if usable_cache and isinstance(usable_cache.get("quota"), dict):
             new_quota.update(usable_cache["quota"])
 
-        # Merge live buckets
-        has_live = False
+        # Merge live buckets and rolled-over bucket states
+        has_updates = False
         for window_key, item in resolved_buckets.items():
-            if item and item.get("is_live"):
-                has_live = True
-                fam = item.get("family", GEMINI_FAMILY)
-                c_name = item.get("canonical_name", window_key)
-                key = f"{fam}-{c_name}".lower()
-                new_quota[key] = {
-                    "used_percent": item["used_percent"],
-                    "resets_at": item.get("resets_at")
-                }
+            if isinstance(item, BucketResult):
+                fam = item.family or GEMINI_FAMILY
+                canonical = item.canonical_name or window_key
+                key = f"{fam}-{canonical}".lower()
+
+                if item.is_live or item.resets_at is None:
+                    # Update bucket in cache (live data or rolled-over 0.0% state)
+                    has_updates = True
+                    new_quota[key] = {
+                        "used_percent": item.used_percent,
+                        "resets_at": item.resets_at
+                    }
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
 
-        if not has_live and not (usable_cache is None and (new_quota or model_to_save)):
+        if not has_updates and not (usable_cache is None and (new_quota or model_to_save)):
             return
 
         next_cache = {
@@ -347,27 +396,19 @@ def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: 
             if usable_cache.get("model") == next_cache["model"] and usable_cache.get("quota") == next_cache["quota"]:
                 return
 
-        cache_dir = os.path.dirname(cache_path)
-        if cache_dir:
-            os.makedirs(cache_dir, exist_ok=True)
-
-        tmp_file = f"{cache_path}.tmp.{os.getpid()}"
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(next_cache, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-        os.replace(tmp_file, cache_path)
+        atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
 
 
-def render_window(label: str, item) -> str:
+def render_window(label: str, item: Optional[BucketResult]) -> str:
     """Renders one usage window, or the '--%' unknown marker when item is None."""
     if item is None:
         return f"{label} {UNKNOWN_SEGMENT}"
 
-    pct = item["used_percent"]
+    pct = item.used_percent
     col = get_color_code(pct)
-    reset_sec = item.get("reset_in_seconds")
+    reset_sec = item.reset_in_seconds
     if reset_sec is not None:
         rst = format_duration(reset_sec)
         return f"{label} {col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
