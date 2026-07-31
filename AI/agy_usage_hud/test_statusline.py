@@ -832,6 +832,17 @@ def build_test_cases() -> list:
             }),
             "check_starts_with": "Gemini 3.6 Flash (High) | 5h 15.0% (30m) | Wk --%",
         },
+        {
+            "id": "TC-55",
+            "tier": "Tier 9: Cache",
+            "name": "Unwritable cache directory degrades gracefully without error",
+            "env": {"USAGE_HUD_CACHE": "/proc/unwritable_dir/cache.json"},
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 20.0, "reset_in_seconds": 1800}}
+            }),
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 20.0% (30m) | Wk --%",
+        },
     ]
 
 
