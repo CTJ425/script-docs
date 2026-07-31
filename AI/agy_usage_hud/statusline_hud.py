@@ -43,6 +43,13 @@ CACHE_FILE = os.environ.get(
 CACHE_VERSION = 1
 CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
+TOKEN_FILE = os.environ.get(
+    "USAGE_HUD_TOKEN_PATH",
+    os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
+)
+QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
+
 
 
 class BucketResult(NamedTuple):
@@ -403,6 +410,123 @@ def is_cache_equivalent(previous_cache: dict, next_cache: dict) -> bool:
     return True
 
 
+def fetch_live_quota_from_api() -> Optional[dict]:
+    """Fetches real-time usage quota from Google Cloud Code PA API directly using OAuth token."""
+    try:
+        token_path = os.environ.get("USAGE_HUD_TOKEN_PATH", TOKEN_FILE)
+        if not os.path.isfile(token_path):
+            return None
+        with open(token_path, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+        access_token = token_data.get("token", {}).get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            return None
+
+        import urllib.request
+        from datetime import datetime
+
+        req = urllib.request.Request(
+            QUOTA_API_URL,
+            data=b"{}",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+                "User-Agent": "antigravity/1.1.8"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            raw_res = resp.read().decode("utf-8")
+            data = json.loads(raw_res)
+
+        quota = {}
+        groups = data.get("groups", [])
+        if not isinstance(groups, list):
+            return None
+
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            buckets = group.get("buckets", [])
+            if not isinstance(buckets, list):
+                continue
+            for b in buckets:
+                if not isinstance(b, dict):
+                    continue
+                bid = b.get("bucketId")
+                rem_frac = safe_float(b.get("remainingFraction"))
+                reset_time_str = b.get("resetTime")
+                if not isinstance(bid, str) or rem_frac is None:
+                    continue
+                used_pct = round(max(0.0, min(100.0, (1.0 - rem_frac) * 100.0)), 1)
+                resets_at = None
+                if isinstance(reset_time_str, str) and reset_time_str:
+                    try:
+                        clean_time = reset_time_str.replace("Z", "+00:00")
+                        dt = datetime.fromisoformat(clean_time)
+                        resets_at = int(dt.timestamp())
+                    except Exception:
+                        pass
+                quota[bid.lower()] = {
+                    "used_percent": used_pct,
+                    "resets_at": resets_at
+                }
+        return quota if quota else None
+    except Exception:
+        return None
+
+
+def do_background_fetch():
+    """Background entry point: fetches live quota and updates cache atomically."""
+    try:
+        now = time.time()
+        live_quota = fetch_live_quota_from_api()
+        if not live_quota:
+            return
+
+        cache_path = get_cache_path()
+        existing_cache = read_cache() or {}
+        new_quota = {}
+        if isinstance(existing_cache.get("quota"), dict):
+            new_quota.update(existing_cache["quota"])
+        new_quota.update(live_quota)
+
+        model_name = existing_cache.get("model", "")
+        next_cache = {
+            "version": CACHE_VERSION,
+            "saved_at": int(now),
+            "last_api_fetch": now,
+            "model": model_name,
+            "quota": new_quota
+        }
+        atomic_write_json(cache_path, next_cache)
+    except Exception:
+        pass
+
+
+def maybe_trigger_bg_fetch(cache: Optional[dict], now: float):
+    """Spawns non-blocking background fetch if enough time has passed."""
+    if os.environ.get("USAGE_HUD_DISABLE_BG_FETCH") == "1":
+        return
+    last_fetch = safe_float(cache.get("last_api_fetch") if isinstance(cache, dict) else None) or 0.0
+    if now - last_fetch < API_REFRESH_INTERVAL:
+        return
+
+    import subprocess
+    try:
+        cmd = [sys.executable, os.path.abspath(__file__), "--bg-fetch"]
+        env = dict(os.environ)
+        env["USAGE_HUD_DISABLE_BG_FETCH"] = "1"
+        subprocess.Popen(
+            cmd,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env
+        )
+    except Exception:
+        pass
+
+
 def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
     """Safely updates disk cache with live buckets and model info."""
     try:
@@ -438,6 +562,8 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
             "model": model_to_save,
             "quota": new_quota
         }
+        if usable_cache and usable_cache.get("last_api_fetch") is not None:
+            next_cache["last_api_fetch"] = usable_cache["last_api_fetch"]
 
         if usable_cache and is_cache_equivalent(usable_cache, next_cache):
             return
@@ -445,9 +571,6 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
-
-
-
 
 
 def render_window(label: str, item: Optional[BucketResult]) -> str:
@@ -484,6 +607,7 @@ def render_statusline(data: dict) -> str:
     }
 
     write_cache(model_name, resolved_buckets, cache, now)
+    maybe_trigger_bg_fetch(cache, now)
 
     parts = []
     if model_name:
@@ -495,6 +619,10 @@ def render_statusline(data: dict) -> str:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--bg-fetch":
+        do_background_fetch()
+        sys.exit(0)
+
     try:
         raw_input = sys.stdin.read()
         data = {}
@@ -515,4 +643,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 

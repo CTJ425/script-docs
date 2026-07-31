@@ -843,7 +843,16 @@ def build_test_cases() -> list:
             }),
             "check_starts_with": "Gemini 3.6 Flash (High) | 5h 20.0% (30m) | Wk --%",
         },
+        {
+            "id": "TC-56",
+            "tier": "Tier 10: Live API",
+            "name": "Background fetch handles invalid token file gracefully",
+            "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json"},
+            "payload": json.dumps({"agent_state": "idle"}),
+            "check_starts_with": "5h --%",
+        },
     ]
+
 
 
 def run_all_tests() -> bool:
