@@ -13,6 +13,9 @@ import subprocess
 import json
 import re
 import sys
+import os
+import tempfile
+import time
 from pathlib import Path
 
 HUD_DIR = Path(__file__).parent.resolve()
@@ -143,14 +146,18 @@ def gemini_model(display_name="Gemini 3.6 Flash (High)"):
     return {"id": display_name, "display_name": display_name, "effort": "high"}
 
 
-def run_statusline_test(payload_str: str) -> tuple[str, str, int]:
+def run_statusline_test(payload_str: str, env: dict = None) -> tuple[str, str, int]:
     """Runs statusline_hud.py passing payload_str via stdin."""
+    run_env = dict(os.environ)
+    if env is not None:
+        run_env.update(env)
     p = subprocess.Popen(
         [sys.executable, str(SCRIPT_PATH)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        env=run_env
     )
     out, err = p.communicate(input=payload_str)
     return out.strip(), err.strip(), p.returncode
@@ -706,6 +713,112 @@ def build_test_cases() -> list:
             "check_starts_with": "5h 35.0%",
             "check_no_bar": True,
         },
+
+        # --- TIER 9: Cold-start cache & dynamic time-rolling ---------------
+        {
+            "id": "TC-48",
+            "tier": "Tier 9: Cache",
+            "name": "Cold-start cache write on valid payload",
+            "payload": json.dumps(CAPTURED_IDLE),
+            "check_cache_exists": True,
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+        },
+        {
+            "id": "TC-49",
+            "tier": "Tier 9: Cache",
+            "name": "Cold-start fallback reads cached model and quota when payload authenticating",
+            "setup_cache": {
+                "version": 1,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 12.3, "resets_at": int(time.time()) + 3605},
+                    "gemini-weekly": {"used_percent": 45.6, "resets_at": int(time.time()) + 86405},
+                }
+            },
+            "payload": json.dumps(CAPTURED_AUTHENTICATING),
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 12.3% (1h00m) | Wk 45.6% (1d00h)",
+        },
+        {
+            "id": "TC-50",
+            "tier": "Tier 9: Cache",
+            "name": "Dynamic time-rolling countdown recalculates against system clock",
+            "setup_cache": {
+                "version": 1,
+                "saved_at": int(time.time()) - 300,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 20.0, "resets_at": int(time.time()) + 3305},
+                    "gemini-weekly": {"used_percent": 30.0, "resets_at": int(time.time()) + 86105},
+                }
+            },
+            "payload": json.dumps({"agent_state": "idle"}),
+            "check_str_part": ["(55m)", "(23h55m)"],
+        },
+        {
+            "id": "TC-51",
+            "tier": "Tier 9: Cache",
+            "name": "Window rollover: past resets_at renders 0.0% with no countdown",
+            "setup_cache": {
+                "version": 1,
+                "saved_at": int(time.time()) - 1000,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 88.0, "resets_at": int(time.time()) - 100},
+                    "gemini-weekly": {"used_percent": 50.0, "resets_at": int(time.time()) + 3600},
+                }
+            },
+            "payload": json.dumps({"agent_state": "idle"}),
+            "check_str_part": f"5h {GREEN}0.0%{RESET}",
+            "check_absent_str_part": "88.0%",
+        },
+        {
+            "id": "TC-52",
+            "tier": "Tier 9: Cache",
+            "name": "Expired cache (>7 days) is ignored and falls back to --%",
+            "setup_cache": {
+                "version": 1,
+                "saved_at": int(time.time()) - (8 * 86400),
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 25.0, "resets_at": int(time.time()) + 3600},
+                }
+            },
+            "payload": json.dumps({"agent_state": "authenticating"}),
+            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_absent_str_part": "25.0%",
+        },
+        {
+            "id": "TC-53",
+            "tier": "Tier 9: Cache",
+            "name": "Multi-family bucket merging: 3p-* in cache persists when gemini-* updated",
+            "setup_cache": {
+                "version": 1,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "3p-5h": {"used_percent": 99.0, "resets_at": int(time.time()) + 3600},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {"used_percent": 10.0, "reset_in_seconds": 1800}
+                }
+            }),
+            "check_cache_contains_keys": ["3p-5h", "gemini-5h"],
+        },
+        {
+            "id": "TC-54",
+            "tier": "Tier 9: Cache",
+            "name": "Corrupted cache file degrades gracefully without error",
+            "setup_raw_cache": "{corrupted json cache content...",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 15.0, "reset_in_seconds": 1800}}
+            }),
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 15.0% (30m) | Wk --%",
+        },
     ]
 
 
@@ -718,82 +831,119 @@ def run_all_tests() -> bool:
     passed_count = 0
     failed_count = 0
 
-    for tc in test_cases:
-        tc_id, tier, name = tc["id"], tc["tier"], tc["name"]
-        out, err, code = run_statusline_test(tc["payload"])
-        case_passed = True
-        failure_reasons = []
+    # Ensure user home default cache is cleaned up before testing
+    default_user_cache = Path.home() / ".gemini" / "antigravity-cli" / "usage_hud_cache.json"
+    if default_user_cache.exists():
+        try:
+            default_user_cache.unlink()
+        except Exception:
+            pass
 
-        # 1. Zero exit code
-        if code != 0:
-            case_passed = False
-            failure_reasons.append(f"Non-zero exit code: {code}")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for idx, tc in enumerate(test_cases):
+            tc_id, tier, name = tc["id"], tc["tier"], tc["name"]
+            
+            cache_file_path = Path(tmp_dir) / f"cache_{idx}.json"
+            
+            if "setup_cache" in tc:
+                with open(cache_file_path, "w", encoding="utf-8") as f:
+                    json.dump(tc["setup_cache"], f)
+            elif "setup_raw_cache" in tc:
+                with open(cache_file_path, "w", encoding="utf-8") as f:
+                    f.write(tc["setup_raw_cache"])
 
-        # 2. The TUI shares this terminal: nothing may land on stderr.
-        if err:
-            case_passed = False
-            failure_reasons.append(f"Unexpected stderr: {err!r}")
+            env = {"USAGE_HUD_CACHE": str(cache_file_path)}
+            out, err, code = run_statusline_test(tc["payload"], env=env)
+            case_passed = True
+            failure_reasons = []
 
-        # 3. Pure ASCII
-        is_ascii, non_ascii = verify_ascii(out)
-        if not is_ascii:
-            case_passed = False
-            failure_reasons.append(f"Non-ASCII chars detected: {non_ascii}")
-
-        plain = ANSI_REGEX.sub('', out)
-
-        # 4. Expected substrings (raw, so ANSI colour codes can be asserted)
-        for part in as_list(tc.get("check_str_part")):
-            if part not in out:
+            # 1. Zero exit code
+            if code != 0:
                 case_passed = False
-                failure_reasons.append(f"Missing expected substring: {part!r}")
+                failure_reasons.append(f"Non-zero exit code: {code}")
 
-        # 5. Forbidden substrings, checked on the ANSI-stripped line so that
-        #    escape-sequence bytes cannot mask or fake a match.
-        for part in as_list(tc.get("check_absent_str_part")):
-            if part in plain:
+            # 2. The TUI shares this terminal: nothing may land on stderr.
+            if err:
                 case_passed = False
-                failure_reasons.append(f"Unexpected substring present: {part!r}")
+                failure_reasons.append(f"Unexpected stderr: {err!r}")
 
-        # 6. Layout
-        if "check_starts_with" in tc and not plain.startswith(tc["check_starts_with"]):
-            case_passed = False
-            failure_reasons.append(
-                f"Line does not start with {tc['check_starts_with']!r}: {plain[:70]!r}"
-            )
+            # 3. Pure ASCII
+            is_ascii, non_ascii = verify_ascii(out)
+            if not is_ascii:
+                case_passed = False
+                failure_reasons.append(f"Non-ASCII chars detected: {non_ascii}")
 
-        if tc.get("check_no_bar"):
-            bar_chars = [c for c in plain if c in "[]"]
-            if bar_chars:
+            plain = ANSI_REGEX.sub('', out)
+
+            # 4. Expected substrings (raw, so ANSI colour codes can be asserted)
+            for part in as_list(tc.get("check_str_part")):
+                if part not in out:
+                    case_passed = False
+                    failure_reasons.append(f"Missing expected substring: {part!r}")
+
+            # 5. Forbidden substrings, checked on the ANSI-stripped line so that
+            #    escape-sequence bytes cannot mask or fake a match.
+            for part in as_list(tc.get("check_absent_str_part")):
+                if part in plain:
+                    case_passed = False
+                    failure_reasons.append(f"Unexpected substring present: {part!r}")
+
+            # 6. Layout
+            if "check_starts_with" in tc and not plain.startswith(tc["check_starts_with"]):
                 case_passed = False
                 failure_reasons.append(
-                    f"Progress-bar characters present after ANSI stripping: {bar_chars}"
+                    f"Line does not start with {tc['check_starts_with']!r}: {plain[:70]!r}"
                 )
 
-        # 7. Model truncation
-        if "check_model_max_len" in tc:
-            model_match = re.search(r'\x1b\[1;36m(.*?)\x1b\[0m', out)
-            if model_match:
-                extracted_model = model_match.group(1)
-                if len(extracted_model) > tc["check_model_max_len"]:
+            if tc.get("check_no_bar"):
+                bar_chars = [c for c in plain if c in "[]"]
+                if bar_chars:
                     case_passed = False
                     failure_reasons.append(
-                        f"Model name length {len(extracted_model)} > max "
-                        f"{tc['check_model_max_len']}: {extracted_model!r}"
+                        f"Progress-bar characters present after ANSI stripping: {bar_chars}"
                     )
 
-        if case_passed:
-            passed_count += 1
-            status_symbol = "PASS"
-        else:
-            failed_count += 1
-            status_symbol = "FAIL"
+            # 7. Model truncation
+            if "check_model_max_len" in tc:
+                model_match = re.search(r'\x1b\[1;36m(.*?)\x1b\[0m', out)
+                if model_match:
+                    extracted_model = model_match.group(1)
+                    if len(extracted_model) > tc["check_model_max_len"]:
+                        case_passed = False
+                        failure_reasons.append(
+                            f"Model name length {len(extracted_model)} > max "
+                            f"{tc['check_model_max_len']}: {extracted_model!r}"
+                        )
 
-        print(f"[{status_symbol}] {tc_id} ({tier}) - {name}")
-        if not case_passed:
-            for r in failure_reasons:
-                print(f"       Reason: {r}")
-            print(f"       RAW Output: {out!r}")
+            # 8. Cache specific checks
+            if tc.get("check_cache_exists") and not cache_file_path.exists():
+                case_passed = False
+                failure_reasons.append("Expected cache file to exist, but it was not created.")
+
+            if "check_cache_contains_keys" in tc and cache_file_path.exists():
+                try:
+                    c_data = json.loads(cache_file_path.read_text(encoding="utf-8"))
+                    c_quota = c_data.get("quota", {})
+                    for k in tc["check_cache_contains_keys"]:
+                        if k not in c_quota:
+                            case_passed = False
+                            failure_reasons.append(f"Expected key {k!r} in cached quota, but not found.")
+                except Exception as e:
+                    case_passed = False
+                    failure_reasons.append(f"Failed to read/parse cache file for keys check: {e}")
+
+            if case_passed:
+                passed_count += 1
+                status_symbol = "PASS"
+            else:
+                failed_count += 1
+                status_symbol = "FAIL"
+
+            print(f"[{status_symbol}] {tc_id} ({tier}) - {name}")
+            if not case_passed:
+                for r in failure_reasons:
+                    print(f"       Reason: {r}")
+                print(f"       RAW Output: {out!r}")
 
     print("\n==================================================")
     print(f"SUMMARY: Total: {len(test_cases)} | Passed: {passed_count} | Failed: {failed_count}")
@@ -805,3 +955,5 @@ def run_all_tests() -> bool:
 if __name__ == "__main__":
     success = run_all_tests()
     sys.exit(0 if success else 1)
+
+

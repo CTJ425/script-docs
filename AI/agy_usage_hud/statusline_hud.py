@@ -17,6 +17,8 @@ SPEC.md for the recorded shape.
 import sys
 import json
 import math
+import os
+import time
 
 # ANSI Color definitions
 COLOR_RESET = "\033[0m"
@@ -47,6 +49,15 @@ WEEKLY_NAMES = ("weekly", "week", "7d", "seven_days")
 # the active model draws from is worth showing.
 GEMINI_FAMILY = "gemini"
 THIRD_PARTY_FAMILY = "3p"
+
+# Cache settings
+CACHE_FILE = os.environ.get(
+    "USAGE_HUD_CACHE",
+    os.path.expanduser("~/.gemini/antigravity-cli/usage_hud_cache.json")
+)
+CACHE_VERSION = 1
+CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
+CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 
 
 def sanitize_ascii(text) -> str:
@@ -113,6 +124,8 @@ def extract_model_name(data: dict) -> str:
     the CLI finishes authenticating. A bare string is still accepted in case
     the shape changes back.
     """
+    if not isinstance(data, dict):
+        return ""
     raw = data.get("active_model")
     if raw is None:
         raw = data.get("model")
@@ -219,27 +232,202 @@ def parse_item(item):
     }
 
 
-def parse_quota_data(data: dict, family: str):
-    """Extracts 5h and Weekly quota info for the given model family."""
-    if not isinstance(data, dict):
-        data = {}
+def read_cache() -> dict:
+    """Reads disk cache safely. Returns dict or None."""
+    try:
+        cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
+        if not os.path.isfile(cache_path):
+            return None
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return None
+        if data.get("version") != CACHE_VERSION:
+            return None
+        return data
+    except Exception:
+        return None
 
-    quota = data.get("quota", {})
+
+def cache_is_fresh(cache: dict, now: float) -> bool:
+    """Checks if cache exists and is within 7 days age limit."""
+    if not isinstance(cache, dict):
+        return False
+    saved_at = cache.get("saved_at")
+    if not isinstance(saved_at, (int, float)) or math.isnan(saved_at) or math.isinf(saved_at):
+        return False
+    age = now - float(saved_at)
+    return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
+
+
+def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
+    """Looks up a cached bucket key (e.g. gemini-5h)."""
+    if not isinstance(cache, dict):
+        return None
+    quota = cache.get("quota")
     if not isinstance(quota, dict):
-        quota = {}
+        return None
+    key = f"{family}-{canonical_name}".lower()
+    bucket = quota.get(key)
+    if not isinstance(bucket, dict):
+        return None
+    return bucket
 
-    five_h = select_bucket(quota, FIVE_H_NAMES, family)
-    weekly = select_bucket(quota, WEEKLY_NAMES, family)
 
-    # Tolerate a payload that drops the buckets at the top level instead.
-    if five_h is None and weekly is None:
-        five_h = select_bucket(data, FIVE_H_NAMES, family)
-        weekly = select_bucket(data, WEEKLY_NAMES, family)
+def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
+    """Resolves usage bucket for a window: live payload first, then fresh cache."""
+    canonical_name = names[0]  # "5h" or "weekly"
+
+    # 1. Live payload evaluation
+    if isinstance(data, dict):
+        quota = data.get("quota", {})
+        live_item = select_bucket(quota, names, family)
+        if live_item is None:
+            live_item = select_bucket(data, names, family)
+        parsed_live = parse_item(live_item)
+        if parsed_live is not None:
+            reset_sec = parsed_live.get("reset_in_seconds", 0)
+            resets_at = (now + reset_sec) if reset_sec > 0 else None
+            return {
+                "used_percent": parsed_live["used_percent"],
+                "reset_in_seconds": reset_sec,
+                "resets_at": resets_at,
+                "is_live": True,
+                "family": family,
+                "canonical_name": canonical_name
+            }
+
+    # 2. Check fresh cache
+    if not cache_is_fresh(cache, now):
+        return None
+
+    cb = cached_bucket(cache, family, canonical_name)
+    if cb is None:
+        # Fallback search across aliases or unprefixed in cache
+        c_quota = cache.get("quota", {})
+        if isinstance(c_quota, dict):
+            cb = select_bucket(c_quota, names, family)
+
+    if cb is None or not isinstance(cb, dict):
+        return None
+
+    used_pct = cb.get("used_percent")
+    if used_pct is None:
+        return None
+
+    try:
+        val = float(used_pct)
+        if math.isnan(val):
+            return None
+        if math.isinf(val):
+            val = 100.0 if val > 0 else 0.0
+        used_pct = round(max(0.0, min(100.0, val)), 1)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+    resets_at = cb.get("resets_at")
+    if resets_at is not None:
+        try:
+            r_at = float(resets_at)
+            if not math.isnan(r_at) and not math.isinf(r_at):
+                if r_at <= now:
+                    # Window rolled over
+                    return {
+                        "used_percent": 0.0,
+                        "reset_in_seconds": 0,
+                        "resets_at": None,
+                        "is_live": False,
+                        "family": family,
+                        "canonical_name": canonical_name
+                    }
+                else:
+                    remaining = int(r_at - now)
+                    return {
+                        "used_percent": used_pct,
+                        "reset_in_seconds": remaining,
+                        "resets_at": r_at,
+                        "is_live": False,
+                        "family": family,
+                        "canonical_name": canonical_name
+                    }
+        except (ValueError, TypeError, OverflowError):
+            pass
 
     return {
-        "5h": parse_item(five_h),
-        "weekly": parse_item(weekly)
+        "used_percent": used_pct,
+        "reset_in_seconds": 0,
+        "resets_at": None,
+        "is_live": False,
+        "family": family,
+        "canonical_name": canonical_name
     }
+
+
+def resolve_model_name(data: dict, cache: dict, now: float) -> str:
+    """Returns model display name, trying live payload first, then fresh cache."""
+    raw_model = extract_model_name(data)
+    model_name = sanitize_ascii(raw_model)[:MODEL_MAX_LEN].strip()
+    if model_name:
+        return model_name
+
+    if cache_is_fresh(cache, now):
+        cached_m = cache.get("model")
+        if isinstance(cached_m, str) and cached_m.strip():
+            return sanitize_ascii(cached_m)[:MODEL_MAX_LEN].strip()
+
+    return ""
+
+
+def write_cache(data: dict, resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
+    """Safely updates disk cache with live buckets and model info."""
+    try:
+        cache_path = os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
+        usable_cache = cache if cache_is_fresh(cache, now) else None
+
+        new_quota = {}
+        if usable_cache and isinstance(usable_cache.get("quota"), dict):
+            new_quota.update(usable_cache["quota"])
+
+        # Merge live buckets
+        has_live = False
+        for window_key, item in resolved_buckets.items():
+            if item and item.get("is_live"):
+                has_live = True
+                fam = item.get("family", GEMINI_FAMILY)
+                c_name = item.get("canonical_name", window_key)
+                key = f"{fam}-{c_name}".lower()
+                new_quota[key] = {
+                    "used_percent": item["used_percent"],
+                    "resets_at": item.get("resets_at")
+                }
+
+        model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
+
+        if not has_live and not (usable_cache is None and (new_quota or model_to_save)):
+            return
+
+        next_cache = {
+            "version": CACHE_VERSION,
+            "saved_at": int(now),
+            "model": model_to_save,
+            "quota": new_quota
+        }
+
+        if usable_cache:
+            if usable_cache.get("model") == next_cache["model"] and usable_cache.get("quota") == next_cache["quota"]:
+                return
+
+        cache_dir = os.path.dirname(cache_path)
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+
+        tmp_file = f"{cache_path}.tmp.{os.getpid()}"
+        with open(tmp_file, "w", encoding="utf-8") as f:
+            json.dump(next_cache, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp_file, cache_path)
+    except Exception:
+        pass
 
 
 def render_window(label: str, item) -> str:
@@ -254,21 +442,31 @@ def render_window(label: str, item) -> str:
 
 
 def render_statusline(data: dict) -> str:
-    """Renders pure ASCII statusline string."""
+    """Renders pure ASCII statusline string, with cache & time rolling."""
     if not isinstance(data, dict):
         data = {}
 
-    raw_model = extract_model_name(data)
-    model_name = sanitize_ascii(raw_model)[:MODEL_MAX_LEN].strip()
-    parsed = parse_quota_data(data, model_family(raw_model))
+    now = time.time()
+    cache = read_cache()
 
-    # Model first: it is the one field that is always short and always known,
-    # so it anchors the line when a terminal truncates the tail.
+    model_name = resolve_model_name(data, cache, now)
+    family = model_family(extract_model_name(data) or model_name)
+
+    bucket_5h = resolve_bucket(data, family, FIVE_H_NAMES, cache, now)
+    bucket_wk = resolve_bucket(data, family, WEEKLY_NAMES, cache, now)
+
+    resolved_buckets = {
+        "5h": bucket_5h,
+        "weekly": bucket_wk
+    }
+
+    write_cache(data, model_name, resolved_buckets, cache, now)
+
     parts = []
     if model_name:
         parts.append(f"{COLOR_CYAN}{model_name}{COLOR_RESET}")
-    parts.append(render_window("5h", parsed["5h"]))
-    parts.append(render_window("Wk", parsed["weekly"]))
+    parts.append(render_window("5h", bucket_5h))
+    parts.append(render_window("Wk", bucket_wk))
 
     return sanitize_ascii(SEPARATOR.join(parts))
 
@@ -277,13 +475,21 @@ def main():
     try:
         raw_input = sys.stdin.read()
         if not raw_input or not raw_input.strip():
-            print(FALLBACK_LINE)
+            # Try cache render before total fallback
+            status_line = render_statusline({})
+            print(status_line)
             return
 
-        data = json.loads(raw_input)
+        try:
+            data = json.loads(raw_input)
+        except Exception:
+            status_line = render_statusline({})
+            print(status_line)
+            return
+
         if not isinstance(data, dict):
-            # Non-dict JSON payloads (arrays, primitives) carry nothing usable.
-            print(FALLBACK_LINE)
+            status_line = render_statusline({})
+            print(status_line)
             return
 
         status_line = render_statusline(data)
@@ -295,3 +501,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

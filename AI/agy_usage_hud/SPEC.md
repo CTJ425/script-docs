@@ -1,136 +1,103 @@
 # AGY Usage HUD — Spec
 
-## Purpose
-A statusline for Antigravity CLI (`agy`) that shows, on one line:
-1. Current model name
-2. 5-hour rolling quota usage + reset countdown
-3. Weekly quota usage + reset countdown
+## Problem Statement
 
-## Scope decisions
-- Reads one JSON payload from stdin per render. No HTTP, no daemon, no state
-  on disk, no reading of local transcripts.
-- Pure ASCII output (ANSI colour codes aside). Every emitted character must
-  satisfy `ord(c) < 128`, so the line cannot break on a terminal without a
-  Unicode font or with ambiguous east-asian widths.
-- Standard library only, so the script can be curl'd to a machine and run.
-- Values are displayed, never estimated. A window with no usable figure in the
-  payload is rendered as unknown, not as a number.
+When running Antigravity CLI (`agy`), the statusline interceptor (`statusline_hud.py`) receives statusline payloads via `stdin` during CLI prompt render events. However, users experience the following issues with real-time usage visibility:
 
-## Output format
-```text
-Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
-```
-- Model name first: it is the only field that is always short and always
-  known, so it anchors the line when a narrow terminal truncates the tail.
-  Non-ASCII stripped, then truncated to 24 characters — the longest observed
-  `display_name`, "Gemini 3.6 Flash (High)", is 23, and a 20-char cap chopped
-  it mid-word. Omitted entirely (along with its separator) when the payload
-  carries no model, so the line then starts with `5h`.
-- Percentage only, no progress bar. Usage level is carried entirely by the
-  colour of the number, which costs no horizontal space — a bar spends eight
-  columns per window to say what the colour already says.
-- Percentage always to one decimal place, clamped to 0-100.
-- Colour thresholds: green <70%, yellow 70-89.9%, red >=90%.
-- Countdown: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`; `<=0` is `0m`.
-- Segments joined by a dim ` | `.
+1. **Static Countdowns During Terminal Idle**: When the user is not actively submitting prompts, statusline countdown timers (e.g. `3h11m`) do not update in real-time because `statusline_hud.py` is purely stateless and lacks a time-rolling reference to system time.
+2. **Cold-Start Degraded Display (`--%`)**: At CLI startup or during initial authentication phase when the payload carries incomplete or absent quota information, the statusline falls back to `--%` (unknown) rather than showing recent valid usage figures.
+3. **Delayed Rollover Detection**: When a quota window expires while idling, the display continues showing expired countdowns until a new live payload triggers, instead of automatically resetting usage to `0.0%`.
 
-This matches the sibling [Claude Code HUD](../claudecode_usage_hub/SPEC.md)
-field for field, so the two tools read identically side by side.
+## Solution
 
-## Unknown vs zero
-A window whose usage cannot be determined renders as a dim `--%` with no
-countdown. This is deliberate and is the one rule worth stating twice:
-a green `0.0%` reads as "quota barely touched", which is a claim the script
-cannot make when the payload simply did not carry the figure. A window is
-unknown when its bucket is missing, is not an object, carries none of
-`used_percent` / `used_percentage` / `remaining_fraction`, or carries a value
-that will not parse as a finite number.
+Upgrade `statusline_hud.py` to incorporate a **Local Cold-Start Cache** and **Dynamic Time-Rolling Engine**:
 
-A genuine `0.0` in the payload still renders as `0.0%`. Tier-7 tests pin both
-directions.
+1. **Dynamic Time-Rolling**: Convert incoming `reset_in_seconds` into absolute epoch timestamps (`resets_at = epoch_now + reset_in_seconds`) stored in the disk cache. Compute remaining duration dynamically against current system time on every render invocation.
+2. **Cold-Start & Bucket Fallback**: Persist model name and quota bucket usage to `~/.gemini/antigravity-cli/usage_hud_cache.json` (overridable via `USAGE_HUD_CACHE`). When live payload fields are missing or authenticating, fallback to fresh cached values.
+3. **Automatic Window Rollover**: If `current_epoch >= resets_at`, automatically treat the expired window as rolled over (`0.0%` used, countdown cleared).
+4. **Zero-Crash Resiliency**: All cache reading, parsing, and atomic writing (`.tmp` + rename) operations fail silently on error without affecting stdout rendering or exit code (always 0).
 
-## Total failure
-Empty stdin, invalid JSON, a non-object payload, or any unhandled exception
-prints the static fallback line and exits 0:
-```text
-5h --% | Wk --%
-```
-This runs on every prompt render, so it must never raise, never block, and
-never return non-zero — a crash here would disrupt the TUI, not just the line.
+## User Stories
 
-## Data source (agy statusline stdin JSON)
-Antigravity CLI's statusline payload is **not publicly documented**. The shape
-below was captured from Antigravity CLI 1.1.8 by teeing the statusline's stdin
-(see TROUBLESHOOTING.md); the same payloads are embedded verbatim as Tier 0
-test fixtures, so the contract is pinned to observation rather than guesswork.
+1. As a CLI user, I want the statusline reset countdown to dynamically reflect the actual remaining time based on system clock on every render, so that I have accurate countdown visibility even during prompt idle periods.
+2. As a CLI user, I want the statusline to display my last known quota usage immediately upon starting a new `agy` session, so that I don't see `--%` unknown indicators while the CLI is initializing or authenticating.
+3. As a CLI user, I want quota buckets that pass their reset timestamp to automatically roll over to `0.0%`, so that I know my quota has reset without needing to wait for a new API request payload.
+4. As a CLI user, I want different model families (`gemini-*` vs `3p-*`) to merge seamlessly in the local cache, so that switching models does not wipe out cached usage history for other model families.
+5. As a CLI user, I want any disk cache corruption or permission failure to be handled silently, so that my terminal prompt never crashes or outputs error tracebacks.
+6. As a developer, I want to override the cache location via an environment variable (`USAGE_HUD_CACHE`), so that unit tests can execute in complete isolation without mutating the user's home directory.
 
-Abridged capture, with the fields this script reads:
+## Implementation Decisions
+
+### 1. Module Structure & Cache Path
+- Primary interceptor script: `statusline_hud.py` (Python 3 standard library only).
+- Cache file path: `os.environ.get("USAGE_HUD_CACHE")` falling back to `~/.gemini/antigravity-cli/usage_hud_cache.json`.
+- Cache schema version: `1`.
+- Maximum cache age: `7 days` (`604800 seconds`).
+- Future clock skew slack: `300 seconds`.
+
+### 2. Cache Schema Design
 ```json
 {
-  "model": { "id": "...", "display_name": "Gemini 3.6 Flash (High)", "effort": "high" },
+  "version": 1,
+  "saved_at": 1722417300,
+  "model": "Gemini 3.6 Flash (High)",
   "quota": {
-    "gemini-5h":     { "remaining_fraction": 0.9986155, "reset_time": "...Z", "reset_in_seconds": 11515 },
-    "gemini-weekly": { "remaining_fraction": 0.8492495, "reset_time": "...Z", "reset_in_seconds": 431793 },
-    "3p-5h":         { "remaining_fraction": 1, "reset_time": "...Z", "reset_in_seconds": 17996 },
-    "3p-weekly":     { "remaining_fraction": 1, "reset_time": "...Z", "reset_in_seconds": 604796 }
-  },
-  "context_window": { "used_percentage": 0.0139, "remaining_percentage": 99.986, "...": "..." },
-  "agent_state": "idle", "plan_tier": "Google AI Pro", "version": "1.1.8"
+    "gemini-5h": {
+      "used_percent": 0.1,
+      "resets_at": 1722428815
+    },
+    "gemini-weekly": {
+      "used_percent": 15.1,
+      "resets_at": 1722849108
+    },
+    "3p-5h": {
+      "used_percent": 0.0,
+      "resets_at": 1722435328
+    },
+    "3p-weekly": {
+      "used_percent": 0.0,
+      "resets_at": 1723023328
+    }
+  }
 }
 ```
 
-### Model
-`active_model`, else `model`. It is an **object**, not a string: the name is
-`display_name`, else `id`. A plain string is still accepted in case the shape
-reverts. Anything else (including the `null` sent while the CLI authenticates)
-yields no model, and the line starts at `5h`. The object is never stringified —
-doing so once rendered `{'id': 'Gemini 3.6 F` as the model name.
+### 3. Bucket Resolution & Time-Rolling Protocol
+- **Live Payload Precedence**: Live figures directly from `stdin` override cached figures for present buckets.
+- **Cache Precedence**: Missing or unknown live buckets resolve to fresh cached bucket data if cache age `<= 7 days`.
+- **Rollover Evaluation**:
+  - If `resets_at` is present and `resets_at <= epoch_now`: window has rolled over -> `used_percent = 0.0`, countdown omitted.
+  - If `resets_at > epoch_now`: calculate dynamic `reset_in_seconds = int(resets_at - epoch_now)`.
+- **Model Name Fallback**: If live payload model name is empty/missing, fallback to cached model name if available.
 
-### Quota family
-Antigravity meters Gemini models and third-party models against separate pools,
-sent side by side as `gemini-*` and `3p-*`. Only the pool the active model
-draws from is worth showing, so the family is chosen by the model name:
-`gemini` when it contains "gemini" (case-insensitive), else `3p`. Bucket
-lookup, per window, in order:
+### 4. Atomic Persistence & Merging
+- Cache file writes perform partial merging: live bucket updates merge over existing fresh cached buckets.
+- Write process uses atomic write pattern: write to `CACHE_FILE + ".tmp." + pid`, followed by `os.replace()`.
+- Writes are skipped if cache payload contents (`model` and `quota` values) have not changed.
 
-1. `<family>-<window>`, e.g. `gemini-5h`
-2. the unprefixed `<window>` key
-3. any other family's `<window>` bucket, taken in sorted key order so the
-   choice is deterministic rather than dict-order luck
+## Testing Decisions
 
-Bucket keys are matched case-insensitively. Window names accepted after the
-prefix: `5h`, `rolling_5h`, `rolling5h`, `five_hour`, `5_hour`; and `weekly`,
-`week`, `7d`, `seven_days`.
+### 1. Test Seam & Isolation
+- Seam: External process execution seam (`subprocess.Popen` / `subprocess.run`).
+- Invocation: `test_statusline.py` executes `statusline_hud.py` passing test payloads via `stdin`.
+- Isolation: All cache-related tests set `USAGE_HUD_CACHE` to isolated temporary directory paths (`tempfile.mkdtemp()`).
 
-### Within a bucket
-- Usage: `used_percent`, else `used_percentage`, else `remaining_fraction`
-  (a 0–1 fraction, converted as `(1 - fraction) * 100`).
-- Reset: `reset_in_seconds`, else `reset_in`. Numeric strings are accepted;
-  `NaN`/`inf`/missing become `0`. `reset_time` is carried in the payload but is
-  not read — deriving a countdown from it would mean trusting the local clock.
+### 2. Test Suite Expansion (Tier 9: Cold-Start Cache & Time-Rolling)
+- **TC-48 (Cold-Start Write)**: Verify valid payload creates cache file with expected structure and timestamps.
+- **TC-49 (Cold-Start Read Fallback)**: Verify empty/authenticating payload reads cached values and renders model + percentages.
+- **TC-50 (Dynamic Time-Rolling)**: Verify countdown calculation reflects time elapsed between payload receipt and rendering.
+- **TC-51 (Window Rollover)**: Verify cached bucket with past `resets_at` renders `0.0%` without countdown.
+- **TC-52 (Expired Cache Ignored)**: Verify cache older than 7 days is ignored and renders `--%`.
+- **TC-53 (Bucket Merging)**: Verify `gemini-*` payload does not wipe out cached `3p-*` buckets.
+- **TC-54 (Fault Tolerance)**: Verify corrupted JSON or unwritable cache directory degrades silently to normal rendering with exit code 0.
 
-### Not read
-`context_window.used_percentage` measures the **context window**, not quota.
-Reading it as quota would print a confident number for a window the payload
-says nothing about. Tier 0 pins this.
+## Out of Scope
 
-## Testing
-`test_statusline.py` runs the script as a subprocess and asserts on stdout,
-stderr and exit code. Nine tiers, 47 cases:
+1. **Background Daemon / Network Polling**: No background processes or active HTTP calls to Antigravity API servers.
+2. **CLI Binary Modifications**: No modifications to `agy` CLI binary or internal source code.
+3. **Multi-User Cache Sharing**: Cache is strictly local to user profile or designated test path.
 
-| Tier | Covers |
-|---|---|
-| 0 | Payloads captured from agy 1.1.8, replayed verbatim (authenticating / initializing / idle), plus context-window-is-not-quota |
-| 1 | Colour thresholds, including the exact 70.0% and 90.0% boundaries |
-| 2 | Quota family selection: gemini vs 3p, key casing, single-family fallback, unprefixed keys, buckets at the top level with no `quota` wrapper |
-| 3 | Model extraction: object vs string, `display_name` over `id`, no-repr regression, truncation, non-ASCII |
-| 4 | Usage field variations: `used_percent`, `used_percentage`, `remaining_fraction`, precedence, reset aliases |
-| 5 | Boundaries: clamping, `NaN`/`inf`, string and negative reset values, day/hour countdown formats |
-| 6 | Malformed payloads: empty stdin, bad JSON, arrays, primitives, `{}`, non-object `quota` and buckets |
-| 7 | Unknown vs zero: missing bucket, missing field, unparseable value, and a genuine `0.0` |
-| 8 | Line layout: model first, no bar characters, and the model-less line starting at `5h` |
+## Further Notes
 
-Every case additionally asserts exit code 0, empty stderr, and pure-ASCII
-output. The suite is only meaningful because Tier 0 is real: the previous
-suite was written against an invented schema and passed 25/25 while the
-statusline was visibly broken in the TUI.
+- Full backwards compatibility with CLI `stdin` contracts is preserved.
+- Output format remains 100% pure ASCII with ANSI color coding.
