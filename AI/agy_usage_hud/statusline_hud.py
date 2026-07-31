@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""
-AGY Usage Statusline Interceptor (Pure ASCII Version)
-Reads JSON payload from stdin passed by AGY CLI TUI statusline trigger.
-Outputs one pure ASCII line:
-
-    <model> | 5h <pct>% (<reset>) | Wk <pct>% (<reset>)
-
-Percentages only -- no progress bar. The usage level is carried entirely by
-the colour of the number (green / yellow / red), which needs no horizontal
-space, so the line stays short on a narrow terminal.
-
-Field paths are taken from payloads captured from Antigravity CLI 1.1.8; see
-SPEC.md for the recorded shape.
-"""
-
 import sys
 import json
 import math
@@ -60,6 +44,19 @@ CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 
 
+def safe_float(value):
+    """Safely converts value to float, returning None if invalid or NaN/Inf."""
+    if value is None:
+        return None
+    try:
+        val = float(value)
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return val
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def sanitize_ascii(text) -> str:
     """Strips non-ASCII characters (ord(c) >= 128) from a string.
 
@@ -73,15 +70,10 @@ def sanitize_ascii(text) -> str:
 
 def format_duration(seconds) -> str:
     """Formats seconds into ASCII duration string (e.g. 2h10m or 3d04h)."""
-    if seconds is None:
+    val = safe_float(seconds)
+    if val is None:
         return "--"
-    try:
-        val = float(seconds)
-        if math.isnan(val) or math.isinf(val):
-            return "--"
-        total_seconds = int(val)
-    except (ValueError, TypeError, OverflowError):
-        return "--"
+    total_seconds = int(val)
 
     if total_seconds <= 0:
         return "0m"
@@ -100,14 +92,8 @@ def format_duration(seconds) -> str:
 
 def get_color_code(percent) -> str:
     """Returns ANSI color code based on percentage threshold."""
-    try:
-        pct = float(percent)
-        if math.isnan(pct):
-            pct = 0.0
-        elif math.isinf(pct):
-            pct = 100.0 if pct > 0 else 0.0
-    except (ValueError, TypeError, OverflowError):
-        pct = 0.0
+    val = safe_float(percent)
+    pct = 0.0 if val is None else val
 
     if pct >= 90.0:
         return COLOR_RED
@@ -192,39 +178,19 @@ def parse_item(item):
             break
 
     if used_pct is None:
-        rem_frac = item.get("remaining_fraction")
+        rem_frac = safe_float(item.get("remaining_fraction"))
         if rem_frac is None:
             return None
-        try:
-            rf = float(rem_frac)
-        except (ValueError, TypeError, OverflowError):
-            return None
-        if math.isnan(rf) or math.isinf(rf):
-            return None
-        used_pct = (1.0 - rf) * 100.0
+        used_pct = (1.0 - rem_frac) * 100.0
 
-    try:
-        val = float(used_pct)
-    except (ValueError, TypeError, OverflowError):
+    val = safe_float(used_pct)
+    if val is None:
         return None
-    if math.isnan(val):
-        return None
-    if math.isinf(val):
-        val = 100.0 if val > 0 else 0.0
     used_pct = round(max(0.0, min(100.0, val)), 1)
 
-    reset_sec = item.get("reset_in_seconds", item.get("reset_in", 0))
-    try:
-        if reset_sec is None:
-            reset_sec = 0
-        else:
-            r_val = float(reset_sec)
-            if math.isnan(r_val) or math.isinf(r_val):
-                reset_sec = 0
-            else:
-                reset_sec = int(r_val)
-    except (ValueError, TypeError, OverflowError):
-        reset_sec = 0
+    reset_sec_raw = item.get("reset_in_seconds", item.get("reset_in", 0))
+    reset_sec_val = safe_float(reset_sec_raw)
+    reset_sec = int(reset_sec_val) if reset_sec_val is not None else 0
 
     return {
         "used_percent": used_pct,
@@ -253,10 +219,10 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
     """Checks if cache exists and is within 7 days age limit."""
     if not isinstance(cache, dict):
         return False
-    saved_at = cache.get("saved_at")
-    if not isinstance(saved_at, (int, float)) or math.isnan(saved_at) or math.isinf(saved_at):
+    saved_at = safe_float(cache.get("saved_at"))
+    if saved_at is None:
         return False
-    age = now - float(saved_at)
+    age = now - saved_at
     return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
 
 
@@ -274,6 +240,18 @@ def cached_bucket(cache: dict, family: str, canonical_name: str) -> dict:
     return None
 
 
+def make_bucket_result(used_percent: float, reset_in_seconds, resets_at, is_live: bool, family: str, canonical_name: str) -> dict:
+    """Helper to consistently format bucket resolution results."""
+    return {
+        "used_percent": used_percent,
+        "reset_in_seconds": reset_in_seconds,
+        "resets_at": resets_at,
+        "is_live": is_live,
+        "family": family,
+        "canonical_name": canonical_name
+    }
+
+
 def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
     """Resolves usage bucket for a window: live payload first, then fresh cache."""
     canonical_name = names[0]  # "5h" or "weekly"
@@ -288,73 +266,31 @@ def resolve_bucket(data: dict, family: str, names, cache: dict, now: float):
         if parsed_live is not None:
             reset_sec = parsed_live.get("reset_in_seconds", 0)
             resets_at = (now + reset_sec) if reset_sec > 0 else None
-            return {
-                "used_percent": parsed_live["used_percent"],
-                "reset_in_seconds": reset_sec,
-                "resets_at": resets_at,
-                "is_live": True,
-                "family": family,
-                "canonical_name": canonical_name
-            }
+            return make_bucket_result(parsed_live["used_percent"], reset_sec, resets_at, True, family, canonical_name)
 
     # 2. Check fresh cache
     if not cache_is_fresh(cache, now):
         return None
 
-    cb = cached_bucket(cache, family, canonical_name)
-    if cb is None or not isinstance(cb, dict):
+    cached_item = cached_bucket(cache, family, canonical_name)
+    if cached_item is None or not isinstance(cached_item, dict):
         return None
 
-    used_pct = cb.get("used_percent")
-    if used_pct is None:
+    val = safe_float(cached_item.get("used_percent"))
+    if val is None:
         return None
+    used_pct = round(max(0.0, min(100.0, val)), 1)
 
-    try:
-        val = float(used_pct)
-        if math.isnan(val):
-            return None
-        if math.isinf(val):
-            val = 100.0 if val > 0 else 0.0
-        used_pct = round(max(0.0, min(100.0, val)), 1)
-    except (ValueError, TypeError, OverflowError):
-        return None
+    resets_at_val = safe_float(cached_item.get("resets_at"))
+    if resets_at_val is not None:
+        if resets_at_val <= now:
+            # Window rolled over -> used_percent = 0.0, countdown omitted
+            return make_bucket_result(0.0, None, None, False, family, canonical_name)
+        else:
+            remaining = int(resets_at_val - now)
+            return make_bucket_result(used_pct, remaining, resets_at_val, False, family, canonical_name)
 
-    resets_at = cb.get("resets_at")
-    if resets_at is not None:
-        try:
-            r_at = float(resets_at)
-            if not math.isnan(r_at) and not math.isinf(r_at):
-                if r_at <= now:
-                    # Window rolled over -> used_percent = 0.0, countdown omitted
-                    return {
-                        "used_percent": 0.0,
-                        "reset_in_seconds": None,
-                        "resets_at": None,
-                        "is_live": False,
-                        "family": family,
-                        "canonical_name": canonical_name
-                    }
-                else:
-                    remaining = int(r_at - now)
-                    return {
-                        "used_percent": used_pct,
-                        "reset_in_seconds": remaining,
-                        "resets_at": r_at,
-                        "is_live": False,
-                        "family": family,
-                        "canonical_name": canonical_name
-                    }
-        except (ValueError, TypeError, OverflowError):
-            pass
-
-    return {
-        "used_percent": used_pct,
-        "reset_in_seconds": None,
-        "resets_at": None,
-        "is_live": False,
-        "family": family,
-        "canonical_name": canonical_name
-    }
+    return make_bucket_result(used_pct, None, None, False, family, canonical_name)
 
 
 def resolve_model_name(data: dict, cache: dict, now: float) -> str:
@@ -438,7 +374,6 @@ def render_window(label: str, item) -> str:
     return f"{label} {col}{pct:.1f}%{COLOR_RESET}"
 
 
-
 def render_statusline(data: dict) -> str:
     """Renders pure ASCII statusline string, with cache & time rolling."""
     if not isinstance(data, dict):
@@ -472,23 +407,14 @@ def render_statusline(data: dict) -> str:
 def main():
     try:
         raw_input = sys.stdin.read()
-        if not raw_input or not raw_input.strip():
-            # Try cache render before total fallback
-            status_line = render_statusline({})
-            print(status_line)
-            return
-
-        try:
-            data = json.loads(raw_input)
-        except Exception:
-            status_line = render_statusline({})
-            print(status_line)
-            return
-
-        if not isinstance(data, dict):
-            status_line = render_statusline({})
-            print(status_line)
-            return
+        data = {}
+        if raw_input and raw_input.strip():
+            try:
+                parsed = json.loads(raw_input)
+                if isinstance(parsed, dict):
+                    data = parsed
+            except Exception:
+                pass
 
         status_line = render_statusline(data)
         print(status_line)
