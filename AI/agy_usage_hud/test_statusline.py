@@ -16,6 +16,7 @@ import sys
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 HUD_DIR = Path(__file__).parent.resolve()
@@ -29,6 +30,27 @@ YELLOW = "\033[1;33m"
 RED = "\033[1;31m"
 DIM = "\033[2m"
 RESET = "\033[0m"
+STALE = f"{DIM}~{RESET}"
+
+# Must track CACHE_VERSION in statusline_hud.py: a fixture written at the wrong
+# version is discarded on read, and the case then silently tests the empty-cache
+# path instead of whatever it meant to.
+CACHE_VERSION = 2
+
+# Countdown assertions compare rendered minutes, so a fixture must sit far
+# enough inside its minute band that the seconds spent running the suite cannot
+# push it into the one below.
+BAND_SLACK = 30
+
+
+def mid_band(offset_seconds: int) -> int:
+    """Same rendered countdown as offset_seconds, but centred in its minute.
+
+    11515s is 3h11m55s -- five seconds from rendering as 3h12m. Anchored against
+    a real clock that is a coin flip, so fixtures are moved to the middle of the
+    band they are asserting.
+    """
+    return (offset_seconds // 60) * 60 + BAND_SLACK
 
 # ---------------------------------------------------------------------------
 # Captured payloads (Antigravity CLI 1.1.8), verbatim apart from redaction.
@@ -142,17 +164,52 @@ CAPTURED_IDLE = {
 }
 
 
+def iso_from_now(offset_seconds: int) -> str:
+    """An absolute reset_time offset_seconds away, in the API's own format."""
+    moment = datetime.fromtimestamp(time.time() + offset_seconds, tz=timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def captured_idle_now() -> dict:
+    """CAPTURED_IDLE with its reset_time fields re-anchored to the present.
+
+    The verbatim capture is dated, and reset_time is an absolute instant, so
+    replaying it unchanged now means replaying a window that has already reset.
+    That is the right rendering -- it is just not what a countdown assertion is
+    trying to test, so those cases use this copy while TC-05 keeps the capture
+    exactly as recorded.
+    """
+    payload = json.loads(json.dumps(CAPTURED_IDLE))
+    for bucket in payload["quota"].values():
+        bucket["reset_time"] = iso_from_now(mid_band(bucket["reset_in_seconds"]))
+    return payload
+
+
 def gemini_model(display_name="Gemini 3.6 Flash (High)"):
     return {"id": display_name, "display_name": display_name, "effort": "high"}
 
 
-def run_statusline_test(payload_str: str, env: dict = None) -> tuple[str, str, int]:
+def oauth_token(expires_in: int = 3600, access_token: str = "test-token") -> dict:
+    """A token file shaped like agy's, expiring expires_in seconds from now."""
+    expiry = datetime.fromtimestamp(time.time() + expires_in, tz=timezone.utc)
+    return {
+        "token": {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "refresh_token": "test-refresh-token",
+            "expiry": expiry.isoformat(),
+        },
+        "auth_method": "oauth",
+    }
+
+
+def run_statusline_test(payload_str: str, env: dict = None, argv: list = None) -> tuple[str, str, int]:
     """Runs statusline_hud.py passing payload_str via stdin."""
     run_env = dict(os.environ)
     if env is not None:
         run_env.update(env)
     p = subprocess.Popen(
-        [sys.executable, str(SCRIPT_PATH)],
+        [sys.executable, str(SCRIPT_PATH)] + list(argv or []),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -186,11 +243,22 @@ def build_test_cases() -> list:
             "id": "TC-01",
             "tier": "Tier 0: Captured",
             "name": "Captured 'idle' payload renders model and both windows",
-            "payload": json.dumps(CAPTURED_IDLE),
+            "payload": lambda: json.dumps(captured_idle_now()),
             # gemini-5h     1 - 0.9986155 -> 0.1%,  11515s -> 3h11m
             # gemini-weekly 1 - 0.8492495 -> 15.1%, 431793s -> 4d23h
             "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
             "check_absent_str_part": ["--%", "{", "'id'"],
+        },
+        {
+            "id": "TC-01b",
+            "tier": "Tier 0: Captured",
+            "name": "Captured payload replayed after its reset_time has passed rolls over",
+            # reset_time is absolute, so replaying the dated capture verbatim is
+            # replaying a window that has already reset. The countdown must
+            # bottom out rather than restart at the recorded 3h11m.
+            "payload": json.dumps(CAPTURED_IDLE),
+            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (0m)",
+            "check_absent_str_part": ["(3h11m)"],
         },
         {
             "id": "TC-02",
@@ -732,7 +800,7 @@ def build_test_cases() -> list:
             "id": "TC-48",
             "tier": "Tier 9: Cache",
             "name": "Cold-start cache write on valid payload",
-            "payload": json.dumps(CAPTURED_IDLE),
+            "payload": lambda: json.dumps(captured_idle_now()),
             "check_cache_exists": True,
             "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
         },
@@ -740,13 +808,15 @@ def build_test_cases() -> list:
             "id": "TC-49",
             "tier": "Tier 9: Cache",
             "name": "Cold-start fallback reads cached model and quota when payload authenticating",
-            "setup_cache": {
-                "version": 1,
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
                 "saved_at": int(time.time()),
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
-                    "gemini-5h": {"used_percent": 12.3, "resets_at": int(time.time()) + 3605},
-                    "gemini-weekly": {"used_percent": 45.6, "resets_at": int(time.time()) + 86405},
+                    "gemini-5h": {"used_percent": 12.3, "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                    "gemini-weekly": {"used_percent": 45.6, "fetched_at": time.time(),
+                                      "resets_at": int(time.time()) + 86400 + BAND_SLACK},
                 }
             },
             "payload": json.dumps(CAPTURED_AUTHENTICATING),
@@ -756,13 +826,15 @@ def build_test_cases() -> list:
             "id": "TC-50",
             "tier": "Tier 9: Cache",
             "name": "Dynamic time-rolling countdown recalculates against system clock",
-            "setup_cache": {
-                "version": 1,
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
                 "saved_at": int(time.time()) - 300,
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
-                    "gemini-5h": {"used_percent": 20.0, "resets_at": int(time.time()) + 3305},
-                    "gemini-weekly": {"used_percent": 30.0, "resets_at": int(time.time()) + 86105},
+                    "gemini-5h": {"used_percent": 20.0, "fetched_at": time.time() - 300,
+                                  "resets_at": int(time.time()) + 3300 + BAND_SLACK},
+                    "gemini-weekly": {"used_percent": 30.0, "fetched_at": time.time() - 300,
+                                      "resets_at": int(time.time()) + 86100 + BAND_SLACK},
                 }
             },
             "payload": json.dumps({"agent_state": "idle"}),
@@ -772,13 +844,15 @@ def build_test_cases() -> list:
             "id": "TC-51",
             "tier": "Tier 9: Cache",
             "name": "Window rollover: past resets_at renders 0.0% with no countdown",
-            "setup_cache": {
-                "version": 1,
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
                 "saved_at": int(time.time()) - 1000,
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
-                    "gemini-5h": {"used_percent": 88.0, "resets_at": int(time.time()) - 100},
-                    "gemini-weekly": {"used_percent": 50.0, "resets_at": int(time.time()) + 3600},
+                    "gemini-5h": {"used_percent": 88.0, "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) - 100},
+                    "gemini-weekly": {"used_percent": 50.0, "fetched_at": time.time(),
+                                      "resets_at": int(time.time()) + 3600 + BAND_SLACK},
                 }
             },
             "payload": json.dumps({"agent_state": "idle"}),
@@ -789,8 +863,8 @@ def build_test_cases() -> list:
             "id": "TC-52",
             "tier": "Tier 9: Cache",
             "name": "Expired cache (>7 days) is ignored and falls back to --%",
-            "setup_cache": {
-                "version": 1,
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
                 "saved_at": int(time.time()) - (8 * 86400),
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
@@ -805,12 +879,13 @@ def build_test_cases() -> list:
             "id": "TC-53",
             "tier": "Tier 9: Cache",
             "name": "Multi-family bucket merging: 3p-* in cache persists when gemini-* updated",
-            "setup_cache": {
-                "version": 1,
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
                 "saved_at": int(time.time()),
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
-                    "3p-5h": {"used_percent": 99.0, "resets_at": int(time.time()) + 3600},
+                    "3p-5h": {"used_percent": 99.0, "fetched_at": time.time(),
+                              "resets_at": int(time.time()) + 3600},
                 }
             },
             "payload": json.dumps({
@@ -847,12 +922,302 @@ def build_test_cases() -> list:
             "id": "TC-56",
             "tier": "Tier 10: Live API",
             "name": "Background fetch handles invalid token file gracefully",
-            "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json"},
+            "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json",
+                    "USAGE_HUD_DISABLE_BG_FETCH": "0"},
             "payload": json.dumps({"agent_state": "idle"}),
+            "check_starts_with": "5h --%",
+        },
+        {
+            "id": "TC-57",
+            "tier": "Tier 10: Live API",
+            "name": "A recent API bucket outranks the stdin payload",
+            # The poller sees the server's own figure; agy only refreshes the
+            # payload's quota when a response arrives. Rendering the payload
+            # here is what made live refresh invisible.
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "last_api_fetch": time.time(),
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 0.1, "reset_in_seconds": 1800}},
+            }),
+            "check_str_part": "73.1%",
+            "check_absent_str_part": ["0.1%", STALE],
+        },
+        {
+            "id": "TC-58",
+            "tier": "Tier 10: Live API",
+            "name": "A payload does not overwrite a recent API bucket in the cache",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "last_api_fetch": time.time(),
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 0.1, "reset_in_seconds": 1800}},
+            }),
+            "check_cache_bucket": {"gemini-5h": {"used_percent": 73.1, "source": "api"}},
+        },
+        {
+            "id": "TC-59",
+            "tier": "Tier 10: Live API",
+            "name": "An API bucket older than its precedence window yields to the payload",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 120,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time() - 120,
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 0.1, "reset_in_seconds": 1800}},
+            }),
+            "check_str_part": "0.1%",
+            "check_absent_str_part": "73.1%",
+        },
+        {
+            "id": "TC-60",
+            "tier": "Tier 10: Live API",
+            "name": "Payload countdown reuses its stored anchor instead of re-pinning to now",
+            # reset_in_seconds is relative to when agy built the payload. Anchor
+            # it once: re-deriving now + 1800 every render froze the countdown at
+            # 30m forever and stopped the window ever rolling over.
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 600,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 0.1, "source": "payload",
+                                  "fetched_at": time.time() - 600,
+                                  "anchor_reset_in": 1800,
+                                  "resets_at": int(time.time()) + 1200 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 0.1, "reset_in_seconds": 1800}},
+            }),
+            "check_str_part": "(20m)",
+            "check_absent_str_part": "(30m)",
+        },
+        {
+            "id": "TC-61",
+            "tier": "Tier 10: Live API",
+            "name": "A changed reset_in_seconds re-anchors rather than reusing the old deadline",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 600,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 0.1, "source": "payload",
+                                  "fetched_at": time.time() - 600,
+                                  "anchor_reset_in": 1800,
+                                  "resets_at": int(time.time()) + 1200 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"used_percent": 0.1, "reset_in_seconds": 3600 + BAND_SLACK}},
+            }),
+            "check_str_part": "(1h00m)",
+        },
+        {
+            "id": "TC-62",
+            "tier": "Tier 10: Live API",
+            "name": "Cached figures nobody confirmed recently are marked stale",
+            # The frozen-HUD case: token expired, payload carries no quota. The
+            # number is still the best available, but it must not pass for live.
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 7200,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time() - 7200,
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps(CAPTURED_AUTHENTICATING),
+            "check_str_part": f"5h {STALE}{YELLOW}73.1%{RESET}",
+        },
+        {
+            "id": "TC-63",
+            "tier": "Tier 10: Live API",
+            "name": "Recently confirmed cached figures are not marked stale",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "payload",
+                                  "fetched_at": time.time() - 60,
+                                  "resets_at": int(time.time()) + 3600 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps(CAPTURED_AUTHENTICATING),
+            "check_str_part": f"5h {YELLOW}73.1%{RESET}",
+            "check_absent_str_part": STALE,
+        },
+        {
+            "id": "TC-64",
+            "tier": "Tier 10: Live API",
+            "name": "Failed background fetch writes a complete, re-readable cache",
+            # A bare {"last_api_fetch": ...} has no version, so read_cache
+            # rejects it -- losing the very bookkeeping the write was for and
+            # respawning the fetch on every render.
+            "argv": ["--bg-fetch"],
+            "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json"},
+            "payload": "",
+            "check_cache_top_keys": ["version", "saved_at", "model", "quota",
+                                     "last_api_fetch", "last_api_error"],
+        },
+        {
+            "id": "TC-65",
+            "tier": "Tier 10: Live API",
+            "name": "Failed background fetch preserves existing cached buckets",
+            "argv": ["--bg-fetch"],
+            "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json"},
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) + 3600},
+                }
+            },
+            "payload": "",
+            "check_cache_bucket": {"gemini-5h": {"used_percent": 73.1, "source": "api"}},
+        },
+        {
+            "id": "TC-66",
+            "tier": "Tier 10: Live API",
+            "name": "An expired OAuth token renders without stderr and without hanging",
+            "setup_token": lambda: oauth_token(expires_in=-3600),
+            "env": {"USAGE_HUD_DISABLE_BG_FETCH": "0"},
+            "payload": json.dumps(CAPTURED_AUTHENTICATING),
             "check_starts_with": "5h --%",
         },
     ]
 
+
+
+def build_unit_checks() -> list:
+    """In-process checks for decisions a rendered line cannot show.
+
+    Whether a background process was spawned, and how a timestamp was parsed,
+    are invisible from stdout -- and the spawn is detached, so watching for the
+    child is a race. These call the functions directly instead.
+    """
+    import statusline_hud as hud
+
+    # The real clock, because the spawn gate also validates the token's expiry
+    # and a synthetic epoch would make every fixture token look long dead.
+    now = time.time()
+    fresh_token = oauth_token(expires_in=3600)
+    dead_token = oauth_token(expires_in=-3600)
+
+    def spawn_decision(cache, token_data):
+        """Whether maybe_trigger_bg_fetch would start a process for this cache.
+
+        A spawned child inherits the environment, so USAGE_HUD_CACHE is pointed
+        at a scratch file: otherwise the checks that do spawn would write their
+        failed fetch straight into the user's real cache.
+        """
+        overrides = {"USAGE_HUD_DISABLE_BG_FETCH": None}
+        previous = {k: os.environ.get(k) for k in
+                    ("USAGE_HUD_DISABLE_BG_FETCH", "USAGE_HUD_TOKEN_PATH", "USAGE_HUD_CACHE")}
+        try:
+            with tempfile.TemporaryDirectory() as unit_dir:
+                token_path = Path(unit_dir) / "token.json"
+                token_path.write_text(json.dumps(token_data), encoding="utf-8")
+                overrides["USAGE_HUD_TOKEN_PATH"] = str(token_path)
+                overrides["USAGE_HUD_CACHE"] = str(Path(unit_dir) / "cache.json")
+                for key, value in overrides.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+                return hud.maybe_trigger_bg_fetch(cache, now)
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    due = {"last_api_fetch": now - 3600}
+
+    return [
+        ("UC-01", "Nanosecond precision and a numeric offset parse",
+         lambda: hud.parse_iso8601("2026-07-31T17:43:47.446579281+08:00") == 1785491027.446579),
+        ("UC-02", "A trailing Z is read as UTC",
+         lambda: hud.parse_iso8601("2026-08-05T01:32:05Z") == 1785893525.0),
+        ("UC-03", "Junk timestamps yield None, not an exception",
+         lambda: all(hud.parse_iso8601(v) is None for v in (None, "", "not-a-time", 17, {}))),
+        ("UC-04", "A future expiry is usable",
+         lambda: hud.token_is_usable(fresh_token, now) is True),
+        ("UC-05", "A past expiry is not usable",
+         lambda: hud.token_is_usable(dead_token, now) is False),
+        ("UC-06", "An expiry inside the skew window is not usable",
+         lambda: hud.token_is_usable(oauth_token(expires_in=10), now) is False),
+        ("UC-07", "A token file with no access_token is not usable",
+         lambda: hud.token_is_usable({"token": {"expiry": "2099-01-01T00:00:00Z"}}, now) is False),
+        ("UC-08", "A fetch that is due spawns",
+         lambda: spawn_decision(due, fresh_token) is True),
+        ("UC-09", "A recent failure suppresses the spawn for API_ERROR_COOLDOWN",
+         lambda: spawn_decision(dict(due, last_api_error=now - 5), fresh_token) is False),
+        ("UC-10", "A failure older than the cooldown no longer suppresses it",
+         lambda: spawn_decision(dict(due, last_api_error=now - hud.API_ERROR_COOLDOWN - 1),
+                                fresh_token) is True),
+        ("UC-11", "An expired token suppresses the spawn",
+         lambda: spawn_decision(due, dead_token) is False),
+        ("UC-12", "A fetch inside the poll interval does not spawn",
+         lambda: spawn_decision({"last_api_fetch": now - 1}, fresh_token) is False),
+        ("UC-13", "A failed background fetch still writes a re-readable cache",
+         lambda: hud.base_cache({"last_api_fetch": now}, now).get("version") == hud.CACHE_VERSION),
+    ]
+
+
+def run_unit_checks() -> tuple:
+    """Runs build_unit_checks, printing one line each. Returns (passed, failed)."""
+    sys.path.insert(0, str(HUD_DIR))
+    passed = failed = 0
+    for check_id, name, check in build_unit_checks():
+        try:
+            ok = bool(check())
+            reason = ""
+        except Exception as e:
+            ok = False
+            reason = f"{type(e).__name__}: {e}"
+        if ok:
+            passed += 1
+        else:
+            failed += 1
+        print(f"[{'PASS' if ok else 'FAIL'}] {check_id} (Tier 11: Units) - {name}")
+        if reason:
+            print(f"       Reason: {reason}")
+    return passed, failed
 
 
 def run_all_tests() -> bool:
@@ -870,16 +1235,37 @@ def run_all_tests() -> bool:
             tc_id, tier, name = tc["id"], tc["tier"], tc["name"]
             
             cache_file_path = Path(tmp_dir) / f"cache_{idx}.json"
-            
+
+            # Built here rather than in build_test_cases: a cache whose
+            # timestamps were computed before the preceding cases ran has
+            # already aged by the time it is read, which is what made the
+            # countdown assertions drift a minute and fail intermittently.
             if "setup_cache" in tc:
+                setup_cache = tc["setup_cache"]
+                if callable(setup_cache):
+                    setup_cache = setup_cache()
                 with open(cache_file_path, "w", encoding="utf-8") as f:
-                    json.dump(tc["setup_cache"], f)
+                    json.dump(setup_cache, f)
             elif "setup_raw_cache" in tc:
                 with open(cache_file_path, "w", encoding="utf-8") as f:
                     f.write(tc["setup_raw_cache"])
 
-            env = {"USAGE_HUD_CACHE": str(cache_file_path)}
-            out, err, code = run_statusline_test(tc["payload"], env=env)
+            payload = tc["payload"]
+            if callable(payload):
+                payload = payload()
+
+            # The suite must not depend on a reachable API or a valid OAuth
+            # token; cases that exercise the fetch re-enable it explicitly.
+            env = {"USAGE_HUD_CACHE": str(cache_file_path), "USAGE_HUD_DISABLE_BG_FETCH": "1"}
+
+            if "setup_token" in tc:
+                token_file_path = Path(tmp_dir) / f"token_{idx}.json"
+                with open(token_file_path, "w", encoding="utf-8") as f:
+                    json.dump(tc["setup_token"](), f)
+                env["USAGE_HUD_TOKEN_PATH"] = str(token_file_path)
+
+            env.update(tc.get("env") or {})
+            out, err, code = run_statusline_test(payload, env=env, argv=tc.get("argv"))
             case_passed = True
             failure_reasons = []
 
@@ -946,6 +1332,33 @@ def run_all_tests() -> bool:
                 case_passed = False
                 failure_reasons.append("Expected cache file to exist, but it was not created.")
 
+            if ("check_cache_top_keys" in tc or "check_cache_bucket" in tc) and cache_file_path.exists():
+                try:
+                    c_data = json.loads(cache_file_path.read_text(encoding="utf-8"))
+                except Exception as e:
+                    c_data = None
+                    case_passed = False
+                    failure_reasons.append(f"Failed to read/parse cache file: {e}")
+
+                for k in tc.get("check_cache_top_keys", []):
+                    if not isinstance(c_data, dict) or k not in c_data:
+                        case_passed = False
+                        failure_reasons.append(f"Expected top-level cache key {k!r}, but not found.")
+
+                for bucket_key, expected in (tc.get("check_cache_bucket") or {}).items():
+                    entry = (c_data or {}).get("quota", {}).get(bucket_key)
+                    if not isinstance(entry, dict):
+                        case_passed = False
+                        failure_reasons.append(f"Expected cached bucket {bucket_key!r}, but not found.")
+                        continue
+                    for field, want in expected.items():
+                        if entry.get(field) != want:
+                            case_passed = False
+                            failure_reasons.append(
+                                f"Cached bucket {bucket_key!r} field {field!r}: "
+                                f"expected {want!r}, got {entry.get(field)!r}"
+                            )
+
             if "check_cache_contains_keys" in tc and cache_file_path.exists():
                 try:
                     c_data = json.loads(cache_file_path.read_text(encoding="utf-8"))
@@ -971,8 +1384,13 @@ def run_all_tests() -> bool:
                     print(f"       Reason: {r}")
                 print(f"       RAW Output: {out!r}")
 
+    unit_passed, unit_failed = run_unit_checks()
+    passed_count += unit_passed
+    failed_count += unit_failed
+    total = len(test_cases) + unit_passed + unit_failed
+
     print("\n==================================================")
-    print(f"SUMMARY: Total: {len(test_cases)} | Passed: {passed_count} | Failed: {failed_count}")
+    print(f"SUMMARY: Total: {total} | Passed: {passed_count} | Failed: {failed_count}")
     print("==================================================")
 
     return failed_count == 0

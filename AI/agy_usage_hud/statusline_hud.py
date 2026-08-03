@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
 import sys
 import json
 import math
 import os
+import re
 import time
-from typing import NamedTuple, Optional
+from datetime import datetime, timezone
+from typing import NamedTuple, Optional, Tuple
 
 # ANSI Color definitions
 COLOR_RESET = "\033[0m"
@@ -19,6 +22,12 @@ COLOR_DIM = "\033[2m"
 UNKNOWN_SEGMENT = f"{COLOR_DIM}--%{COLOR_RESET}"
 SEPARATOR = f" {COLOR_DIM}|{COLOR_RESET} "
 FALLBACK_LINE = f"5h {UNKNOWN_SEGMENT}{SEPARATOR}Wk {UNKNOWN_SEGMENT}"
+
+# Prefixes a figure that no live source confirmed recently. Without it a frozen
+# HUD -- an expired OAuth token, a payload that stopped carrying quota -- is
+# indistinguishable from a genuinely idle account, which is exactly how a stale
+# reading gets mistaken for the truth.
+STALE_SEGMENT_PREFIX = f"{COLOR_DIM}~{COLOR_RESET}"
 
 # Long enough for the longest display_name observed so far,
 # "Gemini 3.6 Flash (High)" (23 chars); at 20 it was chopped mid-word.
@@ -40,7 +49,11 @@ CACHE_FILE = os.environ.get(
     "USAGE_HUD_CACHE",
     os.path.expanduser("~/.gemini/antigravity-cli/usage_hud_cache.json")
 )
-CACHE_VERSION = 1
+# Version 2 adds per-bucket provenance (source / fetched_at / anchor_reset_in).
+# Version 1 caches are discarded rather than migrated: they carry no provenance,
+# so every bucket in them would have to be guessed at, and one API poll rebuilds
+# the whole file anyway.
+CACHE_VERSION = 2
 CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
@@ -48,12 +61,26 @@ QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuot
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
 API_ERROR_COOLDOWN = 60.0  # seconds cooldown on API fetch failure
 
+# How long an API reading outranks the stdin payload. agy only refreshes the
+# payload's quota block when a response arrives, so between turns it goes stale
+# while the poller keeps seeing the server's own figure.
+API_RESULT_MAX_AGE_SECONDS = 30.0
+
+# A cached figure older than this is rendered with STALE_SEGMENT_PREFIX.
+STALE_AFTER_SECONDS = 600.0
+
+# Treat the OAuth token as dead slightly before its stated expiry, so a request
+# cannot be issued in the last moments of its validity and land after it.
+TOKEN_EXPIRY_SKEW_SECONDS = 30.0
+
+# Bucket provenance, recorded per cache entry.
+SOURCE_API = "api"
+SOURCE_PAYLOAD = "payload"
+
 
 def get_token_path() -> str:
     """Returns the effective OAuth token file path dynamically."""
     return os.environ.get("USAGE_HUD_TOKEN_PATH", DEFAULT_TOKEN_FILE)
-
-
 
 
 class BucketResult(NamedTuple):
@@ -64,6 +91,9 @@ class BucketResult(NamedTuple):
     is_live: bool
     family: str
     canonical_name: str
+    source: str = SOURCE_PAYLOAD
+    is_stale: bool = False
+    anchor_reset_in: Optional[int] = None
 
 
 def safe_float(value) -> Optional[float]:
@@ -76,6 +106,35 @@ def safe_float(value) -> Optional[float]:
             return None
         return val
     except (ValueError, TypeError, OverflowError):
+        return None
+
+
+_SUBSECOND_OVERFLOW = re.compile(r"^(.*\.\d{6})\d+(.*)$")
+
+
+def parse_iso8601(value) -> Optional[float]:
+    """Converts an ISO-8601 timestamp to epoch seconds, or None if unusable.
+
+    Sub-second digits past the sixth are dropped: agy emits nanoseconds
+    ("...:47.446579281+08:00"), which fromisoformat rejects before Python 3.11.
+    A timestamp without an offset is read as UTC, matching the API's own "Z".
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    text = value.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    overflow = _SUBSECOND_OVERFLOW.match(text)
+    if overflow:
+        text = overflow.group(1) + overflow.group(2)
+
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 
@@ -219,9 +278,15 @@ def parse_item(item):
     reset_sec_val = safe_float(reset_sec_raw)
     reset_sec = int(reset_sec_val) if reset_sec_val is not None else 0
 
+    # reset_time is an absolute instant, reset_in_seconds is relative to whenever
+    # agy built the payload -- which is not this render. Carry both; the caller
+    # prefers the absolute one precisely because it does not rot.
+    reset_epoch = parse_iso8601(item.get("reset_time"))
+
     return {
         "used_percent": used_pct,
-        "reset_in_seconds": reset_sec
+        "reset_in_seconds": reset_sec,
+        "resets_at": int(reset_epoch) if reset_epoch is not None else None
     }
 
 
@@ -276,11 +341,125 @@ def cached_bucket(cache: dict, family: str, canonical_name: str, names: tuple = 
     return None
 
 
+def entry_timestamp(entry, cache) -> Optional[float]:
+    """When a cached bucket was last confirmed by a source.
+
+    Falls back to the cache-wide saved_at for entries written before per-bucket
+    provenance existed, or by a path that did not record it.
+    """
+    if isinstance(entry, dict):
+        fetched_at = safe_float(entry.get("fetched_at"))
+        if fetched_at is not None:
+            return fetched_at
+    if isinstance(cache, dict):
+        return safe_float(cache.get("saved_at"))
+    return None
+
+
+def anchor_live_resets_at(parsed_live: dict, cached_item, now: float) -> Tuple[Optional[int], Optional[int]]:
+    """Absolute reset instant for a payload bucket, plus the anchor to persist.
+
+    reset_time is absolute, so it always wins. reset_in_seconds is only
+    meaningful relative to the moment agy built the payload: re-deriving
+    now + reset_in_seconds on every render re-pins the deadline to the present,
+    so the countdown freezes at its initial value and the window can never roll
+    over. Anchor it once instead, and keep that anchor for as long as the
+    payload keeps reporting the same relative value.
+    """
+    absolute = parsed_live.get("resets_at")
+    if absolute is not None:
+        return int(absolute), None
+
+    reset_sec = parsed_live.get("reset_in_seconds") or 0
+    if reset_sec <= 0:
+        return None, None
+
+    if isinstance(cached_item, dict):
+        previous_anchor = safe_float(cached_item.get("anchor_reset_in"))
+        previous_resets_at = safe_float(cached_item.get("resets_at"))
+        if (previous_anchor is not None
+                and previous_resets_at is not None
+                and int(previous_anchor) == int(reset_sec)):
+            return int(previous_resets_at), int(reset_sec)
+
+    # Rounded: truncating loses up to a second of now, which is enough to render
+    # an exactly-3600s payload as 59m.
+    return int(round(now + reset_sec)), int(reset_sec)
+
+
+def bucket_from_cache_entry(entry: dict, family: str, canonical_name: str, now: float,
+                            is_live: bool, is_stale: bool) -> Optional[BucketResult]:
+    """Builds a BucketResult from a cached entry, applying window rollover."""
+    val = safe_float(entry.get("used_percent"))
+    if val is None:
+        return None
+    used_pct = round(max(0.0, min(100.0, val)), 1)
+    source = entry.get("source") if entry.get("source") in (SOURCE_API, SOURCE_PAYLOAD) else SOURCE_PAYLOAD
+
+    resets_at_val = safe_float(entry.get("resets_at"))
+    if resets_at_val is None:
+        return BucketResult(
+            used_percent=used_pct,
+            reset_in_seconds=None,
+            resets_at=None,
+            is_live=is_live,
+            family=family,
+            canonical_name=canonical_name,
+            source=source,
+            is_stale=is_stale
+        )
+
+    resets_at_int = int(resets_at_val)
+    if resets_at_int <= now:
+        # Window rolled over: the figure describes a window that no longer
+        # exists, so it is 0.0% with nothing left to count down to.
+        return BucketResult(
+            used_percent=0.0,
+            reset_in_seconds=None,
+            resets_at=None,
+            is_live=is_live,
+            family=family,
+            canonical_name=canonical_name,
+            source=source,
+            is_stale=is_stale
+        )
+
+    return BucketResult(
+        used_percent=used_pct,
+        reset_in_seconds=int(round(resets_at_int - now)),
+        resets_at=resets_at_int,
+        is_live=is_live,
+        family=family,
+        canonical_name=canonical_name,
+        source=source,
+        is_stale=is_stale
+    )
+
+
 def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: float) -> Optional[BucketResult]:
-    """Resolves usage bucket for a window: live payload first, then fresh cache."""
+    """Resolves one usage window: recent API reading, then live payload, then cache."""
     canonical_name = names[0]  # "5h" or "weekly"
 
-    # 1. Live payload evaluation
+    cached_item = None
+    if cache_is_fresh(cache, now):
+        cached_item = cached_bucket(cache, family, canonical_name, names=names)
+    cached_at = entry_timestamp(cached_item, cache)
+
+    # 1. A recent API reading outranks the payload. agy refreshes the payload's
+    #    quota block only when a response arrives, so between turns it reports
+    #    figures the poller has already superseded -- and it used to overwrite
+    #    them in the cache too, which made the poller pointless.
+    if (isinstance(cached_item, dict)
+            and cached_item.get("source") == SOURCE_API
+            and cached_at is not None
+            and now - cached_at <= API_RESULT_MAX_AGE_SECONDS):
+        api_result = bucket_from_cache_entry(
+            cached_item, family, canonical_name, now, is_live=True, is_stale=False
+        )
+        if api_result is not None:
+            return api_result
+
+    # 2. Live stdin payload.
     if isinstance(data, dict):
         quota = data.get("quota", {})
         live_item = select_bucket(quota, names, family)
@@ -288,61 +467,32 @@ def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: floa
             live_item = select_bucket(data, names, family)
         parsed_live = parse_item(live_item)
         if parsed_live is not None:
-            reset_sec = parsed_live.get("reset_in_seconds", 0)
-            resets_at = int(now + reset_sec) if reset_sec > 0 else None
+            resets_at, anchor = anchor_live_resets_at(parsed_live, cached_item, now)
+            # The payload states the current percentage outright, so unlike the
+            # cache path a passed deadline does not zero it -- only the
+            # countdown bottoms out, via format_duration.
+            # Rounded, not truncated: anchoring drops now's sub-second part, and
+            # truncating here would drop another, turning 1h00m into 59m.
+            reset_display = int(round(resets_at - now)) if resets_at is not None else 0
             return BucketResult(
                 used_percent=parsed_live["used_percent"],
-                reset_in_seconds=reset_sec,
+                reset_in_seconds=reset_display,
                 resets_at=resets_at,
                 is_live=True,
                 family=family,
-                canonical_name=canonical_name
+                canonical_name=canonical_name,
+                source=SOURCE_PAYLOAD,
+                is_stale=False,
+                anchor_reset_in=anchor
             )
 
-    # 2. Check fresh cache
-    if not cache_is_fresh(cache, now):
+    # 3. Cache fallback. Nothing confirmed this recently, so say so.
+    if not isinstance(cached_item, dict):
         return None
 
-    cached_item = cached_bucket(cache, family, canonical_name, names=names)
-    if cached_item is None or not isinstance(cached_item, dict):
-        return None
-
-    val = safe_float(cached_item.get("used_percent"))
-    if val is None:
-        return None
-    used_pct = round(max(0.0, min(100.0, val)), 1)
-
-    resets_at_val = safe_float(cached_item.get("resets_at"))
-    if resets_at_val is not None:
-        resets_at_int = int(resets_at_val)
-        if resets_at_int <= now:
-            # Window rolled over -> used_percent = 0.0, countdown omitted
-            return BucketResult(
-                used_percent=0.0,
-                reset_in_seconds=None,
-                resets_at=None,
-                is_live=False,
-                family=family,
-                canonical_name=canonical_name
-            )
-        else:
-            remaining = int(resets_at_int - now)
-            return BucketResult(
-                used_percent=used_pct,
-                reset_in_seconds=remaining,
-                resets_at=resets_at_int,
-                is_live=False,
-                family=family,
-                canonical_name=canonical_name
-            )
-
-    return BucketResult(
-        used_percent=used_pct,
-        reset_in_seconds=None,
-        resets_at=None,
-        is_live=False,
-        family=family,
-        canonical_name=canonical_name
+    is_stale = cached_at is None or (now - cached_at) > STALE_AFTER_SECONDS
+    return bucket_from_cache_entry(
+        cached_item, family, canonical_name, now, is_live=False, is_stale=is_stale
     )
 
 
@@ -414,20 +564,83 @@ def is_cache_equivalent(previous_cache: dict, next_cache: dict) -> bool:
     return True
 
 
-def fetch_live_quota_from_api() -> Optional[dict]:
-    """Fetches real-time usage quota from Google Cloud Code PA API directly using OAuth token."""
+def read_oauth_token() -> Optional[dict]:
+    """Reads agy's OAuth token file, or None when absent/unreadable/malformed."""
     try:
         token_path = get_token_path()
         if not os.path.isfile(token_path):
             return None
         with open(token_path, "r", encoding="utf-8") as f:
             token_data = json.load(f)
-        access_token = token_data.get("token", {}).get("access_token")
-        if not isinstance(access_token, str) or not access_token:
+        return token_data if isinstance(token_data, dict) else None
+    except Exception:
+        return None
+
+
+def token_access_token(token_data) -> Optional[str]:
+    """Returns the bearer token out of the token file, or None."""
+    if not isinstance(token_data, dict):
+        return None
+    inner = token_data.get("token")
+    if not isinstance(inner, dict):
+        return None
+    access_token = inner.get("access_token")
+    if isinstance(access_token, str) and access_token:
+        return access_token
+    return None
+
+
+def token_is_usable(token_data, now: float) -> bool:
+    """True when the token file holds a bearer token that has not expired yet.
+
+    We deliberately do not mint a replacement from the refresh_token: that needs
+    agy's OAuth client secret, which has no business being in this repo. agy
+    rewrites this file whenever it refreshes and every fetch re-reads it, so the
+    HUD recovers on its own. Until then, checking the expiry here is what keeps
+    us from spawning a process every few seconds to collect a certain 401 -- and
+    is what lets the caller mark the figures stale instead of showing a frozen
+    number that still looks live.
+    """
+    if token_access_token(token_data) is None:
+        return False
+    inner = token_data.get("token")
+    expiry = parse_iso8601(inner.get("expiry")) if isinstance(inner, dict) else None
+    if expiry is None:
+        # No expiry recorded: let the request itself be the judge.
+        return True
+    return now < expiry - TOKEN_EXPIRY_SKEW_SECONDS
+
+
+def cache_needs_touch(cache: dict, now: float) -> bool:
+    """True when a bucket's fetched_at is old enough to need re-stamping.
+
+    Skipping a write because nothing changed is what keeps the cache quiet, but
+    a figure the payload keeps confirming would then age into looking stale. Let
+    an unchanged entry through occasionally so its timestamp stays honest.
+    """
+    if not isinstance(cache, dict):
+        return False
+    quota = cache.get("quota")
+    if not isinstance(quota, dict):
+        return False
+    for entry in quota.values():
+        if not isinstance(entry, dict):
+            continue
+        fetched_at = safe_float(entry.get("fetched_at"))
+        if fetched_at is None or now - fetched_at > STALE_AFTER_SECONDS / 2:
+            return True
+    return False
+
+
+def fetch_live_quota_from_api() -> Optional[dict]:
+    """Fetches real-time usage quota from Google Cloud Code PA API directly using OAuth token."""
+    try:
+        token_data = read_oauth_token()
+        access_token = token_access_token(token_data)
+        if access_token is None or not token_is_usable(token_data, time.time()):
             return None
 
         import urllib.request
-        from datetime import datetime
 
         req = urllib.request.Request(
             QUOTA_API_URL,
@@ -462,21 +675,36 @@ def fetch_live_quota_from_api() -> Optional[dict]:
                 if not isinstance(bid, str) or rem_frac is None:
                     continue
                 used_pct = round(max(0.0, min(100.0, (1.0 - rem_frac) * 100.0)), 1)
-                resets_at = None
-                if isinstance(reset_time_str, str) and reset_time_str:
-                    try:
-                        clean_time = reset_time_str.replace("Z", "+00:00")
-                        dt = datetime.fromisoformat(clean_time)
-                        resets_at = int(dt.timestamp())
-                    except Exception:
-                        pass
+                reset_epoch = parse_iso8601(reset_time_str)
                 quota[bid.lower()] = {
                     "used_percent": used_pct,
-                    "resets_at": resets_at
+                    "resets_at": int(reset_epoch) if reset_epoch is not None else None
                 }
         return quota if quota else None
     except Exception:
         return None
+
+
+def base_cache(existing_cache, now: float) -> dict:
+    """A complete cache dict seeded from existing_cache.
+
+    Every field the schema requires is filled in here. Writing a partial dict
+    (a bare {"last_api_fetch": ...}) produces a file read_cache rejects for
+    having no version, which loses the very bookkeeping the write was for and
+    leaves the fetch to be retried on every single render.
+    """
+    seed = existing_cache if isinstance(existing_cache, dict) else {}
+    quota = seed.get("quota")
+    next_cache = {
+        "version": CACHE_VERSION,
+        "saved_at": int(now),
+        "model": seed.get("model") if isinstance(seed.get("model"), str) else "",
+        "quota": dict(quota) if isinstance(quota, dict) else {}
+    }
+    for carried in ("last_api_fetch", "last_api_error"):
+        if seed.get(carried) is not None:
+            next_cache[carried] = seed[carried]
+    return next_cache
 
 
 def do_background_fetch():
@@ -484,47 +712,54 @@ def do_background_fetch():
     try:
         now = time.time()
         cache_path = get_cache_path()
-        existing_cache = read_cache() or {}
+        existing_cache = read_cache()
+        next_cache = base_cache(existing_cache, now)
 
         live_quota = fetch_live_quota_from_api()
         if not live_quota:
-            # Update last_api_fetch on failure to prevent process thrashing on subsequent renders
-            next_cache = dict(existing_cache) if isinstance(existing_cache, dict) else {
-                "version": CACHE_VERSION,
-                "saved_at": int(now),
-                "model": "",
-                "quota": {}
-            }
+            # Record the failure so the render path can back off for
+            # API_ERROR_COOLDOWN instead of respawning us every few seconds.
             next_cache["last_api_fetch"] = now
+            next_cache["last_api_error"] = now
             atomic_write_json(cache_path, next_cache)
             return
 
-        new_quota = {}
-        if isinstance(existing_cache.get("quota"), dict):
-            new_quota.update(existing_cache["quota"])
-        new_quota.update(live_quota)
+        for key, entry in live_quota.items():
+            entry["source"] = SOURCE_API
+            entry["fetched_at"] = now
+            next_cache["quota"][key] = entry
 
-        model_name = existing_cache.get("model", "")
-        next_cache = {
-            "version": CACHE_VERSION,
-            "saved_at": int(now),
-            "last_api_fetch": now,
-            "model": model_name,
-            "quota": new_quota
-        }
+        next_cache["last_api_fetch"] = now
+        next_cache.pop("last_api_error", None)
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
 
 
 
-def maybe_trigger_bg_fetch(cache: Optional[dict], now: float):
-    """Spawns non-blocking background fetch if enough time has passed."""
+def maybe_trigger_bg_fetch(cache: Optional[dict], now: float) -> bool:
+    """Spawns a non-blocking background fetch when one is due.
+
+    Returns whether a process was started, so the decision can be asserted on
+    without having to observe a detached child.
+    """
     if os.environ.get("USAGE_HUD_DISABLE_BG_FETCH") == "1":
-        return
+        return False
+
     last_fetch = safe_float(cache.get("last_api_fetch") if isinstance(cache, dict) else None) or 0.0
     if now - last_fetch < API_REFRESH_INTERVAL:
-        return
+        return False
+
+    # Back off after a failure. Without this the constant was decorative and a
+    # failing API was retried at the full poll rate, one process per render.
+    last_error = safe_float(cache.get("last_api_error") if isinstance(cache, dict) else None)
+    if last_error is not None and now - last_error < API_ERROR_COOLDOWN:
+        return False
+
+    # An expired token yields a guaranteed 401, so there is nothing to spawn
+    # for. Re-reading the file here is also how the HUD notices agy renewing it.
+    if not token_is_usable(read_oauth_token(), now):
+        return False
 
     import subprocess
     try:
@@ -538,8 +773,9 @@ def maybe_trigger_bg_fetch(cache: Optional[dict], now: float):
             stderr=subprocess.DEVNULL,
             env=env
         )
+        return True
     except Exception:
-        pass
+        return False
 
 
 def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
@@ -555,16 +791,38 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
         # Update live buckets in cache
         has_updates = False
         for window_key, item in resolved_buckets.items():
-            if isinstance(item, BucketResult) and item.is_live:
-                fam = item.family or GEMINI_FAMILY
-                canonical = item.canonical_name or window_key
-                key = f"{fam}-{canonical}".lower()
+            if not isinstance(item, BucketResult) or not item.is_live:
+                continue
+            # A bucket resolved from the API is already in the cache verbatim;
+            # rewriting it here would only re-stamp it with a payload's
+            # provenance.
+            if item.source == SOURCE_API:
+                continue
 
-                has_updates = True
-                bucket_entry = {"used_percent": item.used_percent}
-                if item.resets_at is not None:
-                    bucket_entry["resets_at"] = item.resets_at
-                new_quota[key] = bucket_entry
+            fam = item.family or GEMINI_FAMILY
+            canonical = item.canonical_name or window_key
+            key = f"{fam}-{canonical}".lower()
+
+            # Never let a payload figure displace an API reading that is still
+            # inside its precedence window: the poller is the fresher source,
+            # and clobbering it here is what silently disabled live refresh.
+            previous = new_quota.get(key)
+            if isinstance(previous, dict) and previous.get("source") == SOURCE_API:
+                previous_at = entry_timestamp(previous, usable_cache)
+                if previous_at is not None and now - previous_at <= API_RESULT_MAX_AGE_SECONDS:
+                    continue
+
+            has_updates = True
+            bucket_entry = {
+                "used_percent": item.used_percent,
+                "source": SOURCE_PAYLOAD,
+                "fetched_at": now
+            }
+            if item.resets_at is not None:
+                bucket_entry["resets_at"] = item.resets_at
+            if item.anchor_reset_in is not None:
+                bucket_entry["anchor_reset_in"] = item.anchor_reset_in
+            new_quota[key] = bucket_entry
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
 
@@ -577,10 +835,13 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
             "model": model_to_save,
             "quota": new_quota
         }
-        if usable_cache and usable_cache.get("last_api_fetch") is not None:
-            next_cache["last_api_fetch"] = usable_cache["last_api_fetch"]
+        for carried in ("last_api_fetch", "last_api_error"):
+            if usable_cache and usable_cache.get(carried) is not None:
+                next_cache[carried] = usable_cache[carried]
 
-        if usable_cache and is_cache_equivalent(usable_cache, next_cache):
+        if (usable_cache
+                and is_cache_equivalent(usable_cache, next_cache)
+                and not cache_needs_touch(usable_cache, now)):
             return
 
         atomic_write_json(cache_path, next_cache)
@@ -595,11 +856,12 @@ def render_window(label: str, item: Optional[BucketResult]) -> str:
 
     pct = item.used_percent
     col = get_color_code(pct)
+    mark = STALE_SEGMENT_PREFIX if item.is_stale else ""
     reset_sec = item.reset_in_seconds
     if reset_sec is not None:
         rst = format_duration(reset_sec)
-        return f"{label} {col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
-    return f"{label} {col}{pct:.1f}%{COLOR_RESET}"
+        return f"{label} {mark}{col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
+    return f"{label} {mark}{col}{pct:.1f}%{COLOR_RESET}"
 
 
 def render_statusline(data: dict) -> str:
