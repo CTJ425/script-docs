@@ -61,6 +61,9 @@
 | **8** | **模型名稱顯示成 `{'id': 'Gemini 3.6 F`** | 載荷的 `model` 是物件而非字串，卻被 `str()` 轉成 Python repr 後截斷。 | 已於 `extract_model_name()` 修正：物件取 `display_name`，退而取 `id`；`sanitize_ascii()` 對非字串一律回傳空字串，不再 `str()`。迴歸案例 TC-14。 |
 | **9** | **百分比不動 / 與 agy `/usage` 對不上** | 顯示到了另一個配額池。agy 對 Gemini 模型與第三方模型分開計額，切換模型就會換池。 | 確認 `quota` 中 `gemini-*` 與 `3p-*` 兩組數值，以及當前模型屬於哪一族；家族由模型名稱是否含 `gemini` 判定。 |
 | **10** | **百分比疑似顯示成 context window 用量** | 載荷另有 `context_window.used_percentage`，那是**上下文視窗**不是配額。 | 本腳本只讀 `quota`，不讀 `context_window`；TC-04 釘住此行為。 |
+| **11** | **數字前出現暗色 `~`（例：`5h ~73.1%`）** | 這個值超過 10 分鐘沒有被任何來源確認過。最常見是 OAuth access token 過期（agy 通常一小時換發一次），輪詢一律收到 `401 UNAUTHENTICATED`。 | 檢查 token 效期：`python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.gemini/antigravity-cli/antigravity-oauth-token')))['token']['expiry'])"`。已過期就讓 agy 重新換發（重啟 session 或重新登入）；**HUD 不會自己續期**，那需要 agy 的 OAuth client secret。token 一更新，下一次輪詢自動恢復，不必重啟狀態列。 |
+| **12** | **百分比整場不動，但沒有 `~` 標記** | 載荷持續帶著 `quota`，所以數值被視為即時——但 agy 只在收到回應時才更新那一段，兩次對話之間它本來就不會變。 | 對照 `usage_hud_cache.json`：`source: "api"` 的 bucket 才是輪詢拿到的伺服器數值。若 `last_api_error` 存在，代表輪詢正在失敗，比照第 11 項處理。 |
+| **13** | **倒數卡在同一個數字（例：永遠 `3h11m`）** | 舊版把 `reset_in_seconds` 每次 render 都重新錨定到當下，等於不斷把截止時間往後推。 | 已修正：`reset_time`（絕對時間）優先，只有相對秒數時錨定一次並存入 `anchor_reset_in` 重複使用。迴歸案例 TC-60 / TC-61。 |
 
 ---
 
@@ -199,10 +202,18 @@ python3 ./test_statusline.py
   驗證空輸入、毀損 JSON、JSON Array、JSON 原始型別、空字典，以及 `quota` 或 bucket 非物件時的安全降級。
 - **Tier 7: Unknown vs Zero (TC-40 ~ TC-43)**
   驗證資料缺漏（缺 bucket、缺欄位、值無法解析）必須顯示 `--%`，不得偽裝成 `0.0%`；同時驗證載荷中真正的 `0.0` 仍顯示 `0.0%`。
-- **Tier 8: Line Layout (TC-44 ~ TC-46)**
+- **Tier 8: Line Layout (TC-44 ~ TC-47)**
   驗證模型名稱位於行首、輸出（去除 ANSI 後）不含任何進度條字元 `[` `]`，以及無模型資訊時行首直接是 `5h`。
+- **Tier 9: Cold-Start Cache & Time-Rolling (TC-48 ~ TC-55)**
+  驗證冷啟動寫入與回填、倒數隨系統時鐘推進、視窗過期歸零、快取超過 7 天即忽略、跨家族 bucket 合併，以及快取毀損或目錄不可寫時的安全降級。
+- **Tier 10: Live API Precedence & Provenance (TC-56 ~ TC-66)**
+  驗證輪詢數值優先於 stdin 載荷且不被其覆寫、超過優先權窗口後讓位、倒數錨點的重用與重新錨定、過期數據的 `~` 標記，以及輪詢失敗時仍寫出完整可讀的快取。
+- **Tier 11: In-Process Unit Checks (UC-01 ~ UC-13)**
+  背景行程有沒有被啟動、時間戳怎麼被解析，都無法從 stdout 觀察（子行程是 detached，用等待去看它是 race）。這一層直接 import `statusline_hud` 呼叫函式本身，涵蓋 ISO-8601 解析、token 效期（含提前量窗口），以及 `maybe_trigger_bg_fetch` 的每一道閘門。
 
 每個案例另外一律斷言 exit code 為 0、stderr 為空、輸出純 ASCII。
+
+測試套件預設帶 `USAGE_HUD_DISABLE_BG_FETCH=1`，需要驗證輪詢的案例才個別放行；任何案例都不得依賴可連線的 API 或有效 token，也不得讓子行程寫進使用者真正的快取檔。
 
 ### 3. 如何擴充與新增自訂測試案例
 

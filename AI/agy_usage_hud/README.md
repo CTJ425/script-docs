@@ -13,7 +13,8 @@ Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 ## 特點
 
 - **100% 純 ASCII**（不含 ANSI 色碼）：相容所有終端字型與編碼，不會有寬度錯位或亂碼。
-- **無背景服務、無網路請求**：只在 agy 更新狀態列時被動從 stdin 讀一次 JSON。
+- **渲染永不阻塞**：狀態列本身只讀本地快取 (cache) 就輸出；配額 (quota) 由分離出去的背景行程每 5 秒向 API 拉取一次，網路慢或不通都不會拖住提示字元。
+- **數據過期會明講**：超過 10 分鐘沒有任何來源確認過的數字，前面加上暗色 `~`。凍結的 HUD 不會偽裝成「你剛好沒在用」。
 - **三段式警示色**：綠 (`<70%`)、黃 (`70~90%`)、紅 (`>=90%`)。
 - **只有數字百分比，沒有進度條**：用量高低完全由數字的顏色表達，不佔橫向空間，窄終端也不會被擠掉。
 - **模型名稱置於行首**：它是唯一永遠短且永遠已知的欄位，終端截斷尾巴時仍看得到自己在用哪個模型。
@@ -95,12 +96,20 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 5h --% | Wk --%
 ```
 
+**過期標記**：數字前的暗色 `~` 表示這個值超過 10 分鐘沒有被任何來源確認過——最常見的原因是 OAuth token 已過期，或 agy 目前送出的載荷不含 `quota`。
+
+```text
+Gemini 3.6 Flash (High) | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
+```
+
+值本身仍是目前最可靠的資訊，只是不該再被當成即時數據。agy 重新寫入 token 檔後，下一次輪詢就會自動恢復——**HUD 不會自己續期 token**，那需要 agy 的 OAuth client secret，不適合放進這個 repo。
+
 ---
 
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（56 案例，Tier 0-9）
+# 1. 完整邊界測試套件（81 案例，Tier 0-11）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
@@ -115,7 +124,7 @@ echo '{"quota":{"gemini-5h":{"remaining_fraction":0.58}}}' | python3 ~/.gemini/a
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 56 | Passed: 56 | Failed: 0` 並回傳 exit code 0。
+測試套件預期輸出 `Total: 81 | Passed: 81 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
 
 ---
 
@@ -124,7 +133,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-9，56 案例，含 agy 1.1.8 實測 payload）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-11，81 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |
