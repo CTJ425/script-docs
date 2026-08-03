@@ -4,6 +4,10 @@
 # Node
 node_modules/
 
+# Python bytecode (the test suite imports statusline_hud directly)
+__pycache__/
+*.py[cod]
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
