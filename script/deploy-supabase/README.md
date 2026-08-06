@@ -6,19 +6,14 @@
 
 ---
 
-## 🚀 一鍵執行 (Quick Start)
+## 🚀 下載與執行 (Quick Start)
 
-### 線上直接執行
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/deploy-supabase/deploy-supabase.sh | bash
-```
-
-### 本地下載執行
+因腳本包含互動式提示與輸入，請下載至本地後再執行：
 
 ```bash
-chmod +x deploy-supabase.sh
-./deploy-supabase.sh
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/deploy-supabase/deploy-supabase.sh -o deploy-supabase.sh \
+  && chmod +x deploy-supabase.sh \
+  && ./deploy-supabase.sh
 ```
 
 ---
