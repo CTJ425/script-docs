@@ -43,7 +43,8 @@ jobs:
           for f in script/RHEL-Family-Temp/seal-rhel-template.sh \
                    container/k8s_env_init/k8s_env_initialization.sh \
                    container/k8s_install/k8s_cluster_install.sh \
-                   script/pve_link_iso/pve_link_iso.sh; do
+                   script/pve_link_iso/pve_link_iso.sh \
+                   script/deploy-supabase/deploy-supabase.sh; do
             [ -x "$f" ] || { echo "::error file=$f::not executable (chmod +x)"; fail=1; }
             bash "$f" --help >/dev/null 2>&1 || { echo "::error file=$f::--help failed"; fail=1; }
           done
