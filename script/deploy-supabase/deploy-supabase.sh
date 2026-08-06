@@ -30,8 +30,8 @@ read_p_def() {
 validate_port() {
   local port=$1
   local name=$2
-  if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-    die "欄位 ${name} 必須為 1 到 65535 之間的有效整數 (您輸入的數值: '$port')"
+  if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 0 ] || [ "$port" -gt 65535 ]; then
+    die "欄位 ${name} 必須為 0 到 65535 之間的有效整數 (您輸入的數值: '$port')"
   fi
 }
 
@@ -43,17 +43,22 @@ if [ "$PROJECT_NAME" != "$INPUT_PROJECT_NAME" ]; then
 fi
 
 # 產生 20 字元亂數 Project Ref 做為預設子網域
-PROJECT_REF=$(tr -dc 'a-z0-9' < /dev/urandom | head -c 20)
+PROJECT_REF=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 20)
 
 INPUT_BASE_DOMAIN=$(read_p_def "請輸入基礎 Domain" "ivan.lab")
 BASE_DOMAIN=${INPUT_BASE_DOMAIN}
 
 DEFAULT_DOMAIN="${PROJECT_REF}.${BASE_DOMAIN}"
 INPUT_FULL_DOMAIN=$(read_p_def "請輸入目標完整 Domain/網址" "${DEFAULT_DOMAIN}")
-FULL_DOMAIN=$(echo "$INPUT_FULL_DOMAIN" | sed -e 's|^https*://||' -e 's|/.*$||')
+FULL_DOMAIN=$(echo "$INPUT_FULL_DOMAIN" | sed -e 's|^https*://||' -e 's|:[0-9]*.*$||' -e 's|/.*$||')
 
 INPUT_PROTOCOL=$(read_p_def "請選擇通訊協定 (http/https)" "http")
 PROTOCOL=${INPUT_PROTOCOL}
+
+echo ""
+USE_REVERSE_PROXY=""
+read -r -p "是否預計使用對外反向代理 (Reverse Proxy)？(對外 URL 自動去除特規 Port) (y/N) [N]: " USE_REVERSE_PROXY || true
+USE_REVERSE_PROXY=${USE_REVERSE_PROXY:-N}
 
 echo ""
 echo "--------------------------------------------------"
@@ -129,9 +134,15 @@ if [[ "$NEED_PORT_OFFSET" =~ ^[Yy]$ ]]; then
   fi
 fi
 
-PUBLIC_URL="${PROTOCOL}://${FULL_DOMAIN}:${KONG_HTTP_PORT}"
-API_URL="${PROTOCOL}://${FULL_DOMAIN}:${KONG_HTTP_PORT}/auth/v1"
-SITE_URL_FULL="${PROTOCOL}://${FULL_DOMAIN}:${STUDIO_PORT}"
+if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
+  PUBLIC_URL="${PROTOCOL}://${FULL_DOMAIN}"
+  API_URL="${PROTOCOL}://${FULL_DOMAIN}"
+  SITE_URL_FULL="${PROTOCOL}://${FULL_DOMAIN}"
+else
+  PUBLIC_URL="${PROTOCOL}://${FULL_DOMAIN}:${KONG_HTTP_PORT}"
+  API_URL="${PROTOCOL}://${FULL_DOMAIN}:${KONG_HTTP_PORT}"
+  SITE_URL_FULL="${PROTOCOL}://${FULL_DOMAIN}:${STUDIO_PORT}"
+fi
 
 echo ""
 echo "--> 正在檢測宿主機對外 Port 是否重複佔用..."
@@ -150,9 +161,16 @@ echo " 專案資料夾              : ./${PROJECT_NAME}"
 echo " 隨機 Project Ref       : ${PROJECT_REF}"
 echo " 完整目標 Domain         : ${FULL_DOMAIN}"
 echo " 通訊協定 (Protocol)     : ${PROTOCOL}"
+echo " 反向代理 (Reverse Proxy): ${USE_REVERSE_PROXY}"
+if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
+echo " Kong HTTP Port (內部)   : ${KONG_HTTP_PORT}"
+echo " Kong HTTPS Port (內部)  : ${KONG_HTTPS_PORT}"
+echo " Studio Dashboard (內部) : ${STUDIO_PORT}"
+else
 echo " Kong HTTP Port (對外)   : ${KONG_HTTP_PORT}"
 echo " Kong HTTPS Port (對外)  : ${KONG_HTTPS_PORT}"
 echo " Studio Dashboard (對外) : ${STUDIO_PORT}"
+fi
 echo " Postgres Port (對外)    : ${POSTGRES_PORT}"
 echo " Pooler Port (對外)      : ${POOLER_PORT}"
 echo " Public URL              : ${PUBLIC_URL}"
@@ -292,9 +310,16 @@ echo " 專案目錄                : $(pwd)"
 echo " 專案名稱 (Project Name) : ${PROJECT_NAME}"
 echo " 隨機 Project Ref       : ${PROJECT_REF}"
 echo " 完整目標 Domain         : ${FULL_DOMAIN}"
+echo " 反向代理 (Reverse Proxy): ${USE_REVERSE_PROXY}"
+if [[ "$USE_REVERSE_PROXY" =~ ^[Yy]$ ]]; then
+echo " Kong HTTP Port (內部)   : ${KONG_HTTP_PORT}"
+echo " Kong HTTPS Port (內部)  : ${KONG_HTTPS_PORT}"
+echo " Studio Dashboard (內部) : ${STUDIO_PORT}"
+else
 echo " Kong HTTP Port (對外)   : ${KONG_HTTP_PORT}"
 echo " Kong HTTPS Port (對外)  : ${KONG_HTTPS_PORT}"
 echo " Studio Dashboard (對外) : ${STUDIO_PORT}"
+fi
 echo " Postgres Port (對外)    : ${POSTGRES_PORT}"
 echo " Pooler Port (對外)      : ${POOLER_PORT}"
 if [ -n "$SELECTED_OVERRIDES_LIST" ]; then
