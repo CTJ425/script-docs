@@ -60,7 +60,7 @@
 | **7** | **超長模型名稱造成狀態列換行錯位** | API 回傳的模型名稱字串過長 (例如超過 30 個字元)。 | `statusline_hud.py` 內建自動裁切與純 ASCII 清理，模型名稱嚴格限制保留前 24 個字元，確保不換行。 |
 | **8** | **模型名稱顯示成 `{'id': 'Gemini 3.6 F`** | 載荷的 `model` 是物件而非字串，卻被 `str()` 轉成 Python repr 後截斷。 | 已於 `extract_model_name()` 修正：物件取 `display_name`，退而取 `id`；`sanitize_ascii()` 對非字串一律回傳空字串，不再 `str()`。迴歸案例 TC-14。 |
 | **9** | **百分比不動 / 與 agy `/usage` 對不上** | 顯示到了另一個配額池。agy 對 Gemini 模型與第三方模型分開計額，切換模型就會換池。 | 確認 `quota` 中 `gemini-*` 與 `3p-*` 兩組數值，以及當前模型屬於哪一族；家族由模型名稱是否含 `gemini` 判定。 |
-| **10** | **百分比疑似顯示成 context window 用量** | 載荷另有 `context_window.used_percentage`，那是**上下文視窗**不是配額。 | 本腳本只讀 `quota`，不讀 `context_window`；TC-04 釘住此行為。 |
+| **10** | **會話上下文與配額欄位區分** | `Ctx` 顯示當前會話 Token 與模型上下文視窗（如 `Ctx 19.9k/1M`），`5h` 與 `Wk` 則專門顯示帳號配額。 | 兩者獨立解析與渲染；`context_window` 不會干擾配額欄位。迴歸案例 TC-04、TC-67~TC-78。 |
 | **11** | **數字前出現暗色 `~`（例：`5h ~73.1%`）** | 這個值超過 10 分鐘沒有被任何來源確認過。最常見是 OAuth access token 過期（agy 通常一小時換發一次），輪詢一律收到 `401 UNAUTHENTICATED`。 | 檢查 token 效期：`python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.gemini/antigravity-cli/antigravity-oauth-token')))['token']['expiry'])"`。已過期就讓 agy 重新換發（重啟 session 或重新登入）；**HUD 不會自己續期**，那需要 agy 的 OAuth client secret。token 一更新，下一次輪詢自動恢復，不必重啟狀態列。 |
 | **12** | **百分比整場不動，但沒有 `~` 標記** | 載荷持續帶著 `quota`，所以數值被視為即時——但 agy 只在收到回應時才更新那一段，兩次對話之間它本來就不會變。 | 對照 `usage_hud_cache.json`：`source: "api"` 的 bucket 才是輪詢拿到的伺服器數值。若 `last_api_error` 存在，代表輪詢正在失敗，比照第 11 項處理。 |
 | **13** | **倒數卡在同一個數字（例：永遠 `3h11m`）** | 舊版把 `reset_in_seconds` 每次 render 都重新錨定到當下，等於不斷把截止時間往後推。 | 已修正：`reset_time`（絕對時間）優先，只有相對秒數時錨定一次並存入 `anchor_reset_in` 重複使用。迴歸案例 TC-60 / TC-61。 |

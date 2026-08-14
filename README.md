@@ -26,7 +26,7 @@
 
 | 專案 | 說明 |
 | --- | --- |
-| [AGY Usage HUD](./AI/agy_usage_hud) | Antigravity CLI (`agy`) 狀態列：模型名稱、5h 與每週配額用量、重置倒數 |
+| [AGY Usage HUD](./AI/agy_usage_hud) | Antigravity CLI (`agy`) 狀態列：模型名稱、Context Window 用量、5h 與每週配額用量、重置倒數 |
 | [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code 狀態列：模型名稱、5h / 每週用量、context window，含冷啟動快取 |
 
 ### ☸️ [`container/`](./container) —— 容器與 Kubernetes

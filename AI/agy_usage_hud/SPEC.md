@@ -104,7 +104,21 @@ Resolution order per window, first match wins:
   a genuinely idle account.
 - **Model Name Fallback**: If live payload model name is empty/missing, fallback to cached model name if available.
 
-### 4. Atomic Persistence & Merging
+### 4. Context Window Resolution & Formatting
+- **Payload Source**: Context window metrics (`used_percentage`, `current_usage.input_tokens`, `total_input_tokens`, `context_window_size`) are parsed directly from the live `stdin` payload.
+- **Session-Scoped**: Context window represents local prompt tokens for the active conversation; it is not polled from the remote Quota API.
+- **Formatting Protocol**:
+  - `< 1,000`: Direct integer (e.g. `146`, `500`).
+  - `1,000 ~ 99,999`: Formatted with `k` and up to one decimal if fractional (e.g. `19.5k`, `20k`).
+  - `100,000 ~ 999,999`: Integer `k` (e.g. `200k`, `128k`).
+  - `>= 1,000,000`: Formatted as `M` (e.g. `1048576` $\to$ `1M`, `2000000` $\to$ `2M`).
+- **Color Thresholds**:
+  - `< 70.0%`: Green (`\033[1;32m`).
+  - `70.0% ~ 89.9%`: Yellow (`\033[1;33m`).
+  - `>= 90.0%`: Red (`\033[1;31m`).
+- **Fallback**: Missing or uninitialized context window renders dim `Ctx --`.
+
+### 5. Atomic Persistence & Merging
 - Cache file writes perform partial merging: live bucket updates merge over existing fresh cached buckets.
 - Write process uses atomic write pattern: write to `CACHE_FILE + ".tmp." + pid`, followed by `os.replace()`.
 - Writes are skipped if cache payload contents (`model` and `quota` values) have not changed — except when a bucket's `fetched_at` has aged past half the staleness threshold, so a figure the payload keeps confirming does not age into looking stale.
@@ -136,25 +150,24 @@ Resolution order per window, first match wins:
 - **TC-66 (Expired Token)**: Verify an expired token renders without stderr or delay.
 
 ### 4. Test Suite Expansion (Tier 11: In-Process Unit Checks)
+- **UC-01**–**UC-13**: ISO-8601 parsing, token expiry, skew window, and background fetch spawning decisions.
+- **UC-14**–**UC-18**: Token formatting, boundary validation, context parsing, and rendering ANSI color checks.
 
-Whether a background process was spawned, and how a timestamp was parsed, are
-invisible from stdout — and the spawn is detached, so watching for the child is
-a race. **UC-01**–**UC-13** import `statusline_hud` and call these decisions
-directly, covering ISO-8601 parsing, token expiry (including the skew window),
-and each gate in `maybe_trigger_bg_fetch`.
+### 5. Test Suite Expansion (Tier 12: Context Window Suite)
+- **TC-67**–**TC-78**: Context window token formatting (`current_usage` vs `total_tokens`), size abbreviations (`k`, `M`), color thresholds (green/yellow/red), missing/corrupted degradations, and pure ASCII verification.
 
-### 5. Determinism Requirements
+### 6. Determinism Requirements
 - The suite sets `USAGE_HUD_DISABLE_BG_FETCH=1` by default; cases exercising the fetch re-enable it explicitly. No case may depend on a reachable API or a valid token, and none may spawn a process that writes to the user's real cache.
 - Time-relative fixtures are built **at execution time**, not when the case list is constructed: a cache whose timestamps predate the preceding cases has already aged by the time it is read.
 - Countdown fixtures sit in the middle of the minute band they assert (`mid_band`), so seconds spent running the suite cannot drop the rendered value into the band below.
 
-### 5. Live Quota API Fetch & Background Refresh
+### 7. Live Quota API Fetch & Background Refresh
 - Real-time quota updates directly fetch from `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` using the OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` (overridable via `USAGE_HUD_TOKEN_PATH`).
 - Statusline renders instantly using local cache (<10ms).
 - When `now - last_api_fetch >= 5` seconds, statusline spawns a non-blocking, detached background subprocess (`--bg-fetch`) to update `usage_hud_cache.json` in ~150ms without hanging prompt render.
 - On API error or offline status, `last_api_error` is recorded and no further fetch is spawned for 60 seconds (`API_ERROR_COOLDOWN`), preventing subprocess thrashing.
 
-### 6. OAuth Token Handling
+### 8. OAuth Token Handling
 - The token file is re-read on **every** fetch, so a token agy has renewed is picked up on the next poll with no restart.
 - The `expiry` field is checked before spawning: an expired token returns a certain `401 UNAUTHENTICATED`, so there is nothing worth spawning a process for. A `30`-second skew keeps a request from being issued in the last moments of validity.
 - **The HUD never mints its own token.** Exchanging the `refresh_token` requires agy's OAuth client secret, which does not belong in this repo. The consequence is deliberate and bounded: while the token is dead the figures go stale, and the `~` prefix says so, until agy rewrites the file.
@@ -169,4 +182,5 @@ and each gate in `maybe_trigger_bg_fetch`.
 
 - Full backwards compatibility with CLI `stdin` contracts is preserved.
 - Output format remains 100% pure ASCII with ANSI color coding.
+
 

@@ -242,11 +242,12 @@ def build_test_cases() -> list:
         {
             "id": "TC-01",
             "tier": "Tier 0: Captured",
-            "name": "Captured 'idle' payload renders model and both windows",
+            "name": "Captured 'idle' payload renders model, ctx and both windows",
             "payload": lambda: json.dumps(captured_idle_now()),
             # gemini-5h     1 - 0.9986155 -> 0.1%,  11515s -> 3h11m
             # gemini-weekly 1 - 0.8492495 -> 15.1%, 431793s -> 4d23h
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+            # context_window: 19477 + 380 = 19857 / 1048576 -> 19.9k/1M
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
             "check_absent_str_part": ["--%", "{", "'id'"],
         },
         {
@@ -257,7 +258,7 @@ def build_test_cases() -> list:
             # replaying a window that has already reset. The countdown must
             # bottom out rather than restart at the recorded 3h11m.
             "payload": json.dumps(CAPTURED_IDLE),
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (0m)",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (0m)",
             "check_absent_str_part": ["(3h11m)"],
         },
         {
@@ -265,7 +266,7 @@ def build_test_cases() -> list:
             "tier": "Tier 0: Captured",
             "name": "Captured 'authenticating' payload (model null, no quota)",
             "payload": json.dumps(CAPTURED_AUTHENTICATING),
-            "check_starts_with": "5h --%",
+            "check_starts_with": "Ctx -- | 5h --%",
             "check_absent_str_part": ["0.0%", "None"],
         },
         {
@@ -273,7 +274,7 @@ def build_test_cases() -> list:
             "tier": "Tier 0: Captured",
             "name": "Captured 'initializing' payload (model set, quota not yet sent)",
             "payload": json.dumps(CAPTURED_INITIALIZING),
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h --% | Wk --%",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 0/1M | 5h --% | Wk --%",
             "check_absent_str_part": ["0.0%", "{"],
         },
         {
@@ -285,10 +286,10 @@ def build_test_cases() -> list:
             # about; only the quota block may feed the 5h/Wk figures.
             "payload": json.dumps({
                 "model": gemini_model(),
-                "context_window": {"used_percentage": 42.0, "remaining_percentage": 58.0},
+                "context_window": {"used_percentage": 42.0, "remaining_percentage": 58.0, "context_window_size": 1000000},
             }),
-            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}"],
-            "check_absent_str_part": ["42.0%", "58.0%"],
+            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}", f"Ctx {GREEN}420k{RESET}{DIM}/1M{RESET}"],
+            "check_absent_str_part": ["5h 42.0%", "Wk 58.0%"],
         },
 
         # --- TIER 1: Colour thresholds --------------------------------------
@@ -471,7 +472,7 @@ def build_test_cases() -> list:
             "tier": "Tier 3: Model",
             "name": "Model object with no usable name is omitted entirely",
             "payload": json.dumps({"model": {"effort": "high"}}),
-            "check_starts_with": "5h --%",
+            "check_starts_with": "Ctx -- | 5h --%",
             "check_absent_str_part": ["{", "high"],
         },
         {
@@ -504,7 +505,7 @@ def build_test_cases() -> list:
             "tier": "Tier 3: Model",
             "name": "Garbage model types render no model rather than a repr",
             "payload": json.dumps({"model": [1, 2, 3]}),
-            "check_starts_with": "5h --%",
+            "check_starts_with": "Ctx -- | 5h --%",
             "check_absent_str_part": ["[", "1, 2, 3"],
         },
 
@@ -646,35 +647,35 @@ def build_test_cases() -> list:
             "tier": "Tier 6: Defence",
             "name": "Empty stdin",
             "payload": "",
-            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_str_part": [f"Ctx {DIM}--{RESET}", f"5h {DIM}--%{RESET}"],
         },
         {
             "id": "TC-34",
             "tier": "Tier 6: Defence",
             "name": "Invalid JSON syntax",
             "payload": "{invalid json syntax payload...",
-            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_str_part": [f"Ctx {DIM}--{RESET}", f"5h {DIM}--%{RESET}"],
         },
         {
             "id": "TC-35",
             "tier": "Tier 6: Defence",
             "name": "JSON array payload",
             "payload": json.dumps([1, 2, 3, "corrupted"]),
-            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_str_part": [f"Ctx {DIM}--{RESET}", f"5h {DIM}--%{RESET}"],
         },
         {
             "id": "TC-36",
             "tier": "Tier 6: Defence",
             "name": "JSON primitive payload",
             "payload": json.dumps("raw_string_payload"),
-            "check_str_part": f"5h {DIM}--%{RESET}",
+            "check_str_part": [f"Ctx {DIM}--{RESET}", f"5h {DIM}--%{RESET}"],
         },
         {
             "id": "TC-37",
             "tier": "Tier 6: Defence",
             "name": "Empty JSON object",
             "payload": json.dumps({}),
-            "check_starts_with": "5h ",
+            "check_starts_with": "Ctx -- | 5h ",
             "check_absent_str_part": "0.0%",
         },
         {
@@ -771,14 +772,14 @@ def build_test_cases() -> list:
         {
             "id": "TC-46",
             "tier": "Tier 8: Layout",
-            "name": "Model-less line starts directly with the 5h window",
+            "name": "Model-less line starts directly with Ctx and the 5h window",
             "payload": json.dumps({
                 "quota": {
                     "gemini-5h": {"remaining_fraction": 0.65, "reset_in_seconds": 5400},
                     "gemini-weekly": {"remaining_fraction": 0.50, "reset_in_seconds": 172800},
                 },
             }),
-            "check_starts_with": "5h 35.0%",
+            "check_starts_with": "Ctx -- | 5h 35.0%",
             "check_no_bar": True,
         },
         {
@@ -792,7 +793,7 @@ def build_test_cases() -> list:
                     "gemini-weekly": {"used_percent": 25.0, "reset_in_seconds": 86400},
                 },
             }),
-            "check_starts_with": "Gemini 3.6 Pro | 5h 15.0% (1h00m) | Wk 25.0% (1d00h)",
+            "check_starts_with": "Gemini 3.6 Pro | Ctx -- | 5h 15.0% (1h00m) | Wk 25.0% (1d00h)",
         },
 
         # --- TIER 9: Cold-start cache & dynamic time-rolling ---------------
@@ -802,7 +803,7 @@ def build_test_cases() -> list:
             "name": "Cold-start cache write on valid payload",
             "payload": lambda: json.dumps(captured_idle_now()),
             "check_cache_exists": True,
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
         },
         {
             "id": "TC-49",
@@ -820,7 +821,7 @@ def build_test_cases() -> list:
                 }
             },
             "payload": json.dumps(CAPTURED_AUTHENTICATING),
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 12.3% (1h00m) | Wk 45.6% (1d00h)",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx -- | 5h 12.3% (1h00m) | Wk 45.6% (1d00h)",
         },
         {
             "id": "TC-50",
@@ -905,7 +906,7 @@ def build_test_cases() -> list:
                 "model": gemini_model(),
                 "quota": {"gemini-5h": {"used_percent": 15.0, "reset_in_seconds": 1800}}
             }),
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 15.0% (30m) | Wk --%",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx -- | 5h 15.0% (30m) | Wk --%",
         },
         {
             "id": "TC-55",
@@ -916,7 +917,7 @@ def build_test_cases() -> list:
                 "model": gemini_model(),
                 "quota": {"gemini-5h": {"used_percent": 20.0, "reset_in_seconds": 1800}}
             }),
-            "check_starts_with": "Gemini 3.6 Flash (High) | 5h 20.0% (30m) | Wk --%",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx -- | 5h 20.0% (30m) | Wk --%",
         },
         {
             "id": "TC-56",
@@ -925,7 +926,7 @@ def build_test_cases() -> list:
             "env": {"USAGE_HUD_TOKEN_PATH": "/nonexistent/token.json",
                     "USAGE_HUD_DISABLE_BG_FETCH": "0"},
             "payload": json.dumps({"agent_state": "idle"}),
-            "check_starts_with": "5h --%",
+            "check_starts_with": "Ctx -- | 5h --%",
         },
         {
             "id": "TC-57",
@@ -1116,7 +1117,162 @@ def build_test_cases() -> list:
             "setup_token": lambda: oauth_token(expires_in=-3600),
             "env": {"USAGE_HUD_DISABLE_BG_FETCH": "0"},
             "payload": json.dumps(CAPTURED_AUTHENTICATING),
-            "check_starts_with": "5h --%",
+            "check_starts_with": "Ctx -- | 5h --%",
+        },
+
+        # --- TIER 12: Context Window ----------------------------------------
+        {
+            "id": "TC-67",
+            "tier": "Tier 12: Context Window",
+            "name": "Context window with current_usage input+output formatted correctly",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1048576,
+                    "current_usage": {"input_tokens": 19477, "output_tokens": 380},
+                },
+                "quota": {
+                    "gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 3600},
+                }
+            }),
+            "check_str_part": f"Ctx {GREEN}19.9k{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-68",
+            "tier": "Tier 12: Context Window",
+            "name": "Small context window usage under 1k renders integer tokens",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1048576,
+                    "total_input_tokens": 146,
+                    "total_output_tokens": 0,
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}146{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-69",
+            "tier": "Tier 12: Context Window",
+            "name": "Large 2M context window size formats as 2M",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 2000000,
+                    "current_usage": {"input_tokens": 250000},
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}250k{RESET}{DIM}/2M{RESET}",
+        },
+        {
+            "id": "TC-70",
+            "tier": "Tier 12: Context Window",
+            "name": "Context window green color below 70% used",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1000000,
+                    "current_usage": {"input_tokens": 500000},
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}500k{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-71",
+            "tier": "Tier 12: Context Window",
+            "name": "Context window yellow color between 70% and 90% used",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1000000,
+                    "current_usage": {"input_tokens": 750000},
+                },
+            }),
+            "check_str_part": f"Ctx {YELLOW}750k{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-72",
+            "tier": "Tier 12: Context Window",
+            "name": "Context window red color at or above 90% used",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1000000,
+                    "current_usage": {"input_tokens": 950000},
+                },
+            }),
+            "check_str_part": f"Ctx {RED}950k{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-73",
+            "tier": "Tier 12: Context Window",
+            "name": "Missing context_window renders Ctx --",
+            "payload": json.dumps({"model": gemini_model()}),
+            "check_str_part": f"Ctx {DIM}--{RESET}",
+            "check_absent_str_part": ["Ctx 0", "Ctx 0k"],
+        },
+        {
+            "id": "TC-74",
+            "tier": "Tier 12: Context Window",
+            "name": "Zero context_window_size (authenticating) renders Ctx --",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {"context_window_size": 0, "total_input_tokens": 0},
+            }),
+            "check_str_part": f"Ctx {DIM}--{RESET}",
+        },
+        {
+            "id": "TC-75",
+            "tier": "Tier 12: Context Window",
+            "name": "total_input_tokens fallback when current_usage is absent",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 200000,
+                    "total_input_tokens": 15000,
+                    "total_output_tokens": 500,
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}15.5k{RESET}{DIM}/200k{RESET}",
+        },
+        {
+            "id": "TC-76",
+            "tier": "Tier 12: Context Window",
+            "name": "used_percentage fallback when token counts are absent",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1000000,
+                    "used_percentage": 20.0,
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}200k{RESET}{DIM}/1M{RESET}",
+        },
+        {
+            "id": "TC-77",
+            "tier": "Tier 12: Context Window",
+            "name": "Corrupted or non-numeric context_window values degrade gracefully",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": "not-a-size",
+                    "current_usage": "garbage",
+                },
+            }),
+            "check_str_part": f"Ctx {DIM}--{RESET}",
+        },
+        {
+            "id": "TC-78",
+            "tier": "Tier 12: Context Window",
+            "name": "Pure ASCII compliance with Ctx segment",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "context_window": {
+                    "context_window_size": 1048576,
+                    "current_usage": {"input_tokens": 12345, "output_tokens": 67},
+                },
+            }),
+            "check_str_part": f"Ctx {GREEN}12.4k{RESET}{DIM}/1M{RESET}",
         },
     ]
 
@@ -1196,6 +1352,49 @@ def build_unit_checks() -> list:
          lambda: spawn_decision({"last_api_fetch": now - 1}, fresh_token) is False),
         ("UC-13", "A failed background fetch still writes a re-readable cache",
          lambda: hud.base_cache({"last_api_fetch": now}, now).get("version") == hud.CACHE_VERSION),
+        ("UC-14", "format_token_count formats sizes correctly (<1k, k, M, binary 1M/2M)",
+         lambda: (
+             hud.format_token_count(0) == "0"
+             and hud.format_token_count(146) == "146"
+             and hud.format_token_count(999) == "999"
+             and hud.format_token_count(1000) == "1k"
+             and hud.format_token_count(1500) == "1.5k"
+             and hud.format_token_count(19477) == "19.5k"
+             and hud.format_token_count(20000) == "20k"
+             and hud.format_token_count(200000) == "200k"
+             and hud.format_token_count(1000000) == "1M"
+             and hud.format_token_count(1048576) == "1M"
+             and hud.format_token_count(1500000) == "1.5M"
+             and hud.format_token_count(2000000) == "2M"
+             and hud.format_token_count(2097152) == "2M"
+         )),
+        ("UC-15", "format_token_count handles None, negative, and invalid values gracefully",
+         lambda: (
+             hud.format_token_count(None) == "0"
+             and hud.format_token_count(-500) == "0"
+             and hud.format_token_count("invalid") == "0"
+         )),
+        ("UC-16", "parse_context_window correctly extracts usage and bounds percentage",
+         lambda: (
+             hud.parse_context_window({
+                 "context_window": {
+                     "context_window_size": 1000000,
+                     "current_usage": {"input_tokens": 150000, "output_tokens": 50000},
+                 }
+             }) == hud.ContextResult(used_tokens=200000, total_tokens=1000000, used_percent=20.0)
+         )),
+        ("UC-17", "parse_context_window handles missing or zero size gracefully",
+         lambda: (
+             hud.parse_context_window({}) is None
+             and hud.parse_context_window({"context_window": {"context_window_size": 0}}) is None
+             and hud.parse_context_window({"context_window": None}) is None
+         )),
+        ("UC-18", "render_context_window produces expected color codes and dim fallback",
+         lambda: (
+             hud.render_context_window(None) == f"Ctx {hud.COLOR_DIM}--{hud.COLOR_RESET}"
+             and hud.render_context_window(hud.ContextResult(500000, 1000000, 50.0)) ==
+                 f"Ctx {hud.COLOR_GREEN}500k{hud.COLOR_RESET}{hud.COLOR_DIM}/1M{hud.COLOR_RESET}"
+         )),
     ]
 
 

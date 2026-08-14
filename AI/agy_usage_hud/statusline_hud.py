@@ -20,8 +20,9 @@ COLOR_DIM = "\033[2m"
 # green zero reads as "plenty of quota left", which is a claim we cannot make
 # when the payload did not carry the figure at all.
 UNKNOWN_SEGMENT = f"{COLOR_DIM}--%{COLOR_RESET}"
+UNKNOWN_CTX = f"{COLOR_DIM}--{COLOR_RESET}"
 SEPARATOR = f" {COLOR_DIM}|{COLOR_RESET} "
-FALLBACK_LINE = f"5h {UNKNOWN_SEGMENT}{SEPARATOR}Wk {UNKNOWN_SEGMENT}"
+FALLBACK_LINE = f"Ctx {UNKNOWN_CTX}{SEPARATOR}5h {UNKNOWN_SEGMENT}{SEPARATOR}Wk {UNKNOWN_SEGMENT}"
 
 # Prefixes a figure that no live source confirmed recently. Without it a frozen
 # HUD -- an expired OAuth token, a payload that stopped carrying quota -- is
@@ -94,6 +95,13 @@ class BucketResult(NamedTuple):
     source: str = SOURCE_PAYLOAD
     is_stale: bool = False
     anchor_reset_in: Optional[int] = None
+
+
+class ContextResult(NamedTuple):
+    """Domain representation of parsed context window usage."""
+    used_tokens: int
+    total_tokens: int
+    used_percent: float
 
 
 def safe_float(value) -> Optional[float]:
@@ -174,6 +182,90 @@ def format_duration(seconds) -> str:
         return f"{hours}h{minutes:02d}m"
     else:
         return f"{minutes}m"
+
+
+def format_token_count(tokens: Optional[int]) -> str:
+    """Formats integer token count into human-readable ASCII string (e.g. 500, 19.5k, 200k, 1M)."""
+    val = safe_float(tokens)
+    if val is None or val < 0:
+        return "0"
+    num = int(val)
+    if num < 1000:
+        return str(num)
+    if num >= 1_000_000 or num >= 1048576:
+        # Check standard binary 1M / 2M (1048576 / 2097152) or decimal 1M
+        if abs(num - 1048576) < 50000 or abs(num - 1_000_000) < 50000:
+            return "1M"
+        if abs(num - 2097152) < 50000 or abs(num - 2_000_000) < 50000:
+            return "2M"
+        m = num / 1_000_000.0
+        if round(m, 1) == float(int(round(m, 1))):
+            return f"{int(round(m, 1))}M"
+        return f"{m:.1f}M"
+    if num >= 100_000:
+        k = round(num / 1000.0)
+        return f"{int(k)}k"
+    k_val = num / 1000.0
+    rounded_1d = round(k_val, 1)
+    if rounded_1d == float(int(rounded_1d)):
+        return f"{int(rounded_1d)}k"
+    return f"{rounded_1d:.1f}k"
+
+
+def parse_context_window(data: dict) -> Optional[ContextResult]:
+    """Parses context_window from payload, returning ContextResult or None."""
+    if not isinstance(data, dict):
+        return None
+    cw = data.get("context_window")
+    if not isinstance(cw, dict):
+        return None
+
+    size_raw = safe_float(cw.get("context_window_size"))
+    if size_raw is None or size_raw <= 0:
+        return None
+    total_tokens = int(size_raw)
+
+    used_tokens = None
+    cur_usage = cw.get("current_usage")
+    if isinstance(cur_usage, dict):
+        inp = safe_float(cur_usage.get("input_tokens"))
+        out = safe_float(cur_usage.get("output_tokens"))
+        if inp is not None or out is not None:
+            used_tokens = int((inp or 0.0) + (out or 0.0))
+
+    if used_tokens is None:
+        tot_inp = safe_float(cw.get("total_input_tokens"))
+        tot_out = safe_float(cw.get("total_output_tokens"))
+        if tot_inp is not None or tot_out is not None:
+            used_tokens = int((tot_inp or 0.0) + (tot_out or 0.0))
+
+    if used_tokens is None:
+        used_pct_raw = safe_float(cw.get("used_percentage", cw.get("used_percent")))
+        if used_pct_raw is not None:
+            used_tokens = int(round(total_tokens * (used_pct_raw / 100.0)))
+
+    if used_tokens is None:
+        return None
+
+    used_tokens = max(0, used_tokens)
+    pct = (used_tokens / total_tokens) * 100.0 if total_tokens > 0 else 0.0
+    used_percent = round(max(0.0, min(100.0, pct)), 1)
+
+    return ContextResult(
+        used_tokens=used_tokens,
+        total_tokens=total_tokens,
+        used_percent=used_percent
+    )
+
+
+def render_context_window(ctx: Optional[ContextResult]) -> str:
+    """Renders the Context Window segment (e.g. Ctx 19.9k/1M or Ctx --)."""
+    if ctx is None:
+        return f"Ctx {UNKNOWN_CTX}"
+    used_str = format_token_count(ctx.used_tokens)
+    total_str = format_token_count(ctx.total_tokens)
+    color = get_color_code(ctx.used_percent)
+    return f"Ctx {color}{used_str}{COLOR_RESET}{COLOR_DIM}/{total_str}{COLOR_RESET}"
 
 
 def get_color_code(percent) -> str:
@@ -889,6 +981,7 @@ def render_statusline(data: dict) -> str:
     parts = []
     if model_name:
         parts.append(f"{COLOR_CYAN}{model_name}{COLOR_RESET}")
+    parts.append(render_context_window(parse_context_window(data)))
     parts.append(render_window("5h", bucket_5h))
     parts.append(render_window("Wk", bucket_wk))
 
