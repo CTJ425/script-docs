@@ -5,6 +5,24 @@ This file is the source of truth for every GitHub Release body.
 
 ---
 
+## 1.2.1 (2026-08-29)
+
+### Documentation
+
+#### AI / skill / versioning
+- **Semantic rules for each position**: the `version` skill stated the `x.y.z` format but
+  never said what each position means. It now carries a table — `x` for a compatibility
+  break, `y` for a feature, `z` for a fix or a documentation edit — and the rule that every
+  position to the right resets to `0`.
+- **Pre-1.0 rule**: while `x` is `0`, a breaking change increases `y`, not `x`. The move to
+  `1.0.0` needs the user to declare the contract stable; the skill never decides it alone.
+- **Removed a rule with no test**: "bump minor or major only for a large change" gave no
+  judgement an agent could apply. The position table replaces it.
+- **Naming note**: `x.y.z` and `x.x.x` name the same number. The skill writes `x.y.z` so
+  each position can be named on its own.
+
+---
+
 ## 1.2.0 (2026-08-29)
 
 ### Features

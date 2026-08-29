@@ -50,12 +50,33 @@ If that file does not exist, go to § Bootstrap. Do not guess file paths.
 | Release | `x.y.z` | `0.6.48` |
 | Dev | `x.y.z-dev.N` | `0.6.48-dev.3` |
 
+`x.y.z` and `x.x.x` name the same three-part number. This file writes `x.y.z` so that
+each position has its own letter.
+
+### Which position to increase
+
+| Position | Name | Increase it when |
+| ---- | ---- | ---- |
+| `x` | major | The change breaks compatibility. A user must change something to keep working |
+| `y` | minor | The change adds a feature, a subproject, or a command, and stays compatible |
+| `z` | patch | The change fixes a defect, edits documentation, or refactors. Behavior stays the same |
+
+When you increase a position, set every position to its right to `0`.
+Examples: `1.2.4` → `1.3.0` for a feature; `1.2.4` → `2.0.0` for a break.
+
+**Before version 1.0.0 the rule shifts left.** While `x` is `0`, the public contract is
+not stable yet:
+
+- A breaking change increases `y`. It does not increase `x`.
+- Everything else increases `z`.
+- Move to `1.0.0` only when the user declares the contract stable. Never decide this alone.
+
 Rules:
 
 1. `x.y.z` in a dev number is the **next** official version, not the current one.
 2. `N` starts at **1** and increases by 1 for each versioned change on that target.
 3. Write `-dev.1`, not `-dev-1` and not `-dev1`.
-4. Bump the patch number by default. Bump minor or major only for a large change.
+4. Increase `z` by default. Use the table above when the change is more than a fix.
 5. Only the release commit removes the `-dev.N` suffix.
 6. Never leave the dev branch on a bare official number while work is unfinished.
 7. After a release, both branches must show the **same** official number.
