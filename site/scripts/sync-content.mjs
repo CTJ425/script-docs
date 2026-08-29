@@ -23,10 +23,18 @@ export const SITE_ROOT = resolve(scriptDir, '..');
 export const REPO_ROOT = resolve(SITE_ROOT, '..');
 const OUT_FILE = join(SITE_ROOT, 'src', 'content', 'manifest.json');
 
-/** Directories that never hold publishable docs. */
+/**
+ * Directories that never hold publishable docs.
+ *
+ * `skill` holds Claude Code skills. A skill is an agent asset, not an operations
+ * document, and it nests one level deeper than this site publishes
+ * (`AI/skill/<name>/README.md`), so it is excluded here rather than left to fail
+ * the depth check below.
+ */
 const IGNORED = new Set([
   'site',
   'docs',
+  'skill',
   'portal_preview',
   'node_modules',
   '.git',
