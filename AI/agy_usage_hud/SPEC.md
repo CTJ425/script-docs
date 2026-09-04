@@ -254,7 +254,7 @@ Resolution order per window, first match wins:
 - Countdown fixtures sit in the middle of the minute band they assert (`mid_band`), so seconds spent running the suite cannot drop the rendered value into the band below.
 
 ### 8. Live Quota API Fetch & Background Refresh
-- Real-time quota updates directly fetch from `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` using the OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` (overridable via `USAGE_HUD_TOKEN_PATH`).
+- Real-time quota updates directly fetch from CloudCode `retrieveUserQuotaSummary` API using the OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` (overridable via `USAGE_HUD_TOKEN_PATH`). The active endpoint (e.g. `daily-cloudcode-pa.googleapis.com` or `cloudcode-pa.googleapis.com`) is auto-detected via `detect_quota_api_url()` from `cli.log` or overridden via `USAGE_HUD_QUOTA_API_URL` (default: `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`).
 - Statusline renders instantly using local cache (<10ms).
 - **Polling is a daemon, not a per-render spawn.** A one-shot fetch triggered
   from inside a render only polls while the TUI is redrawing: no render, no

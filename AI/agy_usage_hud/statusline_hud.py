@@ -63,7 +63,8 @@ CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 # many are tracked.
 MAX_TRACKED_SESSIONS = 8
 DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
-QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+DEFAULT_QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+QUOTA_API_URL = DEFAULT_QUOTA_API_URL
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
 
 # A cached figure older than this is rendered with STALE_SEGMENT_PREFIX.
@@ -774,7 +775,22 @@ def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: floa
             cached_item, family, canonical_name, now, is_live=True, is_stale=False
         )
         if api_result is not None:
-            return api_result
+            if api_result.used_percent == 0.0 and isinstance(data, dict):
+                quota = data.get("quota", {})
+                live_item = select_bucket(quota, names, family)
+                if live_item is None:
+                    live_item = select_bucket(data, names, family)
+                parsed_live = parse_item(live_item)
+                if parsed_live is not None and (parsed_live.get("used_percent") or 0.0) > 0.0:
+                    live_resets_at, _ = anchor_live_resets_at(parsed_live, cached_item, now)
+                    if live_resets_at is None or live_resets_at > now:
+                        pass  # Yield to live payload below
+                    else:
+                        return api_result
+                else:
+                    return api_result
+            else:
+                return api_result
 
     # 2. Live stdin payload.
     if isinstance(data, dict):
@@ -949,6 +965,57 @@ def cache_needs_touch(cache: dict, now: float) -> bool:
     return False
 
 
+def detect_quota_api_url() -> str:
+    """Detects the active Cloud Code Quota API endpoint for this agy installation.
+
+    Checks:
+    1. USAGE_HUD_QUOTA_API_URL or AGY_QUOTA_API_URL environment variable.
+    2. Explicit code override of QUOTA_API_URL.
+    3. The cli.log file in the antigravity-cli directory (e.g. daily-cloudcode-pa).
+    4. The newest log file in the log/ subdirectory.
+    5. Falls back to DEFAULT_QUOTA_API_URL.
+    """
+    override = os.environ.get("USAGE_HUD_QUOTA_API_URL", os.environ.get("AGY_QUOTA_API_URL"))
+    if override and override.strip():
+        return override.strip()
+
+    if QUOTA_API_URL != DEFAULT_QUOTA_API_URL:
+        return QUOTA_API_URL
+
+    base_dir = os.path.dirname(get_cache_path())
+    candidate_logs = [
+        os.path.join(base_dir, "cli.log"),
+    ]
+    log_dir = os.path.join(base_dir, "log")
+    if os.path.isdir(log_dir):
+        try:
+            files = sorted(
+                [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.startswith("cli-") and f.endswith(".log")],
+                key=os.path.getmtime,
+                reverse=True
+            )
+            candidate_logs.extend(files[:2])
+        except Exception:
+            pass
+
+    for log_path in candidate_logs:
+        if not os.path.exists(log_path):
+            continue
+        try:
+            with open(log_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - 65536))
+                tail = f.read().decode("utf-8", errors="ignore")
+                matches = re.findall(r"https://([a-zA-Z0-9.-]*cloudcode-pa[a-zA-Z0-9.-]*)", tail)
+                if matches:
+                    return f"https://{matches[-1]}/v1internal:retrieveUserQuotaSummary"
+        except Exception:
+            pass
+
+    return DEFAULT_QUOTA_API_URL
+
+
 def fetch_live_quota_from_api() -> Optional[dict]:
     """Fetches real-time usage quota from Google Cloud Code PA API directly using OAuth token."""
     try:
@@ -959,13 +1026,14 @@ def fetch_live_quota_from_api() -> Optional[dict]:
 
         import urllib.request
 
+        api_url = detect_quota_api_url()
         req = urllib.request.Request(
-            QUOTA_API_URL,
+            api_url,
             data=b"{}",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "antigravity/1.1.8"
+                "User-Agent": "antigravity/1.1.26"
             }
         )
         with urllib.request.urlopen(req, timeout=3) as resp:
@@ -1208,7 +1276,10 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
             if isinstance(previous, dict) and previous.get("source") == SOURCE_API:
                 previous_at = entry_timestamp(previous, usable_cache)
                 if previous_at is not None and now - previous_at <= API_RESULT_MAX_AGE_SECONDS:
-                    continue
+                    if (previous.get("used_percent") or 0.0) == 0.0 and item.used_percent > 0.0:
+                        pass
+                    else:
+                        continue
 
             has_updates = True
             bucket_entry = {

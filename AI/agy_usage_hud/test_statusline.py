@@ -1389,6 +1389,34 @@ def build_test_cases() -> list:
             }),
             "check_str_part": [f"5h {GREEN}0.0%{RESET}", "(0m)"],
         },
+        {
+            "id": "TC-85",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A positive payload outranks a 0.0% cached API reading in an unexpired window",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()),
+                "model": "Gemini 3.6 Flash (High)",
+                "last_api_fetch": time.time(),
+                "quota": {
+                    "gemini-5h": {"used_percent": 0.0, "source": "api",
+                                  "fetched_at": time.time(),
+                                  "resets_at": int(time.time()) + 14400 + BAND_SLACK},
+                }
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {
+                    "gemini-5h": {
+                        "remaining_fraction": 0.75,
+                        "reset_in_seconds": 14400 + BAND_SLACK,
+                        "reset_time": datetime.fromtimestamp(time.time() + 14400 + BAND_SLACK, tz=timezone.utc).isoformat()
+                    }
+                },
+            }),
+            "check_str_part": [f"5h {GREEN}25.0%{RESET}", "(4h00m)"],
+            "check_absent_str_part": ["0.0%"],
+        },
     ]
 
 
@@ -1825,6 +1853,59 @@ def build_unit_checks() -> list:
                  "current_usage": {"input_tokens": 10000, "output_tokens": 500},
              }
          }) == hud.ContextResult(used_tokens=10500, total_tokens=1000000, used_percent=85.5)),
+        ("UC-47", "detect_quota_api_url respects environment override",
+         lambda: (
+             os.environ.__setitem__("USAGE_HUD_QUOTA_API_URL", "https://custom.googleapis.com/test"),
+             (hud.detect_quota_api_url() == "https://custom.googleapis.com/test",
+              os.environ.pop("USAGE_HUD_QUOTA_API_URL", None))[0]
+         )[1]),
+        ("UC-48", "detect_quota_api_url discovers endpoint from cli.log",
+         lambda: (
+             (lambda p: (
+                 p.parent.mkdir(parents=True, exist_ok=True),
+                 p.write_text("I0904 23:16:12 URL: https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist\n"),
+                 os.environ.__setitem__("USAGE_HUD_CACHE", str(p.parent / "cache.json")),
+                 hud.detect_quota_api_url() == "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+             )[3])(Path(tempfile.mkdtemp()) / "cli.log")
+         )),
+        ("UC-49", "detect_quota_api_url falls back to DEFAULT_QUOTA_API_URL",
+         lambda: (
+             (lambda d: (
+                 os.environ.__setitem__("USAGE_HUD_CACHE", str(Path(d) / "cache.json")),
+                 hud.detect_quota_api_url() == hud.DEFAULT_QUOTA_API_URL
+             )[1])(tempfile.mkdtemp())
+         )),
+        ("UC-50", "resolve_bucket prefers positive live payload over 0.0% API entry",
+         lambda: (
+             hud.resolve_bucket(
+                 {"quota": {"gemini-5h": {"remaining_fraction": 0.8, "reset_in_seconds": 3600}}},
+                 "gemini",
+                 hud.FIVE_H_NAMES,
+                 {"version": hud.CACHE_VERSION, "saved_at": int(now), "quota": {
+                     "gemini-5h": {"used_percent": 0.0, "source": "api", "fetched_at": now, "resets_at": int(now) + 3600}
+                 }},
+                 now
+             ).used_percent == 20.0
+         )),
+        ("UC-51", "write_cache updates cache when payload has positive usage and previous API entry is 0.0%",
+         lambda: (
+             (lambda d: (
+                 os.environ.__setitem__("USAGE_HUD_CACHE", str(Path(d) / "cache.json")),
+                 hud.write_cache(
+                     "Gemini 3.8 Flash (High)",
+                     {"5h": hud.BucketResult(
+                         used_percent=25.0, reset_in_seconds=3600, resets_at=int(now) + 3600,
+                         is_live=True, family="gemini", canonical_name="5h",
+                         source=hud.SOURCE_PAYLOAD, is_stale=False, anchor_reset_in=3600
+                     )},
+                     {"version": hud.CACHE_VERSION, "saved_at": int(now), "quota": {
+                         "gemini-5h": {"used_percent": 0.0, "source": "api", "fetched_at": now, "resets_at": int(now) + 3600}
+                     }},
+                     now
+                 ),
+                 hud.read_cache().get("quota", {}).get("gemini-5h", {}).get("used_percent") == 25.0
+             )[2])(tempfile.mkdtemp())
+         )),
     ]
 
 
