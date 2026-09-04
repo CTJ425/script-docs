@@ -1,9 +1,11 @@
 # AGY Usage HUD
 
+> 最後更新：2026-09-04
+
 專為 **Antigravity CLI (`agy`)** TUI 設計的純 ASCII 狀態列，監控 **Context Window (會話上下文)**、**5 小時滾動視窗** 與 **每週** 的 AI 配額使用率與重置倒數。
 
 ```text
-Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
+Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 ```
 
 設計與資料契約見 [SPEC.md](./SPEC.md)；疑難排解見 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)。
@@ -13,7 +15,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 ## 特點
 
 - **100% 純 ASCII**（不含 ANSI 色碼）：相容所有終端字型與編碼，不會有寬度錯位或亂碼。
-- **即時 Context Window 監控**：顯示當前會話 Token 消耗與模型上限（如 `Ctx 19.9k/1M`），避免超出上下文視窗。
+- **Session 累積用量**：`Ctx` 顯示本次 session 至今累計消耗的 Token（如 `Ctx 1.4M`），壓縮上下文不會讓它倒退。數字旁的顏色仍然反映**當前視窗佔用率**，所以快撐爆視窗時照樣會轉黃轉紅。
 - **渲染永不阻塞**：狀態列本身只讀本地快取 (cache) 就輸出；配額 (quota) 由一個常駐的背景 daemon 每 5 秒向 API 拉取一次，網路慢或不通都不會拖住提示字元。
 - **配額更新不依賴 TUI 重繪**：daemon 啟動後自行輪詢，不需要狀態列被重畫才會去拉資料。連續 120 秒沒有任何一次渲染時它會自動結束，不會在背景留下一個永遠在打 API 的行程。
 - **數據過期會明講**：超過 10 分鐘沒有任何來源確認過的數字，前面加上暗色 `~`。凍結的 HUD 不會偽裝成「你剛好沒在用」。
@@ -106,13 +108,13 @@ rm -f ~/.gemini/antigravity-cli/usage_hud_cache.json \
 ## 輸出格式
 
 ```text
- Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
- (1)                    (2) (3)          (4) (5)  (6)     (7)
+ Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
+ (1)                    (2) (3)       (4) (5)  (6)     (7)
 ```
 
 1. 模型名稱（青色，非 ASCII 字元會被移除，上限 24 字元）。無模型資訊時整段省略，行首直接是 `Ctx`
 2. 分隔符（暗色）
-3. Context Window 狀態（用量依門檻上色，上限為暗色）
+3. 本次 session 的累計 Token 消耗（顏色取自當前視窗佔用率，非累計量）
 4. 5 小時滾動視窗標示
 5. 用量百分比，固定 1 位小數，依門檻上色
 6. 重置倒數（暗色）
@@ -130,16 +132,23 @@ rm -f ~/.gemini/antigravity-cli/usage_hud_cache.json \
 | `70.0% ~ 89.9%` | 黃 | `\033[1;33m` |
 | `>= 90.0%` | 紅 | `\033[1;31m` |
 
+**累計量怎麼算**：每次渲染取載荷回報的 Token 數，只累加**上升的部分**，並**依 `session_id` 分開記帳**（快取只有一份，同時開多個 agy 時各算各的，最多追蹤 8 個）。讀到 `0` 時不會把已經有消耗的 session 重設歸零——那多半是載荷欄位缺漏，不是真的用量歸零。agy 的欄位命名無法確定它給的是累計量還是當前佔用量（`used_percentage` 由 `total_input_tokens` 單獨導出，而 `current_usage.input_tokens` 又是另一個數量級），只累加增量在兩種情況下都正確：本來就是累計量的來源不會下降，而佔用量只在壓縮時下降，壓縮並沒有消耗任何東西。
+
+**沒有分母**：累計量沒有上限，拿它去除以視窗大小是在比較兩種不同的東西，所以 `Ctx` 不顯示 `/1M`。
+
 **未知與降級**：某個欄位沒有可用數據時顯示暗色 `Ctx --` 或 `--%`；整包載荷無法解析時輸出
 
 ```text
 Ctx -- | 5h --% | Wk --%
 ```
 
+> [!NOTE]
+> agy 在 session 剛開始、還沒有任何對話時，`context_window` 的 Token 欄位全是 `0`，此時 `Ctx` 會顯示 `0`。有對話之後才會開始累加。
+
 **過期標記**：數字前的暗色 `~` 表示配額值超過 10 分鐘沒有被任何來源確認過——最常見的原因是 OAuth token 已過期，或 agy 目前送出的載荷不含 `quota`。
 
 ```text
-Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
+Gemini 3.6 Flash (High) | Ctx 19.9k | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
 ```
 
 ---
@@ -147,7 +156,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（113 案例，Tier 0-13）
+# 1. 完整邊界測試套件（131 案例，Tier 0-13）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
@@ -162,7 +171,7 @@ echo '{"context_window":{"context_window_size":1048576},"quota":{"gemini-5h":{"r
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 113 | Passed: 113 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
+測試套件預期輸出 `Total: 131 | Passed: 131 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
 
 ---
 
@@ -171,7 +180,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-13，113 案例，含 agy 1.1.8 實測 payload）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-13，131 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

@@ -20,3 +20,5 @@ Thumbs.db
 # Agent working directories (briefings, dispatches, handoffs). Scratch output
 # of how a change was produced, not documentation of what it does.
 .agents/
+.claude/routing/
+**/.claude/routing/

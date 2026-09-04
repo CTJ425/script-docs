@@ -1,5 +1,7 @@
 # Claude Code Usage HUD
 
+> 最後更新：2026-07-30
+
 A global Claude Code statusline showing model name, 5-hour / weekly rate-limit
 usage, and current session context-window usage.
 

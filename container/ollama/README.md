@@ -1,5 +1,7 @@
 # Ollama + Open WebUI
 
+> 最後更新：2026-07-30
+
 用 Docker Compose 跑本地大型語言模型。預設走 NVIDIA GPU 加速，另附 CPU-only override。
 
 ---

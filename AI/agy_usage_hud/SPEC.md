@@ -125,8 +125,58 @@ Resolution order per window, first match wins:
 - **Model Name Fallback**: If live payload model name is empty/missing, fallback to cached model name if available.
 
 ### 4. Context Window Resolution & Formatting
-- **Payload Source**: Context window metrics (`used_percentage`, `current_usage.input_tokens`, `total_input_tokens`, `context_window_size`) are parsed directly from the live `stdin` payload.
-- **Session-Scoped**: Context window represents local prompt tokens for the active conversation; it is not polled from the remote Quota API.
+- **Payload Source**: Context window metrics (`used_percentage`, `current_usage.input_tokens`, `total_input_tokens`, `context_window_size`) are parsed directly from the live `stdin` payload; it is not polled from the remote Quota API.
+- **`Ctx` is the session's cumulative usage, not the window's occupancy.** Occupancy
+  falls whenever the context is compacted, which reads as usage being refunded.
+- **Only rises are counted, and the tally is keyed by `session_id`.** agy's field
+  names do not settle which of its numbers is which: in the captured `idle`
+  payload `used_percentage` equals `total_input_tokens / context_window_size`
+  exactly, while `current_usage.input_tokens` is two orders larger; a live
+  capture had `current_usage: null` and every token field at `0`. Summing only
+  the rises is correct under either reading — a source that is already
+  cumulative never falls, and one that is occupancy falls only on a compaction,
+  which consumed nothing. The session key is `session_id`, then
+  `conversation_id`, then `""`.
+- **An absent observation is not an observation of zero.** When
+  `parse_context_window` yields nothing the field renders `Ctx --` and the
+  stored tally is left untouched; feeding a spurious `0` in would make the next
+  real reading count twice.
+- **A tally per session, because one cache serves them all.** `context` is a map
+  keyed by session id, each entry holding `cumulative_tokens`, `last_observed`
+  and `last_seen`. A single slot keyed by one id meant two agy sessions open at
+  once reset each other's counter on every render — the ordinary case on a
+  machine with more than one terminal, not an edge case. The map is capped at
+  `MAX_TRACKED_SESSIONS` (8) by `last_seen`, so it cannot grow without bound.
+- **`accumulate_context` assumes a non-negative observation.** Its only caller
+  clamps with `max(0, used_tokens)` in `parse_context_window`. A negative value
+  would land in the compaction branch and set a negative floor, so the next real
+  reading would overcount by the glitch's size. The clamp stays at the caller
+  rather than being repeated here: this file does not carry error handling for
+  paths that do not exist, and a future caller is the thing to fix, not this
+  function.
+- **The session being rendered is never evicted.** `last_seen` has one-second
+  resolution, so sessions rendering in the same second tie, and breaking that
+  tie by map order dropped the very session whose render triggered the write —
+  restarting its tally. Eviction chooses among the *other* entries only.
+- **A zero observation never re-floors a session that has already spent
+  tokens.** `parse_context_window` yields `used_tokens = 0` from a partially
+  present field set, which is indistinguishable from a genuine idle zero.
+  Re-flooring on it makes the next real reading count from zero a second time,
+  and the overcount is permanent. A compaction drops to a smaller *non-zero*
+  occupancy; a drop to exactly `0` mid-session is missing data.
+- **The tally must be carried by every writer.** `base_cache` and `write_cache`
+  both rebuild the cache from a fixed key set, so either one dropping `context`
+  resets the counter every few seconds — and no unit test would see it, because
+  both writers look correct in isolation.
+- **The background fetch re-reads `context` immediately before writing.** It
+  snapshots the cache, spends up to three seconds on the network, then writes;
+  carrying the snapshot's `context` would silently discard whatever a render
+  stored in between. Quota buckets tolerate that because the next poll
+  re-derives them — a lost context delta has no second source and is gone.
+- **No denominator.** Cumulative usage has no ceiling, so `Ctx 1.4M/1M` would
+  divide two different quantities. The threshold colour still tracks **window
+  occupancy**, so the field keeps warning about running out of context even
+  though its number no longer measures it.
 - **Formatting Protocol**:
   - `< 1,000`: Direct integer (e.g. `146`, `500`).
   - `1,000 ~ 99,999`: Formatted with `k` and up to one decimal if fractional (e.g. `19.5k`, `20k`).
@@ -177,6 +227,16 @@ Resolution order per window, first match wins:
 - **UC-23**: A render stamps the heartbeat even when every spawn gate says no.
 - **UC-24 / UC-25**: The constant invariants — the precedence window equals the staleness threshold and outlasts the error cooldown, and the lock threshold outlasts the longest poll iteration.
 - **UC-26 / UC-27**: `anchor_live_resets_at` reuses a cached absolute deadline within the tolerance, and re-anchors beyond it.
+- **UC-28**–**UC-31**: Daemon lock ownership via `flock` — a free lock is claimed, a lock held by a live process is refused, one left by a dead process needs no age heuristic, and releasing hands it over.
+- **UC-32**: Sixteen processes released from a shared timestamp produce exactly one lock winner, three rounds running. Written after a weaker eight-process version let a broken implementation pass three consecutive runs.
+- **UC-33**: Without `fcntl` the lock file is still created, so the spawn gate suppresses and renders stop starting a daemon that dies instantly.
+- **UC-34**–**UC-37**: `accumulate_context` — a fresh session, a rise, a drop that adds nothing but re-floors, and a rise after a drop.
+- **UC-38**: Two concurrent sessions keep separate tallies.
+- **UC-39**: A cumulative total renders without a window denominator.
+- **UC-40 / UC-41**: A zero observation does not re-floor a session that has spent tokens, and a real reading after one is not double counted.
+- **UC-42**: Stored tallies stay `int` rather than drifting into `float`.
+- **UC-43 / UC-45**: The session map is capped at `MAX_TRACKED_SESSIONS`, including when every `last_seen` ties.
+- **UC-44**: Eviction never drops the session being rendered.
 
 ### 5. Test Suite Expansion (Tier 12: Context Window Suite)
 - **TC-67**–**TC-78**: Context window token formatting (`current_usage` vs `total_tokens`), size abbreviations (`k`, `M`), color thresholds (green/yellow/red), missing/corrupted degradations, and pure ASCII verification.

@@ -57,6 +57,11 @@ CACHE_FILE = os.environ.get(
 CACHE_VERSION = 2
 CACHE_MAX_AGE_SECONDS = 7 * 86400  # 7 days
 CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
+# The context map holds one entry per agy session sharing this cache file.
+# Without a cap it grows for as long as the machine keeps opening new
+# sessions, so the least recently touched entries are dropped once this
+# many are tracked.
+MAX_TRACKED_SESSIONS = 8
 DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
 QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
@@ -286,14 +291,110 @@ def parse_context_window(data: dict) -> Optional[ContextResult]:
     )
 
 
+def accumulate_context(session_id, observed, previous, now) -> dict:
+    """Folds one more observation into the map of all tracked sessions.
+
+    `previous` is the whole map of `{session_id: {cumulative_tokens,
+    last_observed, last_seen}}` -- one cache file serves every agy session on
+    the machine, so a single tally would have two open sessions resetting
+    each other's counter on every render. Returns a new map; `previous` is
+    never mutated, and every other session's entry is carried through
+    untouched.
+
+    Sums only the rises. This is correct whichever of agy's ambiguous token
+    fields `observed` came from: a field that is already cumulative never
+    falls, so its deltas sum to itself; a field that is window occupancy
+    falls only on a compaction, which consumed nothing.
+
+    A zero (or negative) observation on a session that has already spent
+    tokens is treated as missing data rather than a genuine idle zero --
+    re-flooring on it would make the next real reading count from zero
+    again, a permanent overcount.
+    """
+    base = previous if isinstance(previous, dict) else {}
+    result = dict(base)
+
+    observed_val = safe_float(observed)
+    observed_int = int(observed_val) if observed_val is not None else 0
+
+    entry = base.get(session_id)
+    if not isinstance(entry, dict):
+        entry = None
+
+    if entry is None:
+        floor = max(0, observed_int)
+        new_entry = {
+            "cumulative_tokens": floor,
+            "last_observed": floor,
+            "last_seen": int(now),
+        }
+    else:
+        prev_cumulative_val = safe_float(entry.get("cumulative_tokens"))
+        prev_cumulative = int(prev_cumulative_val) if prev_cumulative_val is not None else 0
+        prev_observed_val = safe_float(entry.get("last_observed"))
+        prev_observed = int(prev_observed_val) if prev_observed_val is not None else 0
+
+        if observed_int <= 0 and prev_cumulative > 0:
+            # Missing data, not a compaction: keep the existing floor so the
+            # next real reading is not double counted from zero.
+            new_entry = {
+                "cumulative_tokens": prev_cumulative,
+                "last_observed": prev_observed,
+                "last_seen": int(now),
+            }
+        elif observed_int >= prev_observed:
+            new_entry = {
+                "cumulative_tokens": prev_cumulative + (observed_int - prev_observed),
+                "last_observed": observed_int,
+                "last_seen": int(now),
+            }
+        else:
+            # A compaction: the window shrank without spending anything, so
+            # only the floor moves.
+            new_entry = {
+                "cumulative_tokens": prev_cumulative,
+                "last_observed": observed_int,
+                "last_seen": int(now),
+            }
+
+    result[session_id] = new_entry
+
+    if len(result) > MAX_TRACKED_SESSIONS:
+        def last_seen_of(item):
+            entry = item[1]
+            if not isinstance(entry, dict):
+                return -1.0
+            val = safe_float(entry.get("last_seen"))
+            return val if val is not None else -1.0
+
+        # session_id is the one whose render triggered this write; last_seen
+        # has one-second resolution, so it can tie with other sessions and an
+        # eviction sort would drop it on the very render that just touched it.
+        # Excluding it from the sort pool guarantees it survives regardless
+        # of ties, while the other entries still compete on last_seen.
+        others = [item for item in result.items() if item[0] != session_id]
+        kept_others = sorted(others, key=last_seen_of, reverse=True)[:MAX_TRACKED_SESSIONS - 1]
+        result = dict(kept_others)
+        result[session_id] = new_entry
+
+    return result
+
+
 def render_context_window(ctx: Optional[ContextResult]) -> str:
-    """Renders the Context Window segment (e.g. Ctx 19.9k/1M or Ctx --)."""
+    """Renders the Context Window segment (e.g. Ctx 1.4M or Ctx --).
+
+    No "/total" denominator: ctx.used_tokens is the session's cumulative
+    usage, which has no ceiling, so a ratio against the window size would
+    compare two different quantities. The colour still tracks window
+    occupancy (ctx.used_percent), not the cumulative figure -- the number
+    says how much the session has spent, the colour still warns about
+    running out of window.
+    """
     if ctx is None:
         return f"Ctx {UNKNOWN_CTX}"
     used_str = format_token_count(ctx.used_tokens)
-    total_str = format_token_count(ctx.total_tokens)
     color = get_color_code(ctx.used_percent)
-    return f"Ctx {color}{used_str}{COLOR_RESET}{COLOR_DIM}/{total_str}{COLOR_RESET}"
+    return f"Ctx {color}{used_str}{COLOR_RESET}"
 
 
 def get_color_code(percent) -> str:
@@ -914,10 +1015,27 @@ def base_cache(existing_cache, now: float) -> dict:
         "model": seed.get("model") if isinstance(seed.get("model"), str) else "",
         "quota": dict(quota) if isinstance(quota, dict) else {}
     }
-    for carried in ("last_api_fetch", "last_api_error"):
+    for carried in ("last_api_fetch", "last_api_error", "context"):
         if seed.get(carried) is not None:
             next_cache[carried] = seed[carried]
     return next_cache
+
+
+def _refresh_context_before_write(next_cache: dict) -> None:
+    """Re-reads the cache's `context` block right before a daemon write.
+
+    `next_cache["context"]` was carried from the snapshot taken before the
+    network fetch, which can take up to a few seconds. A render's own update
+    to the tally in that window has no other source of truth -- unlike quota
+    buckets, which the next poll re-derives from the API regardless of what
+    gets written here -- so writing the stale snapshot back would silently
+    erase it. Re-reading immediately before the write narrows that loss
+    window from the fetch's whole duration to the gap between two adjacent
+    statements.
+    """
+    fresh_cache = read_cache()
+    if isinstance(fresh_cache, dict) and fresh_cache.get("context") is not None:
+        next_cache["context"] = fresh_cache["context"]
 
 
 def do_background_fetch():
@@ -934,6 +1052,7 @@ def do_background_fetch():
             # API_ERROR_COOLDOWN instead of respawning us every few seconds.
             next_cache["last_api_fetch"] = now
             next_cache["last_api_error"] = now
+            _refresh_context_before_write(next_cache)
             atomic_write_json(cache_path, next_cache)
             return
 
@@ -944,6 +1063,7 @@ def do_background_fetch():
 
         next_cache["last_api_fetch"] = now
         next_cache.pop("last_api_error", None)
+        _refresh_context_before_write(next_cache)
         atomic_write_json(cache_path, next_cache)
     except Exception:
         pass
@@ -1043,8 +1163,17 @@ def maybe_trigger_bg_fetch(cache: Optional[dict], now: float) -> bool:
         return False
 
 
-def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: float):
-    """Safely updates disk cache with live buckets and model info."""
+def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: float,
+                 context_block: Optional[dict] = None):
+    """Safely updates disk cache with live buckets, model info and context.
+
+    context_block is the freshly accumulated session map for this render, or
+    None when there was nothing new to fold in (parse_context_window returned
+    None). It forces a write even when the buckets and model are unchanged:
+    accumulate_context updates last_seen (and usually last_observed) on every
+    observation, so skipping the write here would silently drop that update
+    on the next background fetch.
+    """
     try:
         cache_path = get_cache_path()
         usable_cache = cache if cache_is_fresh(cache, now) else None
@@ -1091,7 +1220,11 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
 
-        if not has_updates and not (usable_cache is None and (new_quota or model_to_save)):
+        # A new context_block always needs writing, even when nothing else
+        # changed: it is not reflected in is_cache_equivalent below, so
+        # without this a quiet render would drop it right back on the floor.
+        if (not has_updates and context_block is None
+                and not (usable_cache is None and (new_quota or model_to_save))):
             return
 
         next_cache = {
@@ -1104,7 +1237,13 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
             if usable_cache and usable_cache.get(carried) is not None:
                 next_cache[carried] = usable_cache[carried]
 
-        if (usable_cache
+        if context_block is not None:
+            next_cache["context"] = context_block
+        elif usable_cache and usable_cache.get("context") is not None:
+            next_cache["context"] = usable_cache["context"]
+
+        if (context_block is None
+                and usable_cache
                 and is_cache_equivalent(usable_cache, next_cache)
                 and not cache_needs_touch(usable_cache, now)):
             return
@@ -1152,13 +1291,37 @@ def render_statusline(data: dict) -> str:
         "weekly": bucket_wk
     }
 
-    write_cache(model_name, resolved_buckets, cache, now)
+    ctx_observed = parse_context_window(data)
+    context_block = None
+    context_result = None
+    if ctx_observed is not None:
+        session_id = data.get("session_id")
+        if not isinstance(session_id, str):
+            session_id = data.get("conversation_id")
+            if not isinstance(session_id, str):
+                session_id = ""
+        raw_context = cache.get("context") if isinstance(cache, dict) else None
+        # A non-dict, or the old single-slot shape (a flat tally, not a map
+        # of per-session entries), is not the current map format: start the
+        # count over instead of misreading it.
+        if isinstance(raw_context, dict) and all(isinstance(v, dict) for v in raw_context.values()):
+            previous_context = raw_context
+        else:
+            previous_context = {}
+        context_block = accumulate_context(session_id, ctx_observed.used_tokens, previous_context, now)
+        context_result = ContextResult(
+            used_tokens=context_block[session_id]["cumulative_tokens"],
+            total_tokens=ctx_observed.total_tokens,
+            used_percent=ctx_observed.used_percent,
+        )
+
+    write_cache(model_name, resolved_buckets, cache, now, context_block)
     maybe_trigger_bg_fetch(cache, now)
 
     parts = []
     if model_name:
         parts.append(f"{COLOR_CYAN}{model_name}{COLOR_RESET}")
-    parts.append(render_context_window(parse_context_window(data)))
+    parts.append(render_context_window(context_result))
     parts.append(render_window("5h", bucket_5h))
     parts.append(render_window("Wk", bucket_wk))
 

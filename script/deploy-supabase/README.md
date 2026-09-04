@@ -1,5 +1,7 @@
 # Supabase Self-Hosted 自動化部署與配置腳本
 
+> 最後更新：2026-08-27
+
 在 Linux 伺服器／VM 上快速自動化部署與配置 Supabase Self-Hosted (v0.8.0+) 環境的 Shell 腳本。
 
 本腳本自動整合 Supabase 官方最新 setup 腳本，處理環境變數自動帶入、核心帳密安全配置、Docker 容器名稱衝突排除、對外 Port 衝突檢測與同機多專案 Port 智慧偏移，並支援完整 CLI 參數、非互動式（CI/CD）自動化以及選用擴充模組（Compose Overrides）。

@@ -1,5 +1,7 @@
 # Kubernetes 1.36 叢集部署（CRI-O + Calico / Rocky Linux 9）
 
+> 最後更新：2026-07-30
+
 在 RHEL 家族主機上建立 Kubernetes 叢集，容器執行環境用 CRI-O，CNI 用 Calico。
 另附 MetalLB、KubeVirt、Gateway API、TrueNAS CSI 的安裝步驟。
 

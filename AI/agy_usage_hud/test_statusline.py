@@ -246,8 +246,9 @@ def build_test_cases() -> list:
             "payload": lambda: json.dumps(captured_idle_now()),
             # gemini-5h     1 - 0.9986155 -> 0.1%,  11515s -> 3h11m
             # gemini-weekly 1 - 0.8492495 -> 15.1%, 431793s -> 4d23h
-            # context_window: 19477 + 380 = 19857 / 1048576 -> 19.9k/1M
-            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+            # context_window: 19477 + 380 = 19857, the session's first
+            # observation, so the cumulative figure equals it.
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
             "check_absent_str_part": ["--%", "{", "'id'"],
         },
         {
@@ -258,7 +259,7 @@ def build_test_cases() -> list:
             # replaying a window that has already reset. The countdown must
             # bottom out rather than restart at the recorded 3h11m.
             "payload": json.dumps(CAPTURED_IDLE),
-            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (0m)",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (0m)",
             "check_absent_str_part": ["(3h11m)"],
         },
         {
@@ -274,7 +275,7 @@ def build_test_cases() -> list:
             "tier": "Tier 0: Captured",
             "name": "Captured 'initializing' payload (model set, quota not yet sent)",
             "payload": json.dumps(CAPTURED_INITIALIZING),
-            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 0/1M | 5h --% | Wk --%",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 0 | 5h --% | Wk --%",
             "check_absent_str_part": ["0.0%", "{"],
         },
         {
@@ -288,7 +289,7 @@ def build_test_cases() -> list:
                 "model": gemini_model(),
                 "context_window": {"used_percentage": 42.0, "remaining_percentage": 58.0, "context_window_size": 1000000},
             }),
-            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}", f"Ctx {GREEN}420k{RESET}{DIM}/1M{RESET}"],
+            "check_str_part": [f"5h {DIM}--%{RESET}", f"Wk {DIM}--%{RESET}", f"Ctx {GREEN}420k{RESET}"],
             "check_absent_str_part": ["5h 42.0%", "Wk 58.0%"],
         },
 
@@ -803,7 +804,7 @@ def build_test_cases() -> list:
             "name": "Cold-start cache write on valid payload",
             "payload": lambda: json.dumps(captured_idle_now()),
             "check_cache_exists": True,
-            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
+            "check_starts_with": "Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)",
         },
         {
             "id": "TC-49",
@@ -1139,7 +1140,7 @@ def build_test_cases() -> list:
                     "gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 3600},
                 }
             }),
-            "check_str_part": f"Ctx {GREEN}19.9k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {GREEN}19.9k{RESET}",
         },
         {
             "id": "TC-68",
@@ -1153,7 +1154,7 @@ def build_test_cases() -> list:
                     "total_output_tokens": 0,
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}146{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {GREEN}146{RESET}",
         },
         {
             "id": "TC-69",
@@ -1166,7 +1167,7 @@ def build_test_cases() -> list:
                     "current_usage": {"input_tokens": 250000},
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}250k{RESET}{DIM}/2M{RESET}",
+            "check_str_part": f"Ctx {GREEN}250k{RESET}",
         },
         {
             "id": "TC-70",
@@ -1179,7 +1180,7 @@ def build_test_cases() -> list:
                     "current_usage": {"input_tokens": 500000},
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}500k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {GREEN}500k{RESET}",
         },
         {
             "id": "TC-71",
@@ -1192,7 +1193,7 @@ def build_test_cases() -> list:
                     "current_usage": {"input_tokens": 750000},
                 },
             }),
-            "check_str_part": f"Ctx {YELLOW}750k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {YELLOW}750k{RESET}",
         },
         {
             "id": "TC-72",
@@ -1205,7 +1206,7 @@ def build_test_cases() -> list:
                     "current_usage": {"input_tokens": 950000},
                 },
             }),
-            "check_str_part": f"Ctx {RED}950k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {RED}950k{RESET}",
         },
         {
             "id": "TC-73",
@@ -1237,7 +1238,7 @@ def build_test_cases() -> list:
                     "total_output_tokens": 500,
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}15.5k{RESET}{DIM}/200k{RESET}",
+            "check_str_part": f"Ctx {GREEN}15.5k{RESET}",
         },
         {
             "id": "TC-76",
@@ -1250,7 +1251,7 @@ def build_test_cases() -> list:
                     "used_percentage": 20.0,
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}200k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {GREEN}200k{RESET}",
         },
         {
             "id": "TC-77",
@@ -1276,7 +1277,7 @@ def build_test_cases() -> list:
                     "current_usage": {"input_tokens": 12345, "output_tokens": 67},
                 },
             }),
-            "check_str_part": f"Ctx {GREEN}12.4k{RESET}{DIM}/1M{RESET}",
+            "check_str_part": f"Ctx {GREEN}12.4k{RESET}",
         },
 
         # --- TIER 13: Live refresh ------------------------------------------
@@ -1681,7 +1682,7 @@ def build_unit_checks() -> list:
          lambda: (
              hud.render_context_window(None) == f"Ctx {hud.COLOR_DIM}--{hud.COLOR_RESET}"
              and hud.render_context_window(hud.ContextResult(500000, 1000000, 50.0)) ==
-                 f"Ctx {hud.COLOR_GREEN}500k{hud.COLOR_RESET}{hud.COLOR_DIM}/1M{hud.COLOR_RESET}"
+                 f"Ctx {hud.COLOR_GREEN}500k{hud.COLOR_RESET}"
          )),
         ("UC-19", "file_age reports None for a path that does not exist",
          lambda: hud.file_age("/nonexistent/definitely/missing.beat", time.time()) is None),
@@ -1729,6 +1730,93 @@ def build_unit_checks() -> list:
          lambda: lock_lab(concurrent_claim_has_one_winner) is True),
         ("UC-33", "Without fcntl the lock file is still created, so renders stop respawning",
          lambda: lock_lab(no_fcntl_still_creates_the_lock) is True),
+        # --- Session-cumulative context window ------------------------------
+        # agy's own field names do not settle whether its token counts are
+        # cumulative or the current occupancy: in CAPTURED_IDLE,
+        # used_percentage == total_input_tokens / context_window_size, while
+        # current_usage.input_tokens is two orders larger. Summing only the
+        # rises is correct either way -- a source that is already cumulative
+        # never falls, and one that is occupancy falls only on a compaction,
+        # which consumed nothing.
+        ("UC-34", "A session with no history starts at what it observes",
+         lambda: hud.accumulate_context("s1", 500, None, 1000)["s1"]
+                 == {"cumulative_tokens": 500, "last_observed": 500, "last_seen": 1000}),
+        ("UC-35", "A rising observation adds its delta",
+         lambda: hud.accumulate_context(
+             "s1", 800,
+             {"s1": {"cumulative_tokens": 500, "last_observed": 500, "last_seen": 1}},
+             1000)["s1"] == {"cumulative_tokens": 800, "last_observed": 800, "last_seen": 1000}),
+        ("UC-36", "A drop adds nothing and re-floors the observation",
+         # A compaction shrinks the window without spending anything.
+         lambda: hud.accumulate_context(
+             "s1", 50,
+             {"s1": {"cumulative_tokens": 800, "last_observed": 800, "last_seen": 1}},
+             1000)["s1"] == {"cumulative_tokens": 800, "last_observed": 50, "last_seen": 1000}),
+        ("UC-37", "A rise after a drop adds only the rise",
+         lambda: hud.accumulate_context(
+             "s1", 120,
+             {"s1": {"cumulative_tokens": 800, "last_observed": 50, "last_seen": 1}},
+             1000)["s1"] == {"cumulative_tokens": 870, "last_observed": 120, "last_seen": 1000}),
+        ("UC-38", "Concurrent sessions keep separate tallies",
+         # One cache file serves every agy session on the machine. A single
+         # slot keyed by one session_id meant two open sessions reset each
+         # other's counter on every render.
+         lambda: (lambda m: (m["s1"]["cumulative_tokens"] == 800
+                             and m["s2"]["cumulative_tokens"] == 30))(
+             hud.accumulate_context(
+                 "s2", 30,
+                 {"s1": {"cumulative_tokens": 800, "last_observed": 120, "last_seen": 1}},
+                 1000))),
+        ("UC-39", "A cumulative total is rendered without a window denominator",
+         # Cumulative usage has no ceiling, so "/1M" would be a ratio of two
+         # different things. The colour still tracks window occupancy.
+         lambda: hud.render_context_window(
+             hud.ContextResult(used_tokens=1_400_000, total_tokens=1048576, used_percent=12.0)
+         ) == f"Ctx {hud.COLOR_GREEN}1.4M{hud.COLOR_RESET}"),
+        ("UC-40", "A zero observation never re-floors a session that has spent tokens",
+         # parse_context_window yields used_tokens=0 from a partially present
+         # field set, which is indistinguishable from a genuine idle zero.
+         # Re-flooring on it makes the next real reading count from zero again.
+         lambda: hud.accumulate_context(
+             "s1", 0,
+             {"s1": {"cumulative_tokens": 1000, "last_observed": 1000, "last_seen": 1}},
+             1000)["s1"]["last_observed"] == 1000),
+        ("UC-41", "A real reading after a spurious zero is not double counted",
+         lambda: hud.accumulate_context(
+             "s1", 1200,
+             hud.accumulate_context(
+                 "s1", 0,
+                 {"s1": {"cumulative_tokens": 1000, "last_observed": 1000, "last_seen": 1}},
+                 1000),
+             1001)["s1"]["cumulative_tokens"] == 1200),
+        ("UC-42", "The tally stays an int rather than drifting into float",
+         lambda: all(isinstance(v, int) for v in (
+             hud.accumulate_context(
+                 "s1", 800,
+                 {"s1": {"cumulative_tokens": 500, "last_observed": 500, "last_seen": 1}},
+                 1000)["s1"]["cumulative_tokens"],
+             hud.accumulate_context("s1", 500, None, 1000)["s1"]["cumulative_tokens"]))),
+        ("UC-43", "Tracked sessions are capped so the cache cannot grow forever",
+         lambda: len(hud.accumulate_context(
+             "new", 10,
+             {str(i): {"cumulative_tokens": i, "last_observed": i, "last_seen": i}
+              for i in range(hud.MAX_TRACKED_SESSIONS + 5)},
+             10_000)) <= hud.MAX_TRACKED_SESSIONS),
+        ("UC-44", "Eviction never drops the session being rendered",
+         # last_seen has second resolution, so sessions rendering inside the
+         # same second tie. Breaking that tie by insertion order evicted the
+         # very session whose render triggered the write, resetting its tally.
+         lambda: "new" in hud.accumulate_context(
+             "new", 10,
+             {str(i): {"cumulative_tokens": i, "last_observed": i, "last_seen": 10_000}
+              for i in range(hud.MAX_TRACKED_SESSIONS + 5)},
+             10_000)),
+        ("UC-45", "A tie on last_seen still leaves exactly the cap",
+         lambda: len(hud.accumulate_context(
+             "new", 10,
+             {str(i): {"cumulative_tokens": i, "last_observed": i, "last_seen": 10_000}
+              for i in range(hud.MAX_TRACKED_SESSIONS + 5)},
+             10_000)) == hud.MAX_TRACKED_SESSIONS),
     ]
 
 

@@ -66,6 +66,12 @@ commit:**
   so the site and the repo cannot drift; the HTML holds chrome only.
 - **Never edit `site/src/content/manifest.json`.** It is generated (and
   gitignored) — edit the source README instead.
+- **Every published README carries a `> 最後更新：YYYY-MM-DD` line** directly
+  under its H1, and it is maintained by hand. **Change a README's content and
+  you change that date in the same commit** — a date nobody updates is worse
+  than no date, because it asserts freshness the file does not have. The date
+  states when the *content* last changed, so a commit that only touches the
+  date line, or reformats without changing meaning, leaves it alone.
 - Adding a subproject means adding a folder with a `README.md`. Nothing in the
   front end is hardcoded per project, so no TSX change should be needed.
 

@@ -1,5 +1,7 @@
 # Proxmox VE ISO 軟連結同步
 
+> 最後更新：2026-07-30
+
 把放在 NAS / NFS / SMB 分享區裡的 ISO，用 symbolic link 掛進 Proxmox VE 的 ISO 目錄，
 這樣 PVE 網頁介面看得到它們，但檔案不需要複製一份。
 

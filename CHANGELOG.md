@@ -5,6 +5,68 @@ This file is the source of truth for every GitHub Release body.
 
 ---
 
+## 1.3.0 (2026-09-04)
+
+### Features
+
+#### AI / agy_usage_hud
+- **The poller is a daemon, not a per-render spawn**: a one-shot fetch triggered from inside
+  a render only polls while the TUI redraws, so no render meant no refresh whatever the
+  interval constant claimed. A detached `--bg-daemon` now polls on its own cadence and exits
+  once no render has stamped its heartbeat for 120 seconds. `--bg-fetch` stays one-shot as the
+  loop body.
+- **One daemon, arbitrated by the kernel**: the daemon holds `fcntl.flock` for its whole life,
+  so the OS admits exactly one poller and releases the lock when that process dies — there is
+  no stale-lock rule left to get wrong. Two earlier designs sequenced filesystem calls instead
+  and were each measured letting several processes believe they held the lock, because both
+  arbitrated on a *path* rather than on the file they had inspected.
+- **`Ctx` shows the session's cumulative usage**: window occupancy falls whenever the context
+  is compacted, which reads as usage being refunded. The field now sums only the rises, and
+  keeps a tally per `session_id` — one cache file serves every agy session on the machine, so
+  a single slot would have had two open sessions resetting each other on every render. agy's
+  field names do not settle which of its numbers is cumulative — `used_percentage` is derived
+  from `total_input_tokens` alone while `current_usage.input_tokens` is two orders larger —
+  and summing rises is correct under either reading. A reading of `0` never re-floors a
+  session that has already spent tokens, because a partially present field set is
+  indistinguishable from a genuine idle zero and re-flooring on it overcounts permanently.
+  The window denominator is gone, because cumulative usage has no ceiling; the threshold
+  colour still tracks occupancy, so the warning survives.
+- **No countdown for an unused window**: the quota API slides an unused window's `resetTime`
+  to `now + <window length>` on every poll, so a `0.0%` countdown could never move. It is
+  omitted; a deadline that has genuinely passed still renders `0m`.
+
+### Fixes
+
+#### AI / agy_usage_hud
+- **Usage stopped moving a few minutes into a session**: an API reading outranked the `stdin`
+  payload for only 30 seconds while the failure cooldown was 60, so every transient poll
+  failure handed the display back to a payload agy had frozen — and `write_cache` then
+  persisted that figure over the polled one. The precedence window is now the staleness
+  threshold (600s) and the cooldown is 15s, so the cooldown can never outlast it.
+- **The countdown froze again after the earlier anchor fix**: a bucket written by the poller
+  records an absolute `resets_at` but no `anchor_reset_in`, so the payload path re-pinned
+  `now + reset_in_seconds` on every render. It now reuses the cached absolute deadline when
+  the two describe the same window, and re-anchors only beyond a 900-second tolerance.
+- **A platform without `fcntl` started a doomed daemon on every render**: the import ran
+  before the lock file was created, so nothing existed for the spawn gate to suppress on.
+
+#### Repository
+- **Last-updated dates on every published README**: a `> 最後更新：YYYY-MM-DD` line under each
+  H1, carrying each file's real last-change date rather than a uniform stamp. `CLAUDE.md` (and
+  its two mirrors) now require the date to move with the content in the same commit.
+- **`.claude/route.config.json` for `agy_usage_hud`**: `paths.prod` fell back to the plugin
+  default `["src/"]`, which this repository does not have, so every builder dispatch here was
+  refused.
+- **`.gitignore`**: `.claude/routing/` — dispatch telemetry, not documentation.
+
+### Testing
+- **98 -> 131 cases**. The new ones spawn real processes: UC-32 races sixteen of them for one
+  lock, three rounds, because an eight-process version let a broken implementation pass three
+  consecutive runs. TC-59's fixture age moved 120s -> 900s when the precedence window it was
+  pinned to was retired; its name and assertions are unchanged.
+
+---
+
 ## 1.2.1 (2026-08-29)
 
 ### Documentation

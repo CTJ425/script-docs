@@ -1,5 +1,7 @@
 # Kubernetes 節點前置環境初始化
 
+> 最後更新：2026-07-30
+
 自動判斷作業系統家族，套用 Kubernetes 節點的前置需求，最後逐項驗證並顯示結果。
 
 **適用**：RHEL / Rocky / AlmaLinux / CentOS 8-10、Fedora、Ubuntu 20.04+、Debian 11+
