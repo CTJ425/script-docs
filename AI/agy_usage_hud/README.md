@@ -14,7 +14,8 @@ Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 
 - **100% 純 ASCII**（不含 ANSI 色碼）：相容所有終端字型與編碼，不會有寬度錯位或亂碼。
 - **即時 Context Window 監控**：顯示當前會話 Token 消耗與模型上限（如 `Ctx 19.9k/1M`），避免超出上下文視窗。
-- **渲染永不阻塞**：狀態列本身只讀本地快取 (cache) 就輸出；配額 (quota) 由分離出去的背景行程每 5 秒向 API 拉取一次，網路慢或不通都不會拖住提示字元。
+- **渲染永不阻塞**：狀態列本身只讀本地快取 (cache) 就輸出；配額 (quota) 由一個常駐的背景 daemon 每 5 秒向 API 拉取一次，網路慢或不通都不會拖住提示字元。
+- **配額更新不依賴 TUI 重繪**：daemon 啟動後自行輪詢，不需要狀態列被重畫才會去拉資料。連續 120 秒沒有任何一次渲染時它會自動結束，不會在背景留下一個永遠在打 API 的行程。
 - **數據過期會明講**：超過 10 分鐘沒有任何來源確認過的數字，前面加上暗色 `~`。凍結的 HUD 不會偽裝成「你剛好沒在用」。
 - **三段式警示色**：綠 (`<70%`)、黃 (`70~90%`)、紅 (`>=90%`)。
 - **只有數字百分比，沒有進度條**：用量高低完全由數字的顏色表達，不佔橫向空間，窄終端也不會被擠掉。
@@ -84,6 +85,8 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 
 **重置倒數格式**：`<=0` → `0m`；有天數 → `2d04h`；有小時 → `1h30m`；否則 `45m`。
 
+**用量為 0 時不顯示倒數**：配額 API 會把未使用視窗的重置時間一路往後推（永遠是「現在 + 視窗長度」），那個倒數不可能走動。所以 `0.0%` 的欄位只印百分比、不印括號；真正已到期的視窗仍印 `(0m)`，那是實際資訊而非滑動的佔位值。
+
 **警示色**：
 
 | 用量 | 顏色 | ANSI |
@@ -109,7 +112,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k/1M | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（98 案例，Tier 0-12）
+# 1. 完整邊界測試套件（113 案例，Tier 0-13）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
@@ -124,7 +127,7 @@ echo '{"context_window":{"context_window_size":1048576},"quota":{"gemini-5h":{"r
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 98 | Passed: 98 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
+測試套件預期輸出 `Total: 113 | Passed: 113 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
 
 ---
 
@@ -133,7 +136,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-12，98 案例，含 agy 1.1.8 實測 payload）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-13，113 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

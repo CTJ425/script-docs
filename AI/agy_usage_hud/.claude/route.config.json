@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "paths": {
+    "prod": ["*.py", "*.sh"],
+    "docs": "docs/agent",
+    "specs": "docs/agent/specs"
+  },
+  "models": { "scout": "haiku", "builder": "sonnet", "reviewer": "sonnet", "scribe": "haiku" },
+  "bookkeeping": { "enabled": false },
+  "language": { "artifacts": "en" },
+  "review": { "policy": "risk" }
+}

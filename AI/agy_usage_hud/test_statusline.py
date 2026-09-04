@@ -978,13 +978,17 @@ def build_test_cases() -> list:
             "id": "TC-59",
             "tier": "Tier 10: Live API",
             "name": "An API bucket older than its precedence window yields to the payload",
+            # The age here tracks API_RESULT_MAX_AGE_SECONDS and has to stay
+            # clear of it. It was 120s while that window was 30s; the window is
+            # now the staleness threshold, because a shorter one let a single
+            # failed poll hand the display back to a frozen payload (TC-79).
             "setup_cache": lambda: {
                 "version": CACHE_VERSION,
-                "saved_at": int(time.time()) - 120,
+                "saved_at": int(time.time()) - 900,
                 "model": "Gemini 3.6 Flash (High)",
                 "quota": {
                     "gemini-5h": {"used_percent": 73.1, "source": "api",
-                                  "fetched_at": time.time() - 120,
+                                  "fetched_at": time.time() - 900,
                                   "resets_at": int(time.time()) + 3600 + BAND_SLACK},
                 }
             },
@@ -1274,6 +1278,116 @@ def build_test_cases() -> list:
             }),
             "check_str_part": f"Ctx {GREEN}12.4k{RESET}{DIM}/1M{RESET}",
         },
+
+        # --- TIER 13: Live refresh ------------------------------------------
+        {
+            "id": "TC-79",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A polled figure outranks a disagreeing payload for the whole staleness window",
+            # The payload carries no timestamp of its own -- agy refreshes its
+            # quota block only when a response arrives -- so a precedence window
+            # shorter than the cooldown let one failed poll hand the display back
+            # to a frozen figure, which write_cache then persisted.
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 300,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 73.1, "source": "api",
+                                  "fetched_at": time.time() - 300,
+                                  "resets_at": int(time.time()) + 3630},
+                },
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.999, "reset_in_seconds": 3630}},
+            }),
+            "check_str_part": f"5h {YELLOW}73.1%{RESET}",
+            "check_absent_str_part": ["0.1%", "~"],
+            "check_cache_bucket": {"gemini-5h": {"used_percent": 73.1, "source": "api"}},
+        },
+        {
+            "id": "TC-80",
+            "tier": "Tier 13: Live Refresh",
+            "name": "An API entry's absolute deadline anchors the payload's relative countdown",
+            # The poller writes resets_at but no anchor_reset_in. With no way to
+            # reuse that absolute deadline, the payload path re-pinned
+            # now + reset_in_seconds on every render and the countdown froze --
+            # the TC-60/TC-61 defect, re-entering through the API path.
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 700,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 10.0, "source": "api",
+                                  "fetched_at": time.time() - 700,
+                                  "resets_at": int(time.time()) + 9930},
+                },
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 10630}},
+            }),
+            "check_str_part": "(2h45m)",
+            "check_absent_str_part": "(2h57m)",
+        },
+        {
+            "id": "TC-81",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A payload describing a different window re-anchors instead of reusing the cache",
+            "setup_cache": lambda: {
+                "version": CACHE_VERSION,
+                "saved_at": int(time.time()) - 700,
+                "model": "Gemini 3.6 Flash (High)",
+                "quota": {
+                    "gemini-5h": {"used_percent": 10.0, "source": "api",
+                                  "fetched_at": time.time() - 700,
+                                  "resets_at": int(time.time()) + 200},
+                },
+            },
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 18030}},
+            }),
+            "check_str_part": "(5h00m)",
+            "check_absent_str_part": "(3m)",
+        },
+        {
+            "id": "TC-82",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A window with no usage renders no countdown",
+            # The quota API slides an unused window's resetTime to now + the
+            # window length, so the figure never moves. A countdown that cannot
+            # count down is worse than no countdown at all.
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 1, "reset_in_seconds": 18030}},
+            }),
+            "check_str_part": f"5h {GREEN}0.0%{RESET}",
+            "check_absent_str_part": "(5h00m)",
+        },
+        {
+            "id": "TC-83",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A window with usage still renders its countdown",
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 0.9, "reset_in_seconds": 18030}},
+            }),
+            "check_str_part": [f"5h {GREEN}10.0%{RESET}", "(5h00m)"],
+        },
+        {
+            "id": "TC-84",
+            "tier": "Tier 13: Live Refresh",
+            "name": "A zero-usage window whose deadline has passed still renders 0m",
+            # Suppression applies to the sliding deadline of an unused window,
+            # not to one that has genuinely run out: TC-29's terminal 0m stands.
+            "payload": json.dumps({
+                "model": gemini_model(),
+                "quota": {"gemini-5h": {"remaining_fraction": 1, "reset_in_seconds": -500}},
+            }),
+            "check_str_part": [f"5h {GREEN}0.0%{RESET}", "(0m)"],
+        },
     ]
 
 
@@ -1323,6 +1437,180 @@ def build_unit_checks() -> list:
                     os.environ[key] = value
 
     due = {"last_api_fetch": now - 3600}
+
+    def with_scratch_env(body, lock_age=None):
+        """Runs body() with the cache and token env pointed at a scratch dir.
+
+        The daemon lock lives beside the cache, so a lock fixture has to be
+        created inside the same directory the spawn gate resolves
+        USAGE_HUD_CACHE to. lock_age is None for no lock at all.
+        """
+        previous = {k: os.environ.get(k) for k in
+                    ("USAGE_HUD_DISABLE_BG_FETCH", "USAGE_HUD_TOKEN_PATH", "USAGE_HUD_CACHE")}
+        try:
+            with tempfile.TemporaryDirectory() as unit_dir:
+                token_path = Path(unit_dir) / "token.json"
+                token_path.write_text(json.dumps(fresh_token), encoding="utf-8")
+                os.environ.pop("USAGE_HUD_DISABLE_BG_FETCH", None)
+                os.environ["USAGE_HUD_TOKEN_PATH"] = str(token_path)
+                os.environ["USAGE_HUD_CACHE"] = str(Path(unit_dir) / "cache.json")
+                if lock_age is not None:
+                    lock_path = Path(hud.daemon_lock_path())
+                    lock_path.write_text("", encoding="utf-8")
+                    stamp = time.time() - lock_age
+                    os.utime(lock_path, (stamp, stamp))
+                return body()
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def file_age_roundtrip():
+        """touch_file creates what is missing, and file_age dates it from now."""
+        with tempfile.TemporaryDirectory() as unit_dir:
+            path = os.path.join(unit_dir, "nested", "beat")
+            hud.touch_file(path)
+            age = hud.file_age(path, time.time())
+            return os.path.isfile(path) and age is not None and 0 <= age < 5
+
+    # --- Daemon lock ownership -------------------------------------------
+    # flock(LOCK_EX|LOCK_NB) is the arbiter: the kernel picks exactly one
+    # holder and drops the lock when that process dies. That is why there is no
+    # stale-lock age heuristic here to get wrong -- two earlier designs (a
+    # check-then-act touch, then a replace-then-read-back reclaim) each let two
+    # processes believe they owned the lock, because both arbitrated on a path
+    # rather than on the file they had inspected.
+
+    claimant_src = (
+        "import sys, time\n"
+        "sys.path.insert(0, %r)\n"
+        "import statusline_hud as h\n"
+        "start = float(sys.argv[1])\n"
+        "hold = float(sys.argv[2])\n"
+        "while time.time() < start:\n"
+        "    pass\n"
+        "ok = h.acquire_daemon_lock()\n"
+        "print('True' if ok else 'False', flush=True)\n"
+        "if ok and hold > 0:\n"
+        "    time.sleep(hold)\n"
+    ) % str(HUD_DIR)
+
+    def lock_owner():
+        try:
+            return Path(hud.daemon_lock_path()).read_text(encoding="utf-8").strip()
+        except Exception:
+            return None
+
+    def lock_lab(body):
+        """Runs body(spawn) against a scratch lock, always dropping our own.
+
+        The held fd lives in a module global, so a check that acquired and did
+        not release would hand the next check a lock it never asked for.
+        """
+        with tempfile.TemporaryDirectory() as unit_dir:
+            script = Path(unit_dir) / "claim.py"
+            script.write_text(claimant_src, encoding="utf-8")
+            cache_path = Path(unit_dir) / "cache.json"
+            child_env = dict(os.environ)
+            child_env["USAGE_HUD_CACHE"] = str(cache_path)
+            child_env["USAGE_HUD_DISABLE_BG_FETCH"] = "1"
+
+            def spawn(start_at, hold=0.0):
+                return subprocess.Popen(
+                    [sys.executable, str(script), repr(start_at), repr(hold)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    env=child_env, text=True)
+
+            previous = os.environ.get("USAGE_HUD_CACHE")
+            os.environ["USAGE_HUD_CACHE"] = str(cache_path)
+            try:
+                return body(spawn)
+            finally:
+                hud.release_daemon_lock()
+                if previous is None:
+                    os.environ.pop("USAGE_HUD_CACHE", None)
+                else:
+                    os.environ["USAGE_HUD_CACHE"] = previous
+
+    def acquire_free_lock(spawn):
+        return hud.acquire_daemon_lock() is True and lock_owner() == str(os.getpid())
+
+    def refused_while_another_process_holds_it(spawn):
+        child = spawn(time.time(), hold=5.0)
+        try:
+            if child.stdout.readline().strip() != "True":
+                return False
+            return hud.acquire_daemon_lock() is False
+        finally:
+            child.kill()
+            child.wait(timeout=30)
+
+    def dead_owner_lock_is_free(spawn):
+        child = spawn(time.time(), hold=0.0)
+        out, _err = child.communicate(timeout=60)
+        if out.strip() != "True":
+            return False
+        # The file's mtime is seconds old, so every age heuristic would call it
+        # live -- yet the kernel released the flock the instant the child died,
+        # which is the whole point of using flock over a pid file.
+        age = hud.file_age(hud.daemon_lock_path(), time.time())
+        return (age is not None
+                and age < hud.DAEMON_LOCK_STALE_SECONDS
+                and hud.acquire_daemon_lock() is True)
+
+    def release_hands_it_over(spawn):
+        if hud.acquire_daemon_lock() is not True:
+            return False
+        hud.release_daemon_lock()
+        child = spawn(time.time(), hold=0.0)
+        out, _err = child.communicate(timeout=60)
+        return out.strip() == "True"
+
+    def no_fcntl_still_creates_the_lock(spawn):
+        """A platform without fcntl must cost the daemon, not a process per render.
+
+        maybe_trigger_bg_fetch suppresses a spawn on the lock file's mtime, and
+        backs off on last_api_fetch -- but a daemon that dies before polling
+        never advances either. If acquiring bails out before the lock file is
+        created, nothing suppresses anything and every single render starts a
+        doomed subprocess.
+        """
+        real = sys.modules.get("fcntl", "absent")
+        sys.modules["fcntl"] = None          # makes `import fcntl` raise
+        try:
+            took = hud.acquire_daemon_lock()
+        finally:
+            if real == "absent":
+                sys.modules.pop("fcntl", None)
+            else:
+                sys.modules["fcntl"] = real
+        return took is False and os.path.isfile(hud.daemon_lock_path())
+
+    def concurrent_claim_has_one_winner(spawn, rounds=3, claimants=16):
+        """Many processes released together may produce exactly one winner.
+
+        Sixteen, not eight: a weaker race reproduced the earlier defect only
+        intermittently, which let a broken implementation pass three runs in a
+        row. The winner holds the lock while the losers attempt theirs.
+        """
+        for _ in range(rounds):
+            start_at = time.time() + 0.6
+            procs = [spawn(start_at, hold=1.0) for _ in range(claimants)]
+            winners = 0
+            try:
+                for proc in procs:
+                    out, _err = proc.communicate(timeout=60)
+                    if out.strip() == "True":
+                        winners += 1
+            finally:
+                for proc in procs:
+                    if proc.poll() is None:
+                        proc.kill()
+            if winners != 1:
+                return False
+        return True
 
     return [
         ("UC-01", "Nanosecond precision and a numeric offset parse",
@@ -1395,6 +1683,52 @@ def build_unit_checks() -> list:
              and hud.render_context_window(hud.ContextResult(500000, 1000000, 50.0)) ==
                  f"Ctx {hud.COLOR_GREEN}500k{hud.COLOR_RESET}{hud.COLOR_DIM}/1M{hud.COLOR_RESET}"
          )),
+        ("UC-19", "file_age reports None for a path that does not exist",
+         lambda: hud.file_age("/nonexistent/definitely/missing.beat", time.time()) is None),
+        ("UC-20", "touch_file creates the file and file_age dates it from now",
+         lambda: file_age_roundtrip() is True),
+        ("UC-21", "A fresh daemon lock suppresses the spawn",
+         lambda: with_scratch_env(lambda: hud.maybe_trigger_bg_fetch(due, time.time()),
+                                  lock_age=5) is False),
+        ("UC-22", "A lock older than DAEMON_LOCK_STALE_SECONDS no longer suppresses it",
+         lambda: with_scratch_env(
+             lambda: hud.maybe_trigger_bg_fetch(due, time.time()),
+             lock_age=hud.DAEMON_LOCK_STALE_SECONDS + 5) is True),
+        ("UC-23", "A render stamps the heartbeat even when no spawn is due",
+         # A daemon started earlier reads this file to decide whether anyone is
+         # still watching. Skipping the stamp on renders that do not spawn is
+         # how it would starve itself while polls are on cooldown.
+         lambda: with_scratch_env(lambda: (
+             hud.maybe_trigger_bg_fetch({"last_api_fetch": time.time() - 1}, time.time()),
+             os.path.isfile(hud.render_heartbeat_path()),
+         )[1]) is True),
+        ("UC-24", "An API reading outranks the payload for exactly as long as it is not stale",
+         lambda: (hud.API_RESULT_MAX_AGE_SECONDS == hud.STALE_AFTER_SECONDS
+                  and hud.API_ERROR_COOLDOWN < hud.API_RESULT_MAX_AGE_SECONDS)),
+        ("UC-25", "A daemon lock outlives the longest possible poll iteration",
+         lambda: hud.DAEMON_LOCK_STALE_SECONDS > hud.API_ERROR_COOLDOWN + 3),
+        ("UC-26", "A cached absolute deadline anchors a payload describing the same window",
+         lambda: hud.anchor_live_resets_at(
+             {"resets_at": None, "reset_in_seconds": 10630},
+             {"resets_at": int(now) + 9930, "source": "api"},
+             now) == (int(now) + 9930, 10630)),
+        ("UC-27", "A payload beyond the anchor tolerance re-anchors to the present",
+         lambda: hud.anchor_live_resets_at(
+             {"resets_at": None, "reset_in_seconds": 18030},
+             {"resets_at": int(now) + 200, "source": "api"},
+             now) == (int(round(now + 18030)), 18030)),
+        ("UC-28", "Claiming a free daemon lock succeeds and records the holder's pid",
+         lambda: lock_lab(acquire_free_lock) is True),
+        ("UC-29", "A lock held by a live process is refused",
+         lambda: lock_lab(refused_while_another_process_holds_it) is True),
+        ("UC-30", "A lock left behind by a dead process needs no age heuristic to reclaim",
+         lambda: lock_lab(dead_owner_lock_is_free) is True),
+        ("UC-31", "Releasing hands the lock to another process",
+         lambda: lock_lab(release_hands_it_over) is True),
+        ("UC-32", "Exactly one of many racing processes takes the lock",
+         lambda: lock_lab(concurrent_claim_has_one_winner) is True),
+        ("UC-33", "Without fcntl the lock file is still created, so renders stop respawning",
+         lambda: lock_lab(no_fcntl_still_creates_the_lock) is True),
     ]
 
 

@@ -60,15 +60,43 @@ CACHE_FUTURE_SLACK_SECONDS = 300  # 300 seconds slack for clock skew
 DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
 QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
-API_ERROR_COOLDOWN = 60.0  # seconds cooldown on API fetch failure
-
-# How long an API reading outranks the stdin payload. agy only refreshes the
-# payload's quota block when a response arrives, so between turns it goes stale
-# while the poller keeps seeing the server's own figure.
-API_RESULT_MAX_AGE_SECONDS = 30.0
 
 # A cached figure older than this is rendered with STALE_SEGMENT_PREFIX.
 STALE_AFTER_SECONDS = 600.0
+
+# An API reading outranks the stdin payload for as long as it is not stale.
+# The payload carries no timestamp of its own -- agy refreshes its quota
+# block only when a response arrives -- so a short window here means a
+# transient poll failure lets a frozen payload displace a figure the poller
+# actually confirmed, and write_cache then persists that regression.
+API_RESULT_MAX_AGE_SECONDS = STALE_AFTER_SECONDS
+
+# Cooldown after an API fetch failure. Must stay well below
+# API_RESULT_MAX_AGE_SECONDS, or a transient failure would let a stale
+# payload win over an API reading that is still fresh enough to trust.
+API_ERROR_COOLDOWN = 15.0
+
+# How far a payload's implied deadline may drift from a cached API resets_at
+# and still be treated as the same window (see anchor_live_resets_at).
+ANCHOR_MATCH_TOLERANCE_SECONDS = 900.0
+
+# A lock older than this belongs to a dead daemon. Must exceed the longest
+# possible run_daemon iteration (API_ERROR_COOLDOWN plus the 3s fetch
+# timeout), or a live daemon mid-iteration would look stale and get a
+# duplicate spawned alongside it.
+DAEMON_LOCK_STALE_SECONDS = 30.0
+
+# Holds the fd of the flock'd daemon lock file while this process owns it.
+# The lock exists for exactly as long as this fd stays open; it must not be
+# closed or garbage collected while the daemon runs.
+_daemon_lock_fd: Optional[int] = None
+
+# No render for this long: nobody is watching the HUD, so the daemon exits
+# instead of polling forever in the background.
+DAEMON_IDLE_EXIT_SECONDS = 120.0
+
+# Hard ceiling on a daemon's lifetime, in case the idle check is ever starved.
+DAEMON_MAX_LIFETIME_SECONDS = 6 * 3600
 
 # Treat the OAuth token as dead slightly before its stated expiry, so a request
 # cannot be issued in the last moments of its validity and land after it.
@@ -387,6 +415,87 @@ def get_cache_path() -> str:
     return os.environ.get("USAGE_HUD_CACHE", CACHE_FILE)
 
 
+def daemon_lock_path() -> str:
+    """Path to the lock file a running daemon holds beside the cache."""
+    return get_cache_path() + ".lock"
+
+
+def render_heartbeat_path() -> str:
+    """Path to the file each render stamps, so a daemon can tell it is still watched."""
+    return get_cache_path() + ".render"
+
+
+def touch_file(path: str) -> None:
+    """Creates path if missing and updates its mtime to now. Never raises."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a"):
+            pass
+        os.utime(path, None)
+    except Exception:
+        pass
+
+
+def file_age(path: str, now: float) -> Optional[float]:
+    """Seconds since path's mtime, or None if it is missing or unreadable."""
+    try:
+        return now - os.path.getmtime(path)
+    except Exception:
+        return None
+
+
+def acquire_daemon_lock() -> bool:
+    """Claims the daemon lock via fcntl.flock. Returns True only if we own it.
+
+    The kernel arbitrates flock, so there is no stale lock and no age
+    heuristic to get wrong: a lock left by a process that has exited is
+    released by the kernel the moment that process dies.
+    """
+    global _daemon_lock_fd
+    if _daemon_lock_fd is not None:
+        return True
+
+    lock_path = daemon_lock_path()
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    except Exception:
+        return False
+
+    # Import fcntl only after the lock file exists: on a platform without
+    # fcntl this import fails, but the file's mtime still lands on disk for
+    # maybe_trigger_bg_fetch's spawn gate to read. Reordering this back to
+    # before os.open would silently restore a spawn-per-render loop.
+    try:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except Exception:
+        os.close(fd)
+        return False
+
+    try:
+        os.ftruncate(fd, 0)
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+    except Exception:
+        pass
+
+    _daemon_lock_fd = fd
+    return True
+
+
+def release_daemon_lock() -> None:
+    """Releases the held flock by closing its fd. Never raises."""
+    global _daemon_lock_fd
+    if _daemon_lock_fd is None:
+        return
+    try:
+        os.close(_daemon_lock_fd)
+    except Exception:
+        pass
+    _daemon_lock_fd = None
+
+
 def read_cache() -> Optional[dict]:
     """Reads disk cache safely. Returns dict or None."""
     try:
@@ -473,6 +582,18 @@ def anchor_live_resets_at(parsed_live: dict, cached_item, now: float) -> Tuple[O
                 and previous_resets_at is not None
                 and int(previous_anchor) == int(reset_sec)):
             return int(previous_resets_at), int(reset_sec)
+
+        # The cache may hold an absolute deadline from the poller with no
+        # matching anchor (an API entry never records anchor_reset_in). The
+        # poller's own resets_at is the better source, so reuse it whenever it
+        # describes the same window as the payload -- a lagging payload drifts
+        # by minutes, while a payload describing a different window differs by
+        # the window length (5h or 7d), so a tolerance well under that
+        # separates the two cleanly.
+        if previous_resets_at is not None:
+            drift = abs((previous_resets_at - now) - reset_sec)
+            if drift <= ANCHOR_MATCH_TOLERANCE_SECONDS:
+                return int(previous_resets_at), int(reset_sec)
 
     # Rounded: truncating loses up to a second of now, which is enough to render
     # an exactly-3600s payload as 59m.
@@ -828,6 +949,47 @@ def do_background_fetch():
         pass
 
 
+def run_daemon():
+    """Persistent poller: keeps do_background_fetch running on a cadence.
+
+    --bg-fetch is one-shot and only ever runs from inside a render, so with no
+    render there is no poll. This loop is spawned once and keeps polling on
+    its own until nobody is watching (no fresh render heartbeat) or it hits
+    its lifetime ceiling. Wrapped so the daemon can never raise: it is
+    detached and its stderr goes to /dev/null anyway.
+    """
+    try:
+        started = time.time()
+        lock_path = daemon_lock_path()
+        if not acquire_daemon_lock():
+            return
+        try:
+            while True:
+                do_background_fetch()  # already writes last_api_error on failure
+                touch_file(lock_path)
+
+                if time.time() - started > DAEMON_MAX_LIFETIME_SECONDS:
+                    break
+
+                heartbeat_age = file_age(render_heartbeat_path(), time.time())
+                if heartbeat_age is None or heartbeat_age > DAEMON_IDLE_EXIT_SECONDS:
+                    break
+
+                cache = read_cache()
+                # last_api_error is only ever set alongside a failing fetch and
+                # popped on the next success, so its mere presence means the
+                # last attempt (not a successful one) is the newest thing on
+                # record: back off instead of hammering a failing endpoint.
+                last_error = safe_float(cache.get("last_api_error")) if isinstance(cache, dict) else None
+                if last_error is not None:
+                    time.sleep(API_ERROR_COOLDOWN)
+                else:
+                    time.sleep(API_REFRESH_INTERVAL)
+        finally:
+            release_daemon_lock()
+    except Exception:
+        pass
+
 
 def maybe_trigger_bg_fetch(cache: Optional[dict], now: float) -> bool:
     """Spawns a non-blocking background fetch when one is due.
@@ -836,6 +998,17 @@ def maybe_trigger_bg_fetch(cache: Optional[dict], now: float) -> bool:
     without having to observe a detached child.
     """
     if os.environ.get("USAGE_HUD_DISABLE_BG_FETCH") == "1":
+        return False
+
+    # Stamped on every render that reaches here, spawning or not: a daemon
+    # started earlier reads this to decide whether anyone is still watching,
+    # and skipping the stamp on cooldown renders would starve it.
+    touch_file(render_heartbeat_path())
+
+    # A daemon already holds the lock and is polling on its own cadence, so
+    # spawning another one here would just duplicate its work.
+    lock_age = file_age(daemon_lock_path(), now)
+    if lock_age is not None and lock_age <= DAEMON_LOCK_STALE_SECONDS:
         return False
 
     last_fetch = safe_float(cache.get("last_api_fetch") if isinstance(cache, dict) else None) or 0.0
@@ -855,7 +1028,7 @@ def maybe_trigger_bg_fetch(cache: Optional[dict], now: float) -> bool:
 
     import subprocess
     try:
-        cmd = [sys.executable, os.path.abspath(__file__), "--bg-fetch"]
+        cmd = [sys.executable, os.path.abspath(__file__), "--bg-daemon"]
         env = dict(os.environ)
         env["USAGE_HUD_DISABLE_BG_FETCH"] = "1"
         subprocess.Popen(
@@ -950,7 +1123,11 @@ def render_window(label: str, item: Optional[BucketResult]) -> str:
     col = get_color_code(pct)
     mark = STALE_SEGMENT_PREFIX if item.is_stale else ""
     reset_sec = item.reset_in_seconds
-    if reset_sec is not None:
+    # The API slides an unused window's resetTime to now + the window length,
+    # so a 0%-used countdown never moves and reads as broken. Suppress it only
+    # while it is still counting down: a deadline that has genuinely passed
+    # (reset_sec <= 0) is real information, not a sliding placeholder.
+    if reset_sec is not None and not (pct == 0.0 and reset_sec > 0):
         rst = format_duration(reset_sec)
         return f"{label} {mark}{col}{pct:.1f}%{COLOR_RESET} {COLOR_DIM}({rst}){COLOR_RESET}"
     return f"{label} {mark}{col}{pct:.1f}%{COLOR_RESET}"
@@ -991,6 +1168,10 @@ def render_statusline(data: dict) -> str:
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--bg-fetch":
         do_background_fetch()
+        sys.exit(0)
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--bg-daemon":
+        run_daemon()
         sys.exit(0)
 
     try:

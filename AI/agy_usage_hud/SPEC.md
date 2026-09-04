@@ -82,9 +82,15 @@ the file.
 Resolution order per window, first match wins:
 
 1. **Recent API reading** — a cached bucket with `source: "api"` whose
-   `fetched_at` is within the 30-second precedence window. agy only refreshes
-   the payload's `quota` block when a response arrives, so between turns it
-   reports figures the poller has already superseded.
+   `fetched_at` is within the precedence window, which is deliberately the same
+   600 seconds as the staleness threshold. agy only refreshes the payload's
+   `quota` block when a response arrives, so between turns it reports figures
+   the poller has already superseded — and the payload carries no timestamp of
+   its own, so there is nothing to compare its age against. A window shorter
+   than `API_ERROR_COOLDOWN` guaranteed the opposite of the intent: every
+   transient poll failure handed the display back to a frozen payload, and
+   `write_cache` then persisted that figure over the polled one. The cooldown
+   is 15 seconds precisely so it can never outlast this window.
 2. **Live `stdin` payload**.
 3. **Cache fallback** — any bucket in a cache younger than 7 days.
 
@@ -94,10 +100,24 @@ Resolution order per window, first match wins:
   anchor is reused for as long as the payload keeps reporting the same relative
   value. Re-deriving it every render re-pins the deadline to the present, which
   freezes the countdown and stops the window ever rolling over.
+- **A cached API deadline anchors the payload too.** A bucket written by the
+  poller records an absolute `resets_at` but no `anchor_reset_in`, so the anchor
+  match above cannot fire and the payload path would re-pin to the present on
+  every render — the same freeze, re-entering through the API path. The payload
+  therefore reuses the cached absolute deadline whenever it is within
+  `ANCHOR_MATCH_TOLERANCE_SECONDS` (900) of the payload's own
+  `reset_in_seconds`, and re-anchors only beyond that. The tolerance separates
+  the two cases cleanly: a lagging payload drifts by minutes, while a payload
+  describing a *different* window differs by the window length (5h or 7d).
 - **Rollover Evaluation** (cache path): if `resets_at <= epoch_now`, the window
   has rolled over -> `used_percent = 0.0`, countdown omitted. The payload path
   states the current percentage outright, so a passed deadline only bottoms the
   countdown out at `0m`.
+- **No countdown at zero usage**: the quota API slides an unused window's
+  `resetTime` to `now + <window length>` on every poll, so a `0.0%` countdown
+  can never move and reads as a broken clock. It is omitted. A deadline that has
+  genuinely passed (`reset_in_seconds <= 0`) still renders `0m`, because that is
+  real information rather than a sliding placeholder.
 - **Staleness**: a figure resolved from the cache whose `fetched_at` is more
   than 600 seconds old renders with a dim `~` prefix. Without it an expired
   OAuth token or a payload that stopped carrying quota is indistinguishable from
@@ -142,7 +162,7 @@ Resolution order per window, first match wins:
 - **TC-54 (Fault Tolerance)**: Verify corrupted JSON or unwritable cache directory degrades silently to normal rendering with exit code 0.
 
 ### 3. Test Suite Expansion (Tier 10: Live API Precedence & Provenance)
-- **TC-57 / TC-59 (API Precedence)**: Verify a recent API bucket outranks the payload, and yields to it once past the precedence window.
+- **TC-57 / TC-59 (API Precedence)**: Verify a recent API bucket outranks the payload, and yields to it once past the precedence window. TC-59's fixture age moved from 120s to 900s when that window widened to the staleness threshold; its name and assertions are unchanged, because the contract it states did not change — only the number the window is set to.
 - **TC-58 (No Clobber)**: Verify a payload render leaves a recent API bucket intact in the cache.
 - **TC-60 / TC-61 (Anchoring)**: Verify an unchanged `reset_in_seconds` reuses its stored anchor, and a changed one re-anchors.
 - **TC-62 / TC-63 (Staleness)**: Verify figures nobody confirmed within the staleness threshold render with `~`, and recent ones do not.
@@ -152,22 +172,68 @@ Resolution order per window, first match wins:
 ### 4. Test Suite Expansion (Tier 11: In-Process Unit Checks)
 - **UC-01**–**UC-13**: ISO-8601 parsing, token expiry, skew window, and background fetch spawning decisions.
 - **UC-14**–**UC-18**: Token formatting, boundary validation, context parsing, and rendering ANSI color checks.
+- **UC-19 / UC-20**: `file_age` reports `None` for a missing path; `touch_file` creates what is missing and `file_age` then dates it from now.
+- **UC-21 / UC-22**: A daemon lock newer than `DAEMON_LOCK_STALE_SECONDS` suppresses the spawn; one older than it does not.
+- **UC-23**: A render stamps the heartbeat even when every spawn gate says no.
+- **UC-24 / UC-25**: The constant invariants — the precedence window equals the staleness threshold and outlasts the error cooldown, and the lock threshold outlasts the longest poll iteration.
+- **UC-26 / UC-27**: `anchor_live_resets_at` reuses a cached absolute deadline within the tolerance, and re-anchors beyond it.
 
 ### 5. Test Suite Expansion (Tier 12: Context Window Suite)
 - **TC-67**–**TC-78**: Context window token formatting (`current_usage` vs `total_tokens`), size abbreviations (`k`, `M`), color thresholds (green/yellow/red), missing/corrupted degradations, and pure ASCII verification.
 
-### 6. Determinism Requirements
+### 6. Test Suite Expansion (Tier 13: Live Refresh)
+- **TC-79 (Precedence)**: Verify a 300s-old API bucket beats a disagreeing payload and is still recorded as `source: "api"` in the cache afterwards.
+- **TC-80 (API-Anchored Countdown)**: Verify a 700s-old API bucket carrying `resets_at` but no `anchor_reset_in` anchors the payload's relative countdown, so the rendered value reflects the elapsed time instead of the payload's raw figure.
+- **TC-81 (Out-of-Tolerance Re-Anchor)**: Verify a payload whose deadline differs from the cached one by more than the tolerance re-anchors to the present.
+- **TC-82 / TC-83 (Zero-Usage Countdown)**: Verify a `0.0%` window renders no countdown, and a window with usage still renders one.
+- **TC-84 (Terminal Zero)**: Verify a `0.0%` window whose deadline has already passed still renders `0m`.
+
+### 7. Determinism Requirements
 - The suite sets `USAGE_HUD_DISABLE_BG_FETCH=1` by default; cases exercising the fetch re-enable it explicitly. No case may depend on a reachable API or a valid token, and none may spawn a process that writes to the user's real cache.
 - Time-relative fixtures are built **at execution time**, not when the case list is constructed: a cache whose timestamps predate the preceding cases has already aged by the time it is read.
 - Countdown fixtures sit in the middle of the minute band they assert (`mid_band`), so seconds spent running the suite cannot drop the rendered value into the band below.
 
-### 7. Live Quota API Fetch & Background Refresh
+### 8. Live Quota API Fetch & Background Refresh
 - Real-time quota updates directly fetch from `https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` using the OAuth token at `~/.gemini/antigravity-cli/antigravity-oauth-token` (overridable via `USAGE_HUD_TOKEN_PATH`).
 - Statusline renders instantly using local cache (<10ms).
-- When `now - last_api_fetch >= 5` seconds, statusline spawns a non-blocking, detached background subprocess (`--bg-fetch`) to update `usage_hud_cache.json` in ~150ms without hanging prompt render.
-- On API error or offline status, `last_api_error` is recorded and no further fetch is spawned for 60 seconds (`API_ERROR_COOLDOWN`), preventing subprocess thrashing.
+- **Polling is a daemon, not a per-render spawn.** A one-shot fetch triggered
+  from inside a render only polls while the TUI is redrawing: no render, no
+  refresh, whatever the interval constant claims. A render instead spawns a
+  detached `--bg-daemon` process once, which then polls every
+  `API_REFRESH_INTERVAL` (5s) on its own, independent of the render cadence.
+- `--bg-fetch` still exists and is still one-shot; it is the body the daemon's
+  loop calls, and the failure-path tests drive it directly.
+- Two files live beside the cache: `<cache>.lock` and `<cache>.render`, stamped
+  by every render.
+- **`flock` decides who runs, not a heuristic.** The daemon holds
+  `fcntl.flock(fd, LOCK_EX | LOCK_NB)` on the lock file for its whole life, so
+  the kernel admits exactly one daemon and releases the lock the instant that
+  process dies. There is no stale-lock rule to get wrong. Two earlier designs
+  arbitrated by sequencing filesystem calls — a check-then-act touch, then an
+  atomic-rename steal — and both were measured letting several processes each
+  believe they owned the lock, because both arbitrated on a *path* rather than
+  on the file they had inspected. `fcntl` is imported inside the function, not
+  at module scope: a platform without it must cost the daemon, never the
+  statusline.
+- The lock file is never unlinked, and must not be deleted by hand. The lock
+  belongs to the inode, so removing the file does not release it — it only lets
+  the next process create a fresh inode and lock that instead, which is how two
+  daemons would end up polling at once.
+- `maybe_trigger_bg_fetch` still skips the spawn when the lock's mtime is newer
+  than `DAEMON_LOCK_STALE_SECONDS` (30, chosen to exceed the longest possible
+  iteration: `API_ERROR_COOLDOWN` plus the 3s fetch timeout). That gate is now
+  only an optimisation — it avoids spawning a process that would immediately
+  lose the `flock` — and correctness no longer depends on it.
+- The daemon exits when `<cache>.render` has not been stamped for
+  `DAEMON_IDLE_EXIT_SECONDS` (120) — nobody is watching the HUD — or after
+  `DAEMON_MAX_LIFETIME_SECONDS` (6h), whichever comes first. The heartbeat is
+  stamped on every render that reaches the spawn gate, including renders the
+  gate turns away, or a daemon would starve itself while polls are on cooldown.
+- On API error or offline status, `last_api_error` is recorded; the render-path
+  gate suppresses spawns and the daemon backs off for 15 seconds
+  (`API_ERROR_COOLDOWN`) instead of hammering a failing endpoint.
 
-### 8. OAuth Token Handling
+### 9. OAuth Token Handling
 - The token file is re-read on **every** fetch, so a token agy has renewed is picked up on the next poll with no restart.
 - The `expiry` field is checked before spawning: an expired token returns a certain `401 UNAUTHENTICATED`, so there is nothing worth spawning a process for. A `30`-second skew keeps a request from being issued in the last moments of validity.
 - **The HUD never mints its own token.** Exchanging the `refresh_token` requires agy's OAuth client secret, which does not belong in this repo. The consequence is deliberate and bounded: while the token is dead the figures go stale, and the `~` prefix says so, until agy rewrites the file.
