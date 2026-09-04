@@ -272,8 +272,8 @@ def parse_context_window(data: dict) -> Optional[ContextResult]:
         if tot_inp is not None or tot_out is not None:
             used_tokens = int((tot_inp or 0.0) + (tot_out or 0.0))
 
+    used_pct_raw = safe_float(cw.get("used_percentage", cw.get("used_percent")))
     if used_tokens is None:
-        used_pct_raw = safe_float(cw.get("used_percentage", cw.get("used_percent")))
         if used_pct_raw is not None:
             used_tokens = int(round(total_tokens * (used_pct_raw / 100.0)))
 
@@ -281,8 +281,11 @@ def parse_context_window(data: dict) -> Optional[ContextResult]:
         return None
 
     used_tokens = max(0, used_tokens)
-    pct = (used_tokens / total_tokens) * 100.0 if total_tokens > 0 else 0.0
-    used_percent = round(max(0.0, min(100.0, pct)), 1)
+    if used_pct_raw is not None:
+        used_percent = round(max(0.0, min(100.0, used_pct_raw)), 1)
+    else:
+        pct = (used_tokens / total_tokens) * 100.0 if total_tokens > 0 else 0.0
+        used_percent = round(max(0.0, min(100.0, pct)), 1)
 
     return ContextResult(
         used_tokens=used_tokens,
@@ -1176,7 +1179,8 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
     """
     try:
         cache_path = get_cache_path()
-        usable_cache = cache if cache_is_fresh(cache, now) else None
+        fresh_disk_cache = read_cache()
+        usable_cache = fresh_disk_cache if cache_is_fresh(fresh_disk_cache, now) else (cache if cache_is_fresh(cache, now) else None)
 
         new_quota = {}
         if usable_cache and isinstance(usable_cache.get("quota"), dict):

@@ -1817,6 +1817,14 @@ def build_unit_checks() -> list:
              {str(i): {"cumulative_tokens": i, "last_observed": i, "last_seen": 10_000}
               for i in range(hud.MAX_TRACKED_SESSIONS + 5)},
              10_000)) == hud.MAX_TRACKED_SESSIONS),
+        ("UC-46", "Explicit used_percentage in cw determines occupancy even when token counts present",
+         lambda: hud.parse_context_window({
+             "context_window": {
+                 "context_window_size": 1000000,
+                 "used_percentage": 85.5,
+                 "current_usage": {"input_tokens": 10000, "output_tokens": 500},
+             }
+         }) == hud.ContextResult(used_tokens=10500, total_tokens=1000000, used_percent=85.5)),
     ]
 
 
