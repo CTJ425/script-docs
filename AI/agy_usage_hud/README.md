@@ -62,9 +62,44 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usag
 > `settings.json` 的 `command` 必須是**絕對路徑**——Antigravity CLI 不會展開 `~`。
 > `setup.sh` 寫入的就是展開後的絕對路徑；手動設定時請用 `realpath` 取得。
 
+### 更新既有安裝
+
+**更新與全新安裝是同一道指令。** `setup.sh` 會覆寫 `statusline_hud.py`，並把 `statusLine` 重新合併寫回 `settings.json`（一樣先備份成 `settings.json.bak.<timestamp>`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usage_hud/setup.sh | bash
+```
+
+確認新版真的裝上了（舊版沒有背景 daemon）：
+
+```bash
+grep -c -- --bg-daemon ~/.gemini/antigravity-cli/statusline_hud.py   # 新版 >= 1，舊版為 0
+```
+
+> [!IMPORTANT]
+> **裝完要重啟 agy。** Antigravity CLI 只在啟動時讀取 `settings.json` 的 `statusLine`；從外部改那個檔案，**正在跑的 session 不會採用**。唯一能不重啟就套用的方式是在 agy TUI 裡下 `/statusline <絕對路徑>`——它即時生效，並會把新值寫回 `settings.json`。
+>
+> 用 `/statusline` 時同樣要給**絕對路徑**。寫成 `~/...` 會讓狀態列靜默失效（`~` 不會被展開），且因為它會覆寫 `settings.json`，連下次重啟也一併壞掉。
+
+更新後，舊版的背景 daemon 可能還活著。它持有鎖直到自行結束（連續 120 秒沒有渲染就退出），在那之前新版不會另外起一個。不想等就先看再殺：
+
+```bash
+pgrep -af 'statusline_hud.py --bg-daemon'      # 先確認要殺的是什麼
+pkill -f 'statusline_hud.py --bg-daemon'
+```
+
 ### 解除安裝
 
 刪除 `~/.gemini/antigravity-cli/settings.json` 中的 `statusLine` 欄位（或還原安裝時產生的 `.bak` 檔），並移除 `~/.gemini/antigravity-cli/statusline_hud.py`。
+
+背景 daemon 會在偵測不到渲染後自行結束，但要立刻收乾淨就把它停掉並清掉狀態檔：
+
+```bash
+pkill -f 'statusline_hud.py --bg-daemon'
+rm -f ~/.gemini/antigravity-cli/usage_hud_cache.json \
+      ~/.gemini/antigravity-cli/usage_hud_cache.json.lock \
+      ~/.gemini/antigravity-cli/usage_hud_cache.json.render
+```
 
 ---
 
