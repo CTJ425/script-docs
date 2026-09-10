@@ -1,6 +1,6 @@
 # Proxmox VE ISO 軟連結同步
 
-> 最後更新：2026-07-30
+> 最後更新：2026-09-10
 
 把放在 NAS / NFS / SMB 分享區裡的 ISO，用 symbolic link 掛進 Proxmox VE 的 ISO 目錄，
 這樣 PVE 網頁介面看得到它們，但檔案不需要複製一份。
@@ -35,12 +35,15 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_
 
 ## 行為
 
-1. 刪除目標目錄中既有的 `.iso` **軟連結**（一般檔案與非 `.iso` 連結不會被動到）。
-2. 遞迴掃描來源目錄的 `*.iso`（不分大小寫），跳過目標目錄本身與 Synology 的 `@eaDir`。
-3. 為每個 ISO 建立同名軟連結，已存在的跳過。
-4. 印出 Linked / Skipped / Failed 統計；有失敗時以非 0 結束（方便 cron 偵測）。
+1. **增量對齊 (Reconciliation)**：遞迴掃描來源目錄的 `*.iso`（不分大小寫），自動跳過目標目錄本身、Synology / QNAP 回收筒（`#recycle` / `@Recycle`）、快照（`.zfs` / `.snapshot`）與 `@eaDir`。
+2. **就地維護軟連結**：
+   - 目標目錄中指向正確的既有軟連結予以保留（`Unchanged`），不重複刪除與建立，確保 PVE 無服務空窗期（Zero-downtime）。
+   - 新發現的 ISO 建立軟連結（`Linked`）；若來源路徑變更則就地更新連結。
+   - 一般檔案與非 `.iso` 連結絕不動到；同名 ISO 衝突時保留先掃描到的項目並顯示衝突路徑。
+3. **過期清理 (Prune)**：清理目標目錄中已失效（dangling）或來源端已移除的舊軟連結。
+4. **統計摘要**：印出 Linked / Unchanged / Pruned / Skipped / Failed 統計；若執行有失敗則以非 0 結束（方便 cron 偵測）。
 
-檔名重複時只會保留一個連結 —— 不同子目錄放了同名 ISO 的話，第二個會被計為 skipped 並顯示來源路徑。
+檔名重複時只會保留一個連結 —— 不同子目錄放了同名 ISO 的話，第二個會被計為 skipped 並顯示來源與衝突路徑。
 
 ---
 
