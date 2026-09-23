@@ -68,7 +68,7 @@ if (fs.existsSync(settingsPath)) {
   }
 }
 
-settings.statusLine = { type: "command", command };
+settings.statusLine = { type: "command", command, refreshInterval: 5 };
 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 ' "$SETTINGS_FILE" "node \"$INSTALL_DIR/$SCRIPT_NAME\""
 

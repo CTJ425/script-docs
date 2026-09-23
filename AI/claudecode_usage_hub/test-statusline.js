@@ -25,6 +25,8 @@ function writeCacheFile(cachePath, contents) {
 }
 
 function run(stdin, cachePath) {
+  // A live payload writes NO_CACHE, so reset it: default runs must start cold.
+  if (cachePath === undefined) fs.rmSync(NO_CACHE, { force: true });
   const result = spawnSync(process.execPath, [SCRIPT], {
     input: stdin === undefined ? "" : stdin,
     encoding: "utf8",
@@ -534,6 +536,165 @@ test("cached bucket without resets_at shows the usage, not a green 0.0%", () => 
   assert.ok(out.includes("5h 85.0%"), `expected cached 5h 85.0% in: ${out}`);
   assert.ok(!out.includes("5h 0.0%"), `unknown reset time rendered as 0.0% in: ${out}`);
   assert.ok(!/5h 85\.0% \(/.test(out), `expected no countdown without resets_at in: ${out}`);
+});
+
+// --- stale live buckets vs the shared cache ---------------------------------
+// The cache is shared by every session; an idle session re-renders with the
+// rate_limits of its own last API response and must not roll the cache back.
+
+function cacheWithFiveHour(cachePath, usedPercentage, resetsAt) {
+  writeCacheFile(cachePath, {
+    version: 1,
+    saved_at: nowSeconds() - 60,
+    rate_limits: { five_hour: { used_percentage: usedPercentage, resets_at: resetsAt } },
+    context_window_size: 200000,
+  });
+}
+
+function runWithLiveFiveHour(cachePath, usedPercentage, resetsAt) {
+  return run(
+    JSON.stringify({
+      model: { display_name: "M" },
+      rate_limits: { five_hour: { used_percentage: usedPercentage, resets_at: resetsAt } },
+      context_window: { used_percentage: 10, context_window_size: 200000 },
+    }),
+    cachePath
+  );
+}
+
+test("same window, lower live % does not lower the cached value", () => {
+  const cachePath = freshCachePath();
+  const resetsAt = nowSeconds() + 3600;
+  cacheWithFiveHour(cachePath, 60.0, resetsAt);
+
+  const r = runWithLiveFiveHour(cachePath, 40.0, resetsAt);
+  assert.strictEqual(r.status, 0);
+  // The display takes the newer cached figure, not the session's stale one.
+  assert.ok(stripAnsi(r.stdout).includes("5h 60.0%"), `expected cached 5h in: ${stripAnsi(r.stdout)}`);
+
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 60.0);
+  assert.strictEqual(cache.rate_limits.five_hour.resets_at, resetsAt);
+});
+
+test("same window, higher live % updates the cached value", () => {
+  const cachePath = freshCachePath();
+  const resetsAt = nowSeconds() + 3600;
+  cacheWithFiveHour(cachePath, 60.0, resetsAt);
+
+  runWithLiveFiveHour(cachePath, 75.0, resetsAt);
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 75.0);
+});
+
+test("live bucket from an earlier window does not overwrite a newer cached window", () => {
+  const cachePath = freshCachePath();
+  const newer = nowSeconds() + 4 * 3600;
+  cacheWithFiveHour(cachePath, 10.0, newer);
+
+  runWithLiveFiveHour(cachePath, 80.0, nowSeconds() - 600);
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 10.0);
+  assert.strictEqual(cache.rate_limits.five_hour.resets_at, newer);
+});
+
+test("live bucket from an earlier window renders the newer cached window", () => {
+  const cachePath = freshCachePath();
+  cacheWithFiveHour(cachePath, 10.0, nowSeconds() + 4 * 3600);
+
+  const r = runWithLiveFiveHour(cachePath, 80.0, nowSeconds() - 600);
+  const out = stripAnsi(r.stdout);
+  assert.ok(/5h 10\.0% \(\d+h\d\dm\)/.test(out), `expected cached 5h with countdown in: ${out}`);
+});
+
+test("a rolled-over cached window never overrides the live value", () => {
+  const cachePath = freshCachePath();
+  const passed = nowSeconds() - 600;
+  cacheWithFiveHour(cachePath, 70.0, passed);
+
+  const r = runWithLiveFiveHour(cachePath, 60.0, passed);
+  const out = stripAnsi(r.stdout);
+  assert.ok(out.includes("5h 60.0%"), `expected live 5h in: ${out}`);
+  assert.ok(!out.includes("70.0%"), `rolled-over cached value rendered in: ${out}`);
+});
+
+test("same window, higher live % renders the live value", () => {
+  const cachePath = freshCachePath();
+  const resetsAt = nowSeconds() + 3600;
+  cacheWithFiveHour(cachePath, 60.0, resetsAt);
+
+  const r = runWithLiveFiveHour(cachePath, 75.0, resetsAt);
+  assert.ok(stripAnsi(r.stdout).includes("5h 75.0%"), `expected live 5h in: ${stripAnsi(r.stdout)}`);
+});
+
+test("expired cache is not used to override a live value", () => {
+  const cachePath = freshCachePath();
+  const resetsAt = nowSeconds() + 3600;
+  writeCacheFile(cachePath, {
+    version: 1,
+    saved_at: nowSeconds() - 10 * 86400,
+    rate_limits: { five_hour: { used_percentage: 60.0, resets_at: resetsAt } },
+    context_window_size: 200000,
+  });
+
+  const r = runWithLiveFiveHour(cachePath, 40.0, resetsAt);
+  assert.ok(stripAnsi(r.stdout).includes("5h 40.0%"), `expected live 5h in: ${stripAnsi(r.stdout)}`);
+});
+
+test("live bucket from a newer window replaces the cache even with a lower %", () => {
+  const cachePath = freshCachePath();
+  cacheWithFiveHour(cachePath, 80.0, nowSeconds() + 600);
+
+  const newer = nowSeconds() + 5 * 3600;
+  runWithLiveFiveHour(cachePath, 5.0, newer);
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 5.0);
+  assert.strictEqual(cache.rate_limits.five_hour.resets_at, newer);
+});
+
+test("live bucket without resets_at still replaces the cached bucket", () => {
+  const cachePath = freshCachePath();
+  cacheWithFiveHour(cachePath, 60.0, nowSeconds() + 3600);
+
+  runWithLiveFiveHour(cachePath, 40.0, null);
+  const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 40.0);
+  assert.strictEqual(cache.rate_limits.five_hour.resets_at, null);
+});
+
+test("a stale live bucket leaves the cache file untouched", () => {
+  const cachePath = freshCachePath();
+  const resetsAt = nowSeconds() + 3600;
+  cacheWithFiveHour(cachePath, 60.0, resetsAt);
+  const before = fs.readFileSync(cachePath, "utf8");
+
+  runWithLiveFiveHour(cachePath, 40.0, resetsAt);
+  assert.strictEqual(fs.readFileSync(cachePath, "utf8"), before, "cache was rewritten by a stale session");
+});
+
+// --- installer ---------------------------------------------------------------
+
+test("installer writes statusLine with refreshInterval and keeps other keys", () => {
+  const home = fs.mkdtempSync(path.join(TMP_DIR, "home-"));
+  fs.mkdirSync(path.join(home, ".claude"));
+  const settingsPath = path.join(home, ".claude", "settings.json");
+  fs.writeFileSync(settingsPath, JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }));
+
+  const r = spawnSync("bash", [path.join(__dirname, "install.sh")], {
+    encoding: "utf8",
+    timeout: 20000,
+    env: Object.assign({}, process.env, {
+      HOME: home,
+      USAGE_HUB_RAW_BASE: `file://${__dirname}`,
+    }),
+  });
+  assert.strictEqual(r.status, 0, `installer failed: ${r.stderr}`);
+
+  const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+  assert.strictEqual(settings.statusLine.type, "command");
+  assert.ok(settings.statusLine.command.includes("statusline.js"), `bad command: ${settings.statusLine.command}`);
+  assert.strictEqual(settings.statusLine.refreshInterval, 5);
+  assert.deepStrictEqual(settings.permissions, { allow: ["Bash(ls)"] });
 });
 
 fs.rmSync(TMP_DIR, { recursive: true, force: true });

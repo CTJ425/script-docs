@@ -53,7 +53,8 @@ Documented caveats:
 - Shape: `{ version: 1, saved_at: <unix s>, rate_limits: { five_hour, seven_day },
   context_window_size }`. Each bucket stores `used_percentage` + `resets_at`.
 - Read on every invocation. Resolution order per bucket: live payload value ->
-  fresh cached value -> `N/A`.
+  fresh cached value -> `N/A`. When both exist, the precedence rule below
+  (shared-cache bullet) picks the rendered value too.
 - A cache is "fresh" for 7 days (`saved_at`); older than that is ignored — both
   for rendering *and* for the write below, so an expired cache can never be
   merged forward under a new `saved_at` and thereby outlive its own age limit.
@@ -67,6 +68,27 @@ Documented caveats:
   values actually changed (this runs on every render — avoid pointless writes).
   Buckets merge over the previous *fresh* cache so a payload carrying only
   `five_hour` doesn't drop `seven_day`. Write is `mkdirSync -p` -> temp file -> `renameSync`.
+- The cache is shared by every Claude Code session on the machine, and an idle
+  session keeps re-rendering (see `refreshInterval` below) with the
+  `rate_limits` of its own last API response. A live bucket therefore replaces
+  a fresh cached bucket only when it is not provably stale. Per bucket, when
+  both have a finite `resets_at`:
+  - equal `resets_at` (same window) -> keep the bucket with the higher
+    `used_percentage`; usage never decreases inside one window.
+  - live `resets_at` has passed and cached `resets_at` has not -> keep the
+    cached bucket. A newer window can only start after the old one resets, so
+    this is exactly the "live is from an earlier window" case.
+  - Any other difference -> use the live bucket (a new window, even when its
+    percentage is lower). Two unexpired, unequal reset times are not treated
+    as evidence of age, so small `resets_at` jitter cannot freeze the cache.
+  - Either `resets_at` missing -> use the live bucket (no evidence of age).
+  The same rule picks the rendered value, so an idle session shows the newer
+  usage another session wrote to the cache instead of its own stale figure
+  (observed: an idle session rendered 5h 76% while an active one had 91%).
+  The render compares against the cache as read at the start of the run, and
+  a cached bucket overrides the live one only while its window is current
+  (`resets_at` in the future); a rolled-over cached window never replaces a
+  live value on screen.
 - Every cache read/write failure (missing, corrupt, unwritable, wrong version) is
   swallowed: the line still renders and the exit code stays 0.
 
@@ -82,8 +104,13 @@ Documented caveats:
   `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/claudecode_usage_hub/install.sh | bash`
 - Downloads `statusline.js` to `~/.claude/usage_hub/statusline.js`.
 - Backs up any existing `~/.claude/settings.json` before writing, then merges in
-  `statusLine: { type: "command", command: "node ~/.claude/usage_hub/statusline.js" }`
+  `statusLine: { type: "command", command: "node ~/.claude/usage_hub/statusline.js", refreshInterval: 5 }`
   without touching other settings keys.
+- `refreshInterval: 5` (seconds) is required, not cosmetic. Claude Code re-runs
+  the statusLine only on main-session events (new assistant message, `/compact`,
+  mode changes). While the main session waits on a subagent those events stop,
+  so without a timer the 5h/Wk percentages and countdowns freeze until the
+  main session receives its next response.
 - Requires `node` in PATH; exits with an error message if missing.
 
 ## Testing
@@ -97,4 +124,7 @@ Documented caveats:
   live wins over cache, expired window -> `0.0%` with no countdown, >7-day cache
   ignored (and never re-stamped as fresh by a later write), corrupt cache,
   unknown cache version, unwritable cache path, per-bucket merge, a cached
-  bucket without `resets_at`, no rewrite when unchanged, cache dir created.
+  bucket without `resets_at`, no rewrite when unchanged, cache dir created,
+  a stale live bucket (same window with a lower percentage, or an earlier
+  window) never overwrites the cache, a newer window always does; plus the
+  installer writes `refreshInterval` and keeps unrelated settings keys.

@@ -118,6 +118,38 @@ function cachedBucket(cache, key) {
 }
 
 /**
+ * Chooses which bucket to persist between a live payload bucket and the
+ * previous cached bucket, for a single rate-limit window. The cache is shared
+ * by every Claude Code session on the machine, and an idle session keeps
+ * re-rendering with the rate_limits of its own last (possibly stale) API
+ * response -- so a live bucket only loses to the cache when it is provably
+ * stale: its reset time has already passed while the cached window is still
+ * live. That is the only case an idle session can actually be in (it is
+ * replaying an old response), so it is the only case worth distrusting live
+ * data for:
+ *   - both have a finite resets_at, equal -> keep the higher used_percentage
+ *     (same window; usage never decreases inside one window)
+ *   - both have a finite resets_at, live's has already passed and the
+ *     cached one has not -> keep the cached bucket (live is a stale replay)
+ *   - otherwise -> use the live bucket (new/expiring window, or no evidence
+ *     of age when a resets_at is missing)
+ */
+function pickBucketForCache(live, prev) {
+  if (!prev) return live;
+  if (!live) return prev;
+
+  if (isFiniteNumber(live.resets_at) && isFiniteNumber(prev.resets_at)) {
+    if (live.resets_at === prev.resets_at) {
+      return live.used_percentage >= prev.used_percentage ? live : prev;
+    }
+    const now = Date.now() / 1000;
+    if (live.resets_at <= now && prev.resets_at > now) return prev;
+  }
+
+  return live;
+}
+
+/**
  * Builds the cache contents to persist, merging live buckets over the previous
  * cache so a payload carrying only one bucket doesn't drop the other.
  * Returns null when there is nothing worth caching.
@@ -126,21 +158,24 @@ function buildCacheContents(liveRateLimits, liveContextSize, previous) {
   const rateLimits = {};
 
   for (const key of BUCKET_KEYS) {
-    const live = liveRateLimits[key];
-    if (live && typeof live === "object" && isFiniteNumber(live.used_percentage)) {
-      rateLimits[key] = {
-        used_percentage: live.used_percentage,
-        resets_at: isFiniteNumber(live.resets_at) ? live.resets_at : null,
-      };
-      continue;
-    }
+    const rawLive = liveRateLimits[key];
+    const live =
+      rawLive && typeof rawLive === "object" && isFiniteNumber(rawLive.used_percentage)
+        ? {
+            used_percentage: rawLive.used_percentage,
+            resets_at: isFiniteNumber(rawLive.resets_at) ? rawLive.resets_at : null,
+          }
+        : null;
     const prev = cachedBucket(previous, key);
-    if (prev) {
-      rateLimits[key] = {
-        used_percentage: prev.used_percentage,
-        resets_at: isFiniteNumber(prev.resets_at) ? prev.resets_at : null,
-      };
-    }
+    const prevNormalized = prev
+      ? {
+          used_percentage: prev.used_percentage,
+          resets_at: isFiniteNumber(prev.resets_at) ? prev.resets_at : null,
+        }
+      : null;
+
+    const chosen = pickBucketForCache(live, prevNormalized);
+    if (chosen) rateLimits[key] = chosen;
   }
 
   const contextSize = isFiniteNumber(liveContextSize)
@@ -205,6 +240,30 @@ function writeCache(liveRateLimits, liveContextSize, previous) {
 function resolveBucket(liveBucket, cache, key) {
   const livePct = liveBucket ? clampPercent(liveBucket.used_percentage) : null;
   if (livePct !== null) {
+    // The same precedence rule used for the cache write also picks the
+    // rendered value: an idle session must not show its own stale figure
+    // when another session already wrote a newer one to the shared cache.
+    if (cacheIsFresh(cache)) {
+      const cached = cachedBucket(cache, key);
+      if (cached) {
+        const liveNormalized = {
+          used_percentage: liveBucket.used_percentage,
+          resets_at: isFiniteNumber(liveBucket.resets_at) ? liveBucket.resets_at : null,
+        };
+        const cachedNormalized = {
+          used_percentage: cached.used_percentage,
+          resets_at: isFiniteNumber(cached.resets_at) ? cached.resets_at : null,
+        };
+        const chosen = pickBucketForCache(liveNormalized, cachedNormalized);
+        // Only a current cached window may replace the live figure; a
+        // rolled-over one would render a stale percentage with a (0m) countdown.
+        const cachedCurrent =
+          isFiniteNumber(cached.resets_at) && cached.resets_at > Date.now() / 1000;
+        if (chosen === cachedNormalized && cachedCurrent) {
+          return { pct: clampPercent(cached.used_percentage), resetsAt: cached.resets_at };
+        }
+      }
+    }
     return { pct: livePct, resetsAt: liveBucket.resets_at };
   }
 
