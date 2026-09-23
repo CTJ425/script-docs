@@ -672,6 +672,173 @@ test("a stale live bucket leaves the cache file untouched", () => {
   assert.strictEqual(fs.readFileSync(cachePath, "utf8"), before, "cache was rewritten by a stale session");
 });
 
+// --- per-session freshness ---------------------------------------------------
+// The account can lower usage inside one window (observed: weekly 35% -> 5%
+// with an unchanged resets_at), so "higher wins" is not a safe tie-break. A
+// session whose rate_limits changed since its own last render has just
+// received an API response: that is a fresh observation and it wins. A session
+// whose rate_limits did not change is replaying an old response and never
+// replaces a current cached bucket.
+
+function sessionEntry(rateLimits, seenAt) {
+  return { seen_at: seenAt === undefined ? nowSeconds() - 60 : seenAt, rate_limits: rateLimits };
+}
+
+function writeSharedCache(cachePath, rateLimits, sessions) {
+  writeCacheFile(cachePath, {
+    version: 1,
+    saved_at: nowSeconds() - 60,
+    rate_limits: rateLimits,
+    context_window_size: 200000,
+    sessions: sessions || {},
+  });
+}
+
+function runSession(cachePath, sessionId, rateLimits) {
+  return run(
+    JSON.stringify({
+      session_id: sessionId,
+      model: { display_name: "M" },
+      rate_limits: rateLimits,
+      context_window: { used_percentage: 10, context_window_size: 200000 },
+    }),
+    cachePath
+  );
+}
+
+function readCacheJson(cachePath) {
+  return JSON.parse(fs.readFileSync(cachePath, "utf8"));
+}
+
+test("fresh observation lowers the cached weekly value inside the same window", () => {
+  const cachePath = freshCachePath();
+  const wk = nowSeconds() + 5 * 86400;
+  writeSharedCache(cachePath, { seven_day: { used_percentage: 35, resets_at: wk } });
+
+  const r = runSession(cachePath, "A", { seven_day: { used_percentage: 5, resets_at: wk } });
+  const out = stripAnsi(r.stdout);
+  assert.ok(out.includes("Wk 5.0%"), `expected fresh weekly in: ${out}`);
+
+  const cache = readCacheJson(cachePath);
+  assert.strictEqual(cache.rate_limits.seven_day.used_percentage, 5);
+  assert.strictEqual(cache.rate_limits.seven_day.resets_at, wk);
+  assert.deepStrictEqual(cache.sessions.A.rate_limits, {
+    seven_day: { used_percentage: 5, resets_at: wk },
+  });
+});
+
+test("a session whose values changed is fresh even when the new % is lower", () => {
+  const cachePath = freshCachePath();
+  const wk = nowSeconds() + 5 * 86400;
+  writeSharedCache(
+    cachePath,
+    { seven_day: { used_percentage: 35, resets_at: wk } },
+    { A: sessionEntry({ seven_day: { used_percentage: 35, resets_at: wk } }) }
+  );
+
+  const r = runSession(cachePath, "A", { seven_day: { used_percentage: 5, resets_at: wk } });
+  assert.ok(stripAnsi(r.stdout).includes("Wk 5.0%"), `expected fresh weekly in: ${stripAnsi(r.stdout)}`);
+  assert.strictEqual(readCacheJson(cachePath).rate_limits.seven_day.used_percentage, 5);
+});
+
+test("an idle replay does not raise the cache back after a lowering", () => {
+  const cachePath = freshCachePath();
+  const wk = nowSeconds() + 5 * 86400;
+  writeSharedCache(
+    cachePath,
+    { seven_day: { used_percentage: 5, resets_at: wk } },
+    { B: sessionEntry({ seven_day: { used_percentage: 35, resets_at: wk } }) }
+  );
+
+  const r = runSession(cachePath, "B", { seven_day: { used_percentage: 35, resets_at: wk } });
+  assert.ok(stripAnsi(r.stdout).includes("Wk 5.0%"), `expected cached weekly in: ${stripAnsi(r.stdout)}`);
+  assert.strictEqual(readCacheJson(cachePath).rate_limits.seven_day.used_percentage, 5);
+});
+
+test("an idle replay with a lower % renders the newer cached value", () => {
+  const cachePath = freshCachePath();
+  const fh = nowSeconds() + 3600;
+  writeSharedCache(
+    cachePath,
+    { five_hour: { used_percentage: 91, resets_at: fh } },
+    { A: sessionEntry({ five_hour: { used_percentage: 76, resets_at: fh } }) }
+  );
+
+  const r = runSession(cachePath, "A", { five_hour: { used_percentage: 76, resets_at: fh } });
+  assert.ok(stripAnsi(r.stdout).includes("5h 91.0%"), `expected cached 5h in: ${stripAnsi(r.stdout)}`);
+  assert.strictEqual(readCacheJson(cachePath).rate_limits.five_hour.used_percentage, 91);
+});
+
+test("a change in any bucket makes every bucket of that payload fresh", () => {
+  const cachePath = freshCachePath();
+  const fh = nowSeconds() + 3600;
+  const wk = nowSeconds() + 5 * 86400;
+  writeSharedCache(
+    cachePath,
+    {
+      five_hour: { used_percentage: 40, resets_at: fh },
+      seven_day: { used_percentage: 35, resets_at: wk },
+    },
+    {
+      A: sessionEntry({
+        five_hour: { used_percentage: 40, resets_at: fh },
+        seven_day: { used_percentage: 5, resets_at: wk },
+      }),
+    }
+  );
+
+  const r = runSession(cachePath, "A", {
+    five_hour: { used_percentage: 41, resets_at: fh },
+    seven_day: { used_percentage: 5, resets_at: wk },
+  });
+  const out = stripAnsi(r.stdout);
+  assert.ok(out.includes("5h 41.0%"), `expected fresh 5h in: ${out}`);
+  assert.ok(out.includes("Wk 5.0%"), `expected fresh weekly in: ${out}`);
+  const cache = readCacheJson(cachePath);
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 41);
+  assert.strictEqual(cache.rate_limits.seven_day.used_percentage, 5);
+});
+
+test("a fresh bucket from an ended window never overrides a current cached window", () => {
+  const cachePath = freshCachePath();
+  const fh = nowSeconds() + 3600;
+  writeSharedCache(cachePath, { five_hour: { used_percentage: 60, resets_at: fh } });
+
+  const r = runSession(cachePath, "A", { five_hour: { used_percentage: 40, resets_at: nowSeconds() - 60 } });
+  assert.ok(stripAnsi(r.stdout).includes("5h 60.0%"), `expected cached 5h in: ${stripAnsi(r.stdout)}`);
+  const cache = readCacheJson(cachePath);
+  assert.strictEqual(cache.rate_limits.five_hour.used_percentage, 60);
+  assert.strictEqual(cache.rate_limits.five_hour.resets_at, fh);
+});
+
+test("an unchanged session payload does not rewrite the cache file", () => {
+  const cachePath = freshCachePath();
+  const rateLimits = {
+    five_hour: { used_percentage: 45, resets_at: nowSeconds() + 3600 },
+    seven_day: { used_percentage: 5, resets_at: nowSeconds() + 5 * 86400 },
+  };
+  runSession(cachePath, "A", rateLimits);
+  const before = fs.readFileSync(cachePath, "utf8");
+
+  runSession(cachePath, "A", rateLimits);
+  assert.strictEqual(fs.readFileSync(cachePath, "utf8"), before, "cache was rewritten by an unchanged session");
+});
+
+test("session entries last seen more than 7 days ago are pruned on write", () => {
+  const cachePath = freshCachePath();
+  const fh = nowSeconds() + 3600;
+  writeSharedCache(
+    cachePath,
+    { five_hour: { used_percentage: 10, resets_at: fh } },
+    { OLD: sessionEntry({ five_hour: { used_percentage: 10, resets_at: fh } }, nowSeconds() - 8 * 86400) }
+  );
+
+  runSession(cachePath, "A", { five_hour: { used_percentage: 20, resets_at: fh } });
+  const cache = readCacheJson(cachePath);
+  assert.ok(cache.sessions.A, "missing entry for the rendering session");
+  assert.ok(!cache.sessions.OLD, "stale session entry was not pruned");
+});
+
 // --- installer ---------------------------------------------------------------
 
 test("installer writes statusLine with refreshInterval and keeps other keys", () => {

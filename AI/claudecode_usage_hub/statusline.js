@@ -117,26 +117,92 @@ function cachedBucket(cache, key) {
   return bucket;
 }
 
+function normalizeBucket(bucket) {
+  if (!bucket || typeof bucket !== "object" || !isFiniteNumber(bucket.used_percentage)) {
+    return null;
+  }
+  return {
+    used_percentage: bucket.used_percentage,
+    resets_at: isFiniteNumber(bucket.resets_at) ? bucket.resets_at : null,
+  };
+}
+
+/** Normalized { key: bucket } for every usable bucket in a rate_limits object. */
+function normalizeBuckets(rateLimits) {
+  const out = {};
+  if (!rateLimits || typeof rateLimits !== "object") return out;
+  for (const key of BUCKET_KEYS) {
+    const bucket = normalizeBucket(rateLimits[key]);
+    if (bucket) out[key] = bucket;
+  }
+  return out;
+}
+
+function sameBuckets(a, b) {
+  for (const key of BUCKET_KEYS) {
+    const x = a[key] || null;
+    const y = b[key] || null;
+    if (!x !== !y) return false;
+    if (!x) continue;
+    if (x.used_percentage !== y.used_percentage) return false;
+    if (x.resets_at !== y.resets_at) return false;
+  }
+  return true;
+}
+
+function cachedSessions(cache) {
+  const sessions = cache && cache.sessions;
+  if (!sessions || typeof sessions !== "object" || Array.isArray(sessions)) return {};
+  return sessions;
+}
+
+/**
+ * Per-session freshness of the live rate_limits. A session's rate_limits only
+ * change when it receives an API response, so a payload that differs from what
+ * the same session last rendered is a fresh observation (true), and one that
+ * does not is an idle replay (false). Returns null when the payload has no
+ * session_id -- freshness is unknown and the legacy rule applies.
+ */
+function payloadFreshness(sessionId, liveBuckets, cache) {
+  if (sessionId === null) return null;
+  const sessions = cacheIsFresh(cache) ? cachedSessions(cache) : {};
+  const entry = sessions[sessionId];
+  if (!entry || typeof entry !== "object") return true;
+  return !sameBuckets(normalizeBuckets(entry.rate_limits), liveBuckets);
+}
+
 /**
  * Chooses which bucket to persist between a live payload bucket and the
  * previous cached bucket, for a single rate-limit window. The cache is shared
  * by every Claude Code session on the machine, and an idle session keeps
  * re-rendering with the rate_limits of its own last (possibly stale) API
- * response -- so a live bucket only loses to the cache when it is provably
- * stale: its reset time has already passed while the cached window is still
- * live. That is the only case an idle session can actually be in (it is
- * replaying an old response), so it is the only case worth distrusting live
- * data for:
+ * response. The account can also lower usage inside one window, so a lower
+ * percentage is not evidence of age.
+ *
+ * With a known freshness (see payloadFreshness):
+ *   - live's resets_at has passed and the cached one has not -> cached
+ *     (an ended window is stale even when fresh)
+ *   - fresh -> live, even with a lower used_percentage in the same window
+ *   - replay -> cached while its window is current, else live
+ *
+ * Legacy rule (freshness === null, no session_id):
  *   - both have a finite resets_at, equal -> keep the higher used_percentage
- *     (same window; usage never decreases inside one window)
  *   - both have a finite resets_at, live's has already passed and the
  *     cached one has not -> keep the cached bucket (live is a stale replay)
  *   - otherwise -> use the live bucket (new/expiring window, or no evidence
  *     of age when a resets_at is missing)
  */
-function pickBucketForCache(live, prev) {
+function pickBucketForCache(live, prev, freshness) {
   if (!prev) return live;
   if (!live) return prev;
+
+  if (freshness === true || freshness === false) {
+    const now = Date.now() / 1000;
+    const prevCurrent = isFiniteNumber(prev.resets_at) && prev.resets_at > now;
+    if (isFiniteNumber(live.resets_at) && live.resets_at <= now && prevCurrent) return prev;
+    if (freshness) return live;
+    return prevCurrent ? prev : live;
+  }
 
   if (isFiniteNumber(live.resets_at) && isFiniteNumber(prev.resets_at)) {
     if (live.resets_at === prev.resets_at) {
@@ -154,28 +220,29 @@ function pickBucketForCache(live, prev) {
  * cache so a payload carrying only one bucket doesn't drop the other.
  * Returns null when there is nothing worth caching.
  */
-function buildCacheContents(liveRateLimits, liveContextSize, previous) {
+function buildCacheContents(liveBuckets, liveContextSize, previous, sessionId, freshness) {
   const rateLimits = {};
 
   for (const key of BUCKET_KEYS) {
-    const rawLive = liveRateLimits[key];
-    const live =
-      rawLive && typeof rawLive === "object" && isFiniteNumber(rawLive.used_percentage)
-        ? {
-            used_percentage: rawLive.used_percentage,
-            resets_at: isFiniteNumber(rawLive.resets_at) ? rawLive.resets_at : null,
-          }
-        : null;
-    const prev = cachedBucket(previous, key);
-    const prevNormalized = prev
-      ? {
-          used_percentage: prev.used_percentage,
-          resets_at: isFiniteNumber(prev.resets_at) ? prev.resets_at : null,
-        }
-      : null;
+    const live = liveBuckets[key] || null;
+    const prev = normalizeBucket(cachedBucket(previous, key));
 
-    const chosen = pickBucketForCache(live, prevNormalized);
+    const chosen = pickBucketForCache(live, prev, freshness);
     if (chosen) rateLimits[key] = chosen;
+  }
+
+  // Keep what each session last rendered, dropping sessions not seen change
+  // for longer than the cache itself may live. Only a fresh payload updates
+  // its entry, so seen_at is the time the session's values last changed.
+  const now = Math.round(Date.now() / 1000);
+  const sessions = {};
+  for (const [id, entry] of Object.entries(cachedSessions(previous))) {
+    if (entry && isFiniteNumber(entry.seen_at) && now - entry.seen_at <= CACHE_MAX_AGE_SECONDS) {
+      sessions[id] = entry;
+    }
+  }
+  if (sessionId !== null && freshness && Object.keys(liveBuckets).length > 0) {
+    sessions[sessionId] = { seen_at: now, rate_limits: liveBuckets };
   }
 
   const contextSize = isFiniteNumber(liveContextSize)
@@ -188,38 +255,31 @@ function buildCacheContents(liveRateLimits, liveContextSize, previous) {
 
   return {
     version: CACHE_VERSION,
-    saved_at: Math.round(Date.now() / 1000),
+    saved_at: now,
     rate_limits: rateLimits,
     context_window_size: contextSize,
+    sessions,
   };
 }
 
 function sameCachePayload(a, b) {
   if (!a || !b) return false;
   if (a.context_window_size !== b.context_window_size) return false;
-
-  for (const key of BUCKET_KEYS) {
-    const x = (a.rate_limits || {})[key] || null;
-    const y = (b.rate_limits || {})[key] || null;
-    if (!x !== !y) return false;
-    if (!x) continue;
-    if (x.used_percentage !== y.used_percentage) return false;
-    if (x.resets_at !== y.resets_at) return false;
-  }
-  return true;
+  if (!sameBuckets(a.rate_limits || {}, b.rate_limits || {})) return false;
+  return JSON.stringify(cachedSessions(a)) === JSON.stringify(cachedSessions(b));
 }
 
 /**
  * Writes the cache only when its meaningful contents changed, so the per-render
  * invocation doesn't hammer the disk. Never throws.
  */
-function writeCache(liveRateLimits, liveContextSize, previous) {
+function writeCache(liveBuckets, liveContextSize, previous, sessionId, freshness) {
   try {
     // Only carry values forward from a cache that is still fresh. Merging from
     // an expired one and stamping saved_at = now would launder a >7-day-old
     // figure into a "fresh" cache, and the age limit could then never expire it.
     const usable = cacheIsFresh(previous) ? previous : null;
-    const next = buildCacheContents(liveRateLimits, liveContextSize, usable);
+    const next = buildCacheContents(liveBuckets, liveContextSize, usable, sessionId, freshness);
     if (!next) return;
     if (sameCachePayload(next, usable)) return;
 
@@ -237,7 +297,7 @@ function writeCache(liveRateLimits, liveContextSize, previous) {
  * then a fresh on-disk cache, else nothing. Returns { pct, resetsAt } with
  * pct === null meaning "N/A".
  */
-function resolveBucket(liveBucket, cache, key) {
+function resolveBucket(liveBucket, cache, key, freshness) {
   const livePct = liveBucket ? clampPercent(liveBucket.used_percentage) : null;
   if (livePct !== null) {
     // The same precedence rule used for the cache write also picks the
@@ -246,15 +306,8 @@ function resolveBucket(liveBucket, cache, key) {
     if (cacheIsFresh(cache)) {
       const cached = cachedBucket(cache, key);
       if (cached) {
-        const liveNormalized = {
-          used_percentage: liveBucket.used_percentage,
-          resets_at: isFiniteNumber(liveBucket.resets_at) ? liveBucket.resets_at : null,
-        };
-        const cachedNormalized = {
-          used_percentage: cached.used_percentage,
-          resets_at: isFiniteNumber(cached.resets_at) ? cached.resets_at : null,
-        };
-        const chosen = pickBucketForCache(liveNormalized, cachedNormalized);
+        const cachedNormalized = normalizeBucket(cached);
+        const chosen = pickBucketForCache(normalizeBucket(liveBucket), cachedNormalized, freshness);
         // Only a current cached window may replace the live figure; a
         // rolled-over one would render a stale percentage with a (0m) countdown.
         const cachedCurrent =
@@ -348,7 +401,7 @@ function renderModelSegment(data) {
   return name ? `${COLOR_CYAN}${name}${COLOR_RESET}` : null;
 }
 
-function renderStatusLine(data, cache) {
+function renderStatusLine(data, cache, freshness) {
   const parts = [];
 
   const modelPart = renderModelSegment(data);
@@ -359,10 +412,10 @@ function renderStatusLine(data, cache) {
     : {};
 
   parts.push(
-    renderRateLimitSegment("5h", resolveBucket(rateLimits.five_hour, cache, "five_hour"))
+    renderRateLimitSegment("5h", resolveBucket(rateLimits.five_hour, cache, "five_hour", freshness))
   );
   parts.push(
-    renderRateLimitSegment("Wk", resolveBucket(rateLimits.seven_day, cache, "seven_day"))
+    renderRateLimitSegment("Wk", resolveBucket(rateLimits.seven_day, cache, "seven_day", freshness))
   );
   parts.push(renderContextSegment(data.context_window, cache));
 
@@ -398,20 +451,24 @@ function main() {
 
   const cache = readCache();
 
+  // Freshness is judged against the cache as read here, once, so the rendered
+  // value and the cache write use the same verdict.
+  const sessionId =
+    typeof data.session_id === "string" && data.session_id ? data.session_id : null;
+  const liveBuckets = normalizeBuckets(data.rate_limits);
+  const freshness = payloadFreshness(sessionId, liveBuckets, cache);
+
   try {
-    console.log(renderStatusLine(data, cache));
+    console.log(renderStatusLine(data, cache, freshness));
   } catch (e) {
     console.log(FALLBACK_LINE);
   }
 
-  const rateLimits = data.rate_limits && typeof data.rate_limits === "object"
-    ? data.rate_limits
-    : {};
   const contextSize =
     data.context_window && typeof data.context_window === "object"
       ? data.context_window.context_window_size
       : null;
-  writeCache(rateLimits, contextSize, cache);
+  writeCache(liveBuckets, contextSize, cache, sessionId, freshness);
 }
 
 main();

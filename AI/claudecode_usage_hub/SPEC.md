@@ -51,7 +51,8 @@ Documented caveats:
 - File: `~/.claude/usage_hub/cache.json` (override with `USAGE_HUB_CACHE`, used
   by the tests so they never touch the real `~/.claude`).
 - Shape: `{ version: 1, saved_at: <unix s>, rate_limits: { five_hour, seven_day },
-  context_window_size }`. Each bucket stores `used_percentage` + `resets_at`.
+  context_window_size, sessions }` (`sessions` is described in the per-session
+  freshness bullet below). Each bucket stores `used_percentage` + `resets_at`.
 - Read on every invocation. Resolution order per bucket: live payload value ->
   fresh cached value -> `N/A`. When both exist, the precedence rule below
   (shared-cache bullet) picks the rendered value too.
@@ -70,9 +71,32 @@ Documented caveats:
   `five_hour` doesn't drop `seven_day`. Write is `mkdirSync -p` -> temp file -> `renameSync`.
 - The cache is shared by every Claude Code session on the machine, and an idle
   session keeps re-rendering (see `refreshInterval` below) with the
-  `rate_limits` of its own last API response. A live bucket therefore replaces
-  a fresh cached bucket only when it is not provably stale. Per bucket, when
-  both have a finite `resets_at`:
+  `rate_limits` of its own last API response. The account can also *lower*
+  usage inside one window (observed: weekly 35% -> 5% with an unchanged
+  `resets_at`, while `/usage` showed 5%), so "higher wins" is not a safe
+  tie-break: it latched 35% until the window reset.
+- Per-session freshness (payload has a string `session_id`): the cache holds
+  `sessions: { <session_id>: { seen_at, rate_limits } }`, the normalized
+  buckets that session last rendered and the unix time they last changed. The
+  payload is *fresh* when that session has no entry, or when any bucket in
+  `BUCKET_KEYS` differs from the entry (present/absent, `used_percentage`, or
+  `resets_at`) -- `rate_limits` only changes when the session gets an API
+  response. Otherwise it is a *replay*. Per bucket, live `L`, fresh cached
+  bucket `C`:
+  1. `C` absent -> `L`.
+  2. `L.resets_at` has passed and `C.resets_at` is in the future -> `C` (an
+     ended window is stale even when fresh).
+  3. Fresh -> `L`, even with a lower `used_percentage` in the same window.
+  4. Replay -> `C` while `C.resets_at` is in the future; otherwise `L`.
+  The same rule picks the rendered value (against the cache as read at the
+  start of the run). The session entry is updated, with `seen_at = now`, only
+  when the payload is fresh; entries with `seen_at` older than 7 days are
+  dropped on write. A write happens only when a bucket, the context size, or
+  the sessions map changed, so an unchanged replay never rewrites the file.
+  A cache without `sessions` is valid (every session is fresh once).
+- Legacy rule, used only when the payload has no `session_id`. A live bucket
+  replaces a fresh cached bucket only when it is not provably stale. Per
+  bucket, when both have a finite `resets_at`:
   - equal `resets_at` (same window) -> keep the bucket with the higher
     `used_percentage`; usage never decreases inside one window.
   - live `resets_at` has passed and cached `resets_at` has not -> keep the
@@ -126,5 +150,8 @@ Documented caveats:
   unknown cache version, unwritable cache path, per-bucket merge, a cached
   bucket without `resets_at`, no rewrite when unchanged, cache dir created,
   a stale live bucket (same window with a lower percentage, or an earlier
-  window) never overwrites the cache, a newer window always does; plus the
+  window) never overwrites the cache, a newer window always does; a fresh session
+  payload lowers the cache inside one window, an unchanged replay never does,
+  a change in any bucket makes the whole payload fresh, and stale session
+  entries are pruned; plus the
   installer writes `refreshInterval` and keeps unrelated settings keys.
