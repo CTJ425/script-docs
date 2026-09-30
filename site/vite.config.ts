@@ -58,9 +58,9 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // One vendor chunk. Splitting MUI and the markdown stack into separate
-        // chunks produced a circular chunk (markdown -> mui -> markdown) and
-        // risked bad module init order; app -> vendor cannot be circular.
+        // One vendor chunk. Splitting the markdown and highlighting stacks
+        // into separate chunks produced a circular chunk and risked bad module
+        // init order; app -> vendor cannot be circular.
         manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined),
       },
     },

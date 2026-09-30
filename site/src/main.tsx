@@ -1,12 +1,14 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
-import useMediaQuery from '@mui/material/useMediaQuery';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
 import { ColorModeContext, MODE_STORAGE_KEY } from './colorMode';
-import { buildTheme } from './theme';
+import './styles/tokens.css';
+import './styles/base.css';
+import './styles/shell.css';
+import './styles/doc.css';
+import './styles/markdown.css';
+import './styles/code.css';
 
 function storedMode(): 'light' | 'dark' | null {
   try {
@@ -17,39 +19,53 @@ function storedMode(): 'light' | 'dark' | null {
   }
 }
 
+function systemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false;
+}
+
 function Root() {
-  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)', { noSsr: true });
-  // An explicit choice wins; otherwise follow the OS.
+  // An explicit choice wins; otherwise follow the OS, and keep following it.
   const [override, setOverride] = useState<'light' | 'dark' | null>(storedMode);
+  const [prefersDark, setPrefersDark] = useState(systemPrefersDark);
   const mode = override ?? (prefersDark ? 'dark' : 'light');
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const on = () => setPrefersDark(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  // The stylesheet reads data-theme; the inline script in index.html has
+  // already set it for the first paint, and this keeps it true afterwards.
+  useEffect(() => {
+    document.documentElement.dataset.theme = mode;
+  }, [mode]);
 
   const toggle = useCallback(() => {
     setOverride((prev) => {
-      const current = prev ?? (prefersDark ? 'dark' : 'light');
+      const current = prev ?? (systemPrefersDark() ? 'dark' : 'light');
       const next = current === 'dark' ? 'light' : 'dark';
       try {
         localStorage.setItem(MODE_STORAGE_KEY, next);
       } catch {
         /* ignore */
       }
-      document.documentElement.style.colorScheme = next;
       return next;
     });
-  }, [prefersDark]);
+  }, []);
 
-  const theme = useMemo(() => buildTheme(mode), [mode]);
   const ctx = useMemo(() => ({ mode, toggle }), [mode, toggle]);
 
   return (
     <ColorModeContext.Provider value={ctx}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {/* Hash routing: GitHub Pages serves no SPA rewrite, so deep links
-            like /#/k8s-install work without a 404.html fallback. */}
-        <HashRouter>
-          <App />
-        </HashRouter>
-      </ThemeProvider>
+      {/* Hash routing: GitHub Pages serves no SPA rewrite, so deep links
+          like /#/k8s-install work without a 404.html fallback. */}
+      <HashRouter>
+        <App />
+      </HashRouter>
     </ColorModeContext.Provider>
   );
 }

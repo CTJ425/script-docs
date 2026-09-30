@@ -1,15 +1,9 @@
-import LaunchIcon from '@mui/icons-material/Launch';
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
-import Link from '@mui/material/Link';
-import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
 import { useEffect, useLayoutEffect } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { getDoc, sourceUrl } from '../content';
-import { appBarHeight, monoFont } from '../theme';
+import { BAND, revisionOf } from '../design';
+import { useMedia, WIDE } from '../useMedia';
+import { LaunchIcon } from './Icons';
 import Markdown from './Markdown';
 import Toc from './Toc';
 
@@ -17,6 +11,7 @@ export default function DocPage() {
   const { slug } = useParams();
   const { hash } = useLocation();
   const doc = getDoc(slug);
+  const wide = useMedia(WIDE);
 
   // New document -> start at the top (only when there is no target anchor).
   useLayoutEffect(() => {
@@ -37,64 +32,76 @@ export default function DocPage() {
     const raf = requestAnimationFrame(() => {
       const el = document.getElementById(id);
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY - (appBarHeight + 16);
-      window.scrollTo({ top, behavior: 'smooth' });
+      const band = document.querySelector('.band')?.getBoundingClientRect().height ?? BAND;
+      const top = el.getBoundingClientRect().top + window.scrollY - (band + 16);
+      // Lands on the heading, in one step. Nothing in this world eases.
+      window.scrollTo({ top });
     });
     return () => cancelAnimationFrame(raf);
   }, [hash, slug]);
 
   if (!doc) {
     return (
-      <Box sx={{ flex: 1, p: { xs: 2, md: 6 }, minWidth: 0 }}>
-        <Alert severity="warning">
-          找不到文件 <code>{slug}</code>。請從左側清單選擇。
-        </Alert>
-      </Box>
+      <main className="doc">
+        <div className="missing">
+          <p className="missing__head">找不到這一頁</p>
+          <p>
+            索引裡沒有 <code className="md-code">{slug}</code>。請從左側索引選一份文件。
+          </p>
+        </div>
+      </main>
     );
   }
 
   const gh = sourceUrl(doc);
+  const rev = revisionOf(doc.markdown);
 
   return (
-    <>
-      <Box
-        component="main"
-        sx={{ flex: 1, minWidth: 0, px: { xs: 2, sm: 3, md: 6 }, pt: { xs: 3, md: 4 }, pb: 10 }}
-      >
-        {/* Provenance: makes the single-source-of-truth guarantee visible. */}
-        <Paper variant="outlined" sx={{ px: 2, py: 1.25, mb: 3, bgcolor: 'action.hover' }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-              此頁內容直接渲染自
-            </Typography>
-            <Chip
-              size="small"
-              label={doc.file}
-              sx={{ fontFamily: monoFont, fontSize: '0.6875rem', height: 20 }}
-            />
-            <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-              （{doc.bytes.toLocaleString()} bytes，未經改寫）
-            </Typography>
-            {gh && (
-              <Link
-                href={gh}
-                target="_blank"
-                rel="noreferrer"
-                sx={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 0.25 }}
-              >
-                在 GitHub 檢視
-                <LaunchIcon sx={{ fontSize: '0.875rem' }} />
-              </Link>
-            )}
-          </Stack>
-        </Paper>
+    // `key` retriggers the leaf-turn animation on every route change.
+    <main className="doc" key={doc.slug}>
+      <div className="doc__sheet">
+        {/*
+          The single-source guarantee, in the machine's voice: which file this
+          is, how many bytes of it, and how long ago it was last touched. It
+          sits at the head of every page because it is the one claim on this
+          site a competitor cannot truthfully copy.
+        */}
+        <div className="prov">
+          <span className="prov__pair">
+            <span className="prov__k">source</span>
+            <span className="prov__v prov__v--file">{doc.file}</span>
+          </span>
+          <span className="prov__pair">
+            <span className="prov__k">bytes</span>
+            <span className="prov__v">{doc.bytes.toLocaleString('en-US')}</span>
+          </span>
+          {rev && (
+            <span className="prov__pair prov__age" data-step={rev.step}>
+              <span className="prov__k">rev</span>
+              <span className="prov__v">
+                {rev.date} · {rev.days} 天前
+              </span>
+              {/* Age is a word as well as a wash: a reader who cannot see the
+                  yellowing still reads that the page has gone stale. Rendered
+                  here rather than through CSS `content:` so it can be selected,
+                  translated and caught by the smoke test. */}
+              {rev.step === 2 && <span className="prov__stale">年久未修</span>}
+            </span>
+          )}
+          {gh && (
+            <a className="prov__link" href={gh} target="_blank" rel="noreferrer">
+              在 GitHub 檢視
+              <LaunchIcon />
+            </a>
+          )}
+        </div>
 
-        <Box sx={{ maxWidth: '46rem' }}>
+        <div className="prose">
           <Markdown markdown={doc.markdown} baseDir={doc.dir} />
-        </Box>
-      </Box>
+        </div>
 
-      <Toc markdown={doc.markdown} />
-    </>
+        {wide && <Toc markdown={doc.markdown} className="toc--margin" />}
+      </div>
+    </main>
   );
 }

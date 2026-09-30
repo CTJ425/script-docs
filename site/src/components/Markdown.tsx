@@ -1,53 +1,25 @@
-import Alert from '@mui/material/Alert';
-import AlertTitle from '@mui/material/AlertTitle';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import Link from '@mui/material/Link';
-import Paper from '@mui/material/Paper';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import Typography from '@mui/material/Typography';
 import { Fragment, cloneElement, isValidElement, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { Link as RouterLink } from 'react-router-dom';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import { manifest, repoUrl, resolveRelative } from '../content';
-import { monoFont } from '../theme';
 import CodeBlock from './CodeBlock';
 
-/** GFM alert syntax: a blockquote whose first line is [!NOTE] etc. */
-const ALERT_SEVERITY: Record<string, 'info' | 'success' | 'warning' | 'error'> = {
-  NOTE: 'info',
-  TIP: 'success',
-  IMPORTANT: 'info',
-  WARNING: 'warning',
-  CAUTION: 'error',
+/**
+ * GFM alert syntax: a blockquote whose first line is [!NOTE] etc.
+ *
+ * Only two levels exist here, because vermilion is held out of the whole
+ * palette so that it means exactly one thing when it appears. WARNING and
+ * CAUTION are about the machine; everything else is set in ink.
+ */
+const ALERT_LEVEL: Record<string, 'danger' | 'plain'> = {
+  NOTE: 'plain',
+  TIP: 'plain',
+  IMPORTANT: 'plain',
+  WARNING: 'danger',
+  CAUTION: 'danger',
 };
-
-function InlineCode({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      component="code"
-      sx={{
-        fontFamily: monoFont,
-        fontSize: '0.8125em',
-        bgcolor: 'action.selected',
-        color: 'primary.main',
-        px: 0.5,
-        py: '1px',
-        borderRadius: 1,
-        wordBreak: 'break-word',
-      }}
-    >
-      {children}
-    </Box>
-  );
-}
 
 /** Flatten a React subtree to plain text (used to sniff alert markers). */
 function textOf(node: React.ReactNode): string {
@@ -108,46 +80,37 @@ export default function Markdown({ markdown, baseDir }: Props) {
       // `id` comes from rehype-slug and must be forwarded — it is what the TOC
       // and the READMEs' own anchor links jump to.
       h1: ({ children, id }) => (
-        <Typography id={id} variant="h1" component="h1" sx={{ mb: 2, mt: 0 }}>
+        <h1 id={id} className="md-h1">
           {children}
-        </Typography>
+        </h1>
       ),
       h2: ({ children, id }) => (
-        <Typography
-          id={id}
-          variant="h2"
-          component="h2"
-          sx={{ mt: 5, mb: 2, pb: 1, borderBottom: 1, borderColor: 'divider' }}
-        >
+        <h2 id={id} className="md-h2">
           {children}
-        </Typography>
+        </h2>
       ),
       h3: ({ children, id }) => (
-        <Typography id={id} variant="h3" component="h3" sx={{ mt: 4, mb: 1.25 }}>
+        <h3 id={id} className="md-h3">
           {children}
-        </Typography>
+        </h3>
       ),
       h4: ({ children, id }) => (
-        <Typography id={id} variant="h4" component="h4" sx={{ mt: 3, mb: 1 }}>
+        <h4 id={id} className="md-h4">
           {children}
-        </Typography>
+        </h4>
       ),
       h5: ({ children, id }) => (
-        <Typography id={id} variant="h4" component="h5" sx={{ mt: 2.5, mb: 1 }}>
+        <h5 id={id} className="md-h5">
           {children}
-        </Typography>
+        </h5>
       ),
       h6: ({ children, id }) => (
-        <Typography id={id} variant="h4" component="h6" sx={{ mt: 2.5, mb: 1 }}>
+        <h6 id={id} className="md-h6">
           {children}
-        </Typography>
+        </h6>
       ),
-      p: ({ children }) => (
-        <Typography paragraph sx={{ color: 'text.secondary', mb: 2 }}>
-          {children}
-        </Typography>
-      ),
-      hr: () => <Divider sx={{ my: 4 }} />,
+      p: ({ children }) => <p className="md-p">{children}</p>,
+      hr: () => <hr className="md-rule" />,
 
       a: ({ href, children }) => {
         if (!href) return <>{children}</>;
@@ -157,9 +120,9 @@ export default function Markdown({ markdown, baseDir }: Props) {
         // with a hash-only target that keeps the current pathname.
         if (href.startsWith('#')) {
           return (
-            <Link component={RouterLink} to={{ hash: href }}>
+            <RouterLink className="md-a" to={{ hash: href }}>
               {children}
-            </Link>
+            </RouterLink>
           );
         }
         // Absolute URL (or protocol-relative). Only well-known navigable
@@ -170,9 +133,9 @@ export default function Markdown({ markdown, baseDir }: Props) {
             return <>{children}</>;
           }
           return (
-            <Link href={href} target="_blank" rel="noreferrer">
+            <a className="md-a" href={href} target="_blank" rel="noreferrer">
               {children}
-            </Link>
+            </a>
           );
         }
 
@@ -184,45 +147,24 @@ export default function Markdown({ markdown, baseDir }: Props) {
         const slug = manifest.dirToSlug[resolved];
         if (slug) {
           return (
-            <Link component={RouterLink} to={`/${slug}${hashPart ? `#${hashPart}` : ''}`}>
+            <RouterLink className="md-a" to={`/${slug}${hashPart ? `#${hashPart}` : ''}`}>
               {children}
-            </Link>
+            </RouterLink>
           );
         }
         const gh = repoUrl(resolved);
         return gh ? (
-          <Link href={gh} target="_blank" rel="noreferrer">
+          <a className="md-a" href={gh} target="_blank" rel="noreferrer">
             {children}
-          </Link>
+          </a>
         ) : (
           <>{children}</>
         );
       },
 
-      ul: ({ children }) => (
-        <Box component="ul" sx={{ pl: 3, mb: 2, '& > li::marker': { color: 'primary.main' } }}>
-          {children}
-        </Box>
-      ),
-      ol: ({ children }) => (
-        <Box component="ol" sx={{ pl: 3, mb: 2, '& > li::marker': { color: 'primary.main' } }}>
-          {children}
-        </Box>
-      ),
-      li: ({ children }) => (
-        <Box
-          component="li"
-          sx={{
-            color: 'text.secondary',
-            my: 0.5,
-            // paragraphs inside list items should not add block spacing
-            '& > p': { mb: 1, display: 'inline' },
-            '& > p:has(+ *)': { display: 'block' },
-          }}
-        >
-          {children}
-        </Box>
-      ),
+      ul: ({ children }) => <ul className="md-ul">{children}</ul>,
+      ol: ({ children }) => <ol className="md-ol">{children}</ol>,
+      li: ({ children }) => <li className="md-li">{children}</li>,
 
       code: ({ className, children }) => {
         const match = /language-(\w[\w+-]*)/.exec(className ?? '');
@@ -235,7 +177,7 @@ export default function Markdown({ markdown, baseDir }: Props) {
         if (raw.includes('\n')) {
           return <CodeBlock code={raw.replace(/\n$/, '')} language="text" />;
         }
-        return <InlineCode>{children}</InlineCode>;
+        return <code className="md-code">{children}</code>;
       },
       // CodeBlock already renders its own <pre>; drop the wrapper to avoid nesting.
       pre: ({ children }) => <>{children}</>,
@@ -243,72 +185,42 @@ export default function Markdown({ markdown, baseDir }: Props) {
       blockquote: ({ children }) => {
         const text = textOf(children).trim();
         const marker = text.match(/^\[!(\w+)\]/);
-        const severity = marker ? ALERT_SEVERITY[marker[1].toUpperCase()] : undefined;
+        const level = marker ? ALERT_LEVEL[marker[1].toUpperCase()] : undefined;
 
-        if (severity && marker) {
-          const label = marker[1].toUpperCase();
+        if (level && marker) {
           // Render the real children, not textOf(children): flattening to a
           // string would drop every link, code span and fenced block inside
           // the alert. Only the "[!NOTE]" marker itself is stripped, from the
           // first text node it appears in.
           return (
-            <Alert severity={severity} sx={{ my: 2 }}>
-              <AlertTitle sx={{ textTransform: 'capitalize' }}>{label.toLowerCase()}</AlertTitle>
+            <div className="md-alert" data-level={level}>
+              <span className="md-alert__label">{marker[1].toUpperCase()}</span>
               {stripMarker(children, marker[0])}
-            </Alert>
+            </div>
           );
         }
-        return (
-          <Box
-            sx={{
-              my: 2,
-              pl: 2,
-              py: 1,
-              borderLeft: 4,
-              borderColor: 'primary.main',
-              bgcolor: 'action.hover',
-              '& p': { mb: 0 },
-            }}
-          >
-            {children}
-          </Box>
-        );
+        return <blockquote className="md-quote">{children}</blockquote>;
       },
 
       table: ({ children }) => (
-        <TableContainer component={Paper} variant="outlined" sx={{ my: 2 }}>
-          <Table size="small">{children}</Table>
-        </TableContainer>
+        <div className="md-tablewrap">
+          <table className="md-table">{children}</table>
+        </div>
       ),
-      thead: ({ children }) => <TableHead>{children}</TableHead>,
-      tbody: ({ children }) => <TableBody>{children}</TableBody>,
-      tr: ({ children }) => <TableRow hover>{children}</TableRow>,
+      thead: ({ children }) => <thead>{children}</thead>,
+      tbody: ({ children }) => <tbody>{children}</tbody>,
+      tr: ({ children }) => <tr>{children}</tr>,
       th: ({ children, style }) => (
-        <TableCell
-          component="th"
-          scope="col"
-          align={(style?.textAlign as 'left' | 'center' | 'right') ?? 'left'}
-          sx={{ fontWeight: 500, whiteSpace: 'nowrap' }}
-        >
+        <th scope="col" style={{ textAlign: (style?.textAlign as 'left') ?? 'left' }}>
           {children}
-        </TableCell>
+        </th>
       ),
       td: ({ children, style }) => (
-        <TableCell
-          align={(style?.textAlign as 'left' | 'center' | 'right') ?? 'left'}
-          sx={{ color: 'text.secondary', verticalAlign: 'top' }}
-        >
-          {children}
-        </TableCell>
+        <td style={{ textAlign: (style?.textAlign as 'left') ?? undefined }}>{children}</td>
       ),
 
       img: ({ src, alt }) => (
-        <Box
-          component="img"
-          src={typeof src === 'string' ? src : undefined}
-          alt={alt}
-          sx={{ maxWidth: '100%', borderRadius: 1, my: 2 }}
-        />
+        <img className="md-img" src={typeof src === 'string' ? src : undefined} alt={alt} />
       ),
     }),
     [baseDir]
