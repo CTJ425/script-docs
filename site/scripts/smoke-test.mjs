@@ -22,26 +22,25 @@ import { renderToString } from 'react-dom/server';
 // the /server.js entry is CJS and requiring it pulls in a second router copy,
 // whose context the bundled components cannot see.
 import { MemoryRouter } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
 import App from '../src/App';
-import { buildTheme } from '../src/theme';
+import { ColorModeContext } from '../src/colorMode';
 import { docs } from '../src/content';
 import { extractHeadings } from '../src/components/Toc';
 
 export function render(slug, mode) {
   return renderToString(
-    <ThemeProvider theme={buildTheme(mode)}>
+    <ColorModeContext.Provider value={{ mode, toggle: () => {} }}>
       <MemoryRouter initialEntries={['/' + slug]}>
         <App />
       </MemoryRouter>
-    </ThemeProvider>
+    </ColorModeContext.Provider>
   );
 }
 export { docs, extractHeadings };
 `;
 
-// Bundle to ESM, not CJS: MUI ships dual ESM/CJS and a CJS bundle mis-resolves
-// the default exports of its single-component entry points.
+// Bundle to ESM, not CJS: the markdown stack is ESM-only and a CJS bundle
+// mis-resolves its default exports.
 // Must live inside the project so Node resolves node_modules from here.
 const cacheDir = join(SITE_ROOT, 'node_modules', '.cache');
 mkdirSync(cacheDir, { recursive: true });
@@ -57,8 +56,7 @@ await esbuild.build({
   loader: { '.json': 'json' },
   // React stays external so Node loads exactly one CJS copy — the server
   // renderer sets the hook dispatcher on that copy, and a second bundled copy
-  // would make every hook call fail. Everything else is bundled, because MUI v6
-  // has no exports map and Node cannot resolve its directory imports.
+  // would make every hook call fail. Everything else is bundled.
   external: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/server'],
   // Prefer each package's ESM build (what Vite resolves too). With the default
   // node mainFields esbuild picks the CJS builds, whose require('react') cannot
@@ -121,7 +119,7 @@ for (const doc of docs) {
   }
   check('renders without throwing', true);
 
-  // The provenance chip must name the real source file.
+  // The provenance strip must name the real source file.
   check('shows source file', html.includes(doc.file), doc.file);
 
   // Every h2/h3 the TOC links to must exist as an id in the document.
@@ -185,7 +183,8 @@ for (const doc of docs) {
   check('manifest markdown === file on disk', onDisk === doc.markdown);
 }
 
-// Light mode must render too (different palette code paths).
+// Light mode must render too: the leaf solver and the ink tokens are
+// per-mode, and the shell reads both on every render.
 console.log('\n=== light palette');
 try {
   render(docs[0].slug, 'light');
