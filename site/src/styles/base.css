@@ -1,0 +1,165 @@
+/*
+ * Base: the reset, the page object, and the browser surfaces.
+ *
+ * The last group is the one that matters. Selection, caret, scrollbars, focus
+ * rings and numerals ship with browser defaults that belong to no design
+ * system; a manual that let them through would not be a manual.
+ */
+
+/* Fallbacks for the three runtime-solved values, so the first paint and the
+   server render are both correct before main.tsx has run. Inline styles on
+   <html> win over these. */
+:root {
+  --board: #3a3730;
+  --leaf: var(--milk);
+  --on-board: #fbf7ec;
+  --board-ink: var(--ink);
+  --danger-ink: var(--danger);
+  --age: var(--age-0);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* No scroll-behavior: an eased scroll is the one easing this world would
+     have; scroll-padding-top is what actually lands an anchor on its heading. */
+  scroll-padding-top: calc(var(--band) + var(--s5));
+}
+
+body {
+  margin: 0;
+  /* The board is printed, not filled. */
+  background-color: var(--board);
+  background-image: var(--tooth);
+  background-size: 180px 180px;
+  background-blend-mode: var(--tooth-blend);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+/* browser surfaces ------------------------------------------------------ */
+
+::selection {
+  /* The board showing through where the reader has cut into the leaf. */
+  background: var(--board);
+  color: var(--on-board);
+}
+
+:root {
+  caret-color: var(--board);
+  accent-color: var(--board);
+  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: content-box;
+}
+
+/* A punched register mark, not a glowing ring. */
+:focus-visible {
+  outline: 2px solid var(--board-ink);
+  outline-offset: 2px;
+  border-radius: var(--r);
+}
+
+.leaf :focus-visible,
+.doc :focus-visible {
+  outline-color: var(--ink);
+}
+
+/* shared type roles ----------------------------------------------------- */
+
+.mono {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'ss01';
+}
+
+/* Machine voice: labels, metadata, state. Never a costume for "technical" —
+   everything set in it is something a machine said or measured. */
+.label {
+  font-family: var(--f-mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

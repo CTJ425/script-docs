@@ -1,0 +1,317 @@
+/*
+ * The reading column and the margin column beside it.
+ *
+ * Body sets at one size on a 62-character measure; headings hang out into the
+ * margin column rather than growing, which is what gives a dense README a
+ * skeleton without a second type scale.
+ */
+
+.doc {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s7) var(--s7) var(--s9);
+  /* The signature: a leaf turning on the punched edge. Two frames, no easing
+     and no fade, which is the whole motion grammar of this world. */
+  transform-origin: left center;
+  animation: leaf-turn var(--hinge);
+}
+
+@keyframes leaf-turn {
+  from {
+    transform: perspective(1400px) rotateY(-1.6deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc {
+    animation: none;
+  }
+}
+
+.doc__sheet {
+  max-width: 1060px;
+}
+
+/* provenance ------------------------------------------------------------ */
+
+/*
+ * The single-source guarantee, stated in the machine's own voice. This is the
+ * one thing on the site a competitor cannot truthfully copy, so it is set at
+ * the head of every page on its own rule rather than tucked into a footer.
+ */
+.prov {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  padding-bottom: var(--s3);
+  margin-bottom: var(--s7);
+  border-bottom: 1px solid var(--rule-strong);
+  color: var(--ink-3);
+}
+
+.prov__pair {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.prov__k {
+  font-family: var(--f-mono);
+  font-size: var(--t-label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.prov__v {
+  font-family: var(--f-mono);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.prov__v--file {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Age is carried by a word as well as by the leaf's colour. */
+.prov__age[data-step='1'] .prov__v,
+.prov__age[data-step='2'] .prov__v {
+  color: var(--ink);
+}
+
+.prov__stale {
+  font-size: var(--t-small);
+  color: var(--danger-ink);
+}
+
+.prov__link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-family: var(--f-mono);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  transition: color var(--hinge), border-color var(--hinge);
+}
+
+.prov__link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* the grid -------------------------------------------------------------- */
+
+/*
+ * Four columns and a fifth in the margin, then a wide track on the right.
+ * Prose keeps its 62-character measure whatever the window does; a table or a
+ * command window may span the whole sheet, because a `curl` one-liner folded
+ * into a reading column is a command nobody can check before they run it.
+ */
+.prose {
+  display: grid;
+  grid-template-columns:
+    [margin] 132px
+    [main] minmax(0, var(--measure))
+    [wide] minmax(0, 1fr);
+  column-gap: var(--s6);
+}
+
+.prose > * {
+  grid-column: main;
+}
+
+/* Heads hang out of the text field, at body size: weight and rule do the
+   ranking, not a second type scale. */
+.prose > h1,
+.prose > h2,
+.prose > h3 {
+  grid-column: margin / wide;
+}
+
+.prose > .md-rule {
+  grid-column: margin / -1;
+}
+
+@media (max-width: 1279px) {
+  .prose {
+    grid-template-columns: [margin] 0 [main] minmax(0, var(--measure)) [wide] minmax(0, 1fr);
+    column-gap: 0;
+  }
+}
+
+/*
+ * Wide enough, and the page's own contents move into the fore-edge margin,
+ * which is where a manual keeps them. The track stops being a gutter with
+ * nothing in it, and the margin column that keeps position becomes literal.
+ */
+@media (min-width: 1280px) {
+  .doc {
+    padding-left: var(--s6);
+    padding-right: var(--s6);
+  }
+
+  /* The sheet takes the whole leaf here: the cap exists to stop a measure
+     from running away, and the measure is capped on the elements instead. */
+  .doc__sheet {
+    max-width: none;
+  }
+
+  .prose {
+    grid-template-columns: [margin] 132px [main] minmax(0, 1fr);
+  }
+
+  /* Prose keeps its measure; a table or a command window takes the track. */
+  .prose > .md-p,
+  .prose > .md-ul,
+  .prose > .md-ol,
+  .prose > .md-quote,
+  .prose > .md-alert {
+    max-width: var(--measure);
+  }
+
+}
+
+/* Wide enough for both: the page's own contents move to the fore edge. */
+@media (min-width: 1600px) {
+  /*
+   * The field is capped at what a command actually needs rather than allowed
+   * to grow, and the index sits immediately after it. Whatever width is left
+   * over falls to the RIGHT of the index, against the fore edge, which is
+   * where empty leaf belongs — rather than opening between the measure and
+   * the index it belongs to.
+   */
+  .doc__sheet {
+    display: grid;
+    grid-template-columns: minmax(0, var(--field)) 204px;
+    column-gap: var(--s5);
+    align-items: start;
+  }
+
+  .prov {
+    grid-column: 1 / -1;
+  }
+
+  /* The d3 entries are subordinate marginalia; in a 204px column their indent
+     costs more than it signals, and depth still reads from size and rule. */
+  .toc--margin .toc__d3 a {
+    padding-left: var(--s3);
+  }
+
+  .toc--margin {
+    position: sticky;
+    top: calc(var(--band) + var(--s6));
+    margin: 0;
+    padding-top: 0;
+    border-top: none;
+    max-height: calc(100vh - var(--band) - var(--s8));
+    overflow-y: auto;
+  }
+}
+
+/* the margin TOC -------------------------------------------------------- */
+
+.toc {
+  margin: var(--s7) var(--s5) 0;
+  padding-top: var(--s5);
+  border-top: 1px solid var(--rule);
+}
+
+.toc__head {
+  color: var(--ink-3);
+  margin-bottom: var(--s3);
+}
+
+.toc__list {
+  list-style: none;
+}
+
+.toc a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s1) 0;
+  font-size: var(--t-small);
+  line-height: 1.4;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color var(--hinge);
+}
+
+.toc a:hover {
+  color: var(--ink);
+}
+
+.toc__d3 a {
+  padding-left: var(--s5);
+  font-size: 0.75rem;
+}
+
+/*
+ * State is a mark, not a hue: a tick ahead, a crease behind, a punched hole
+ * where you are. Reading these needs no colour vision and no legend.
+ */
+.toc__mark {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  align-self: center;
+  border: 1px solid var(--ink-3);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.toc [data-state='passed'] {
+  color: var(--ink-3);
+}
+
+.toc [data-state='passed'] .toc__mark {
+  border-color: transparent;
+  border-radius: 0;
+  background: linear-gradient(135deg, transparent 44%, var(--ink-3) 44%, var(--ink-3) 56%, transparent 56%);
+}
+
+.toc [data-state='current'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.toc [data-state='current'] .toc__mark {
+  border-color: var(--board-ink);
+  background: var(--board);
+  box-shadow: 0 0 0 2px var(--leaf), 0 0 0 3px var(--board-ink);
+}
+
+/* not found ------------------------------------------------------------- */
+
+.missing {
+  max-width: var(--measure);
+  padding: var(--s5);
+  border: 1px solid var(--danger);
+  border-radius: var(--r);
+  background: var(--danger-field);
+}
+
+.missing__head {
+  font-family: var(--f-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--t-h3);
+  color: var(--danger-ink);
+  margin-bottom: var(--s2);
+}
+
+@media (max-width: 1023px) {
+  .doc {
+    padding: var(--s5) var(--s3) var(--s8);
+  }
+}

@@ -22,3 +22,8 @@ Thumbs.db
 .agents/
 .claude/routing/
 **/.claude/routing/
+
+# Impeccable build evidence (screenshots from inspection rounds) — process
+# evidence, not documentation. surfaces/ (direction contracts) and
+# design.json (the DESIGN.md sidecar) stay tracked.
+.impeccable/review/

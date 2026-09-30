@@ -1,0 +1,269 @@
+/*
+ * Rendered README.
+ *
+ * Every rule here applies to bytes that came out of a README.md. Nothing in
+ * this file may add, reword or reorder a single thing the file did not say.
+ */
+
+.md-h1 {
+  font-family: var(--f-display);
+  font-stretch: var(--wdth-display)%;
+  font-variation-settings: 'wdth' var(--wdth-display);
+  font-weight: 800;
+  font-size: var(--t-display);
+  line-height: 1.02;
+  letter-spacing: var(--tr-display);
+  text-transform: uppercase;
+  text-wrap: balance;
+  margin-bottom: var(--s5);
+}
+
+.md-h2 {
+  font-family: var(--f-display);
+  font-stretch: 88%;
+  font-variation-settings: 'wdth' 88;
+  font-weight: 700;
+  font-size: var(--t-h2);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  margin-top: var(--s7);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--rule-strong);
+  margin-bottom: var(--s4);
+}
+
+/*
+ * `.prose` is a grid, and grid tracks do not collapse adjacent margins: every
+ * value below is added to its neighbour rather than absorbed by it. A README
+ * that writes `---` before each `##` was stacking a rule's margins on top of a
+ * heading's and opening a quarter-screen of dead paper between sections.
+ */
+.md-rule + .md-h2 {
+  margin-top: var(--s4);
+  padding-top: 0;
+  border-top: none;
+}
+
+.md-h3 {
+  font-family: var(--f-display);
+  font-stretch: 92%;
+  font-variation-settings: 'wdth' 92;
+  font-weight: 700;
+  font-size: var(--t-h3);
+  line-height: 1.3;
+  text-wrap: balance;
+  margin-top: var(--s6);
+  margin-bottom: var(--s3);
+}
+
+.md-h4,
+.md-h5,
+.md-h6 {
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: var(--t-h4);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  margin-top: var(--s6);
+  margin-bottom: var(--s2);
+}
+
+.md-p {
+  color: var(--ink);
+  margin-bottom: var(--s5);
+}
+
+.md-ul,
+.md-ol {
+  margin-bottom: var(--s5);
+  padding-left: var(--s6);
+}
+
+.md-ul {
+  list-style: none;
+}
+
+.md-ol {
+  list-style: decimal;
+}
+
+.md-li {
+  position: relative;
+  margin-bottom: var(--s2);
+}
+
+.md-ul > .md-li::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--s5) * -1);
+  top: 0.62em;
+  width: 7px;
+  height: 1px;
+  background: var(--ink-3);
+}
+
+.md-ol > .md-li::marker {
+  font-family: var(--f-mono);
+  font-size: 0.85em;
+  color: var(--ink-3);
+}
+
+.md-li > .md-p {
+  margin-bottom: var(--s2);
+}
+
+.md-li > .md-ul,
+.md-li > .md-ol {
+  margin-top: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.md-a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--board-ink);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  transition: color var(--hinge), text-decoration-color var(--hinge);
+}
+
+.md-a:hover {
+  color: var(--board-ink);
+  text-decoration-thickness: 2px;
+}
+
+.md-code {
+  font-family: var(--f-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.34em;
+  background: var(--recess);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  word-break: break-word;
+}
+
+.md-rule {
+  height: 0;
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: var(--s6) 0;
+}
+
+.md-img {
+  display: block;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+  margin: var(--s5) 0;
+}
+
+/* dateline -------------------------------------------------------------- */
+
+/* Every published README carries `> 最後更新：…` directly under its H1, so a
+   plain blockquote is, in practice, a dateline. It is set as one. */
+.md-quote {
+  padding-left: var(--s5);
+  border-left: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+  margin-bottom: var(--s5);
+}
+
+.md-quote > .md-p:last-child {
+  margin-bottom: 0;
+}
+
+/* alerts ---------------------------------------------------------------- */
+
+.md-alert {
+  margin: var(--s5) 0;
+  padding: var(--s4) var(--s5);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  background: var(--recess);
+}
+
+.md-alert__label {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: var(--s2);
+}
+
+.md-alert > .md-p:last-child,
+.md-alert > .md-ul:last-child,
+.md-alert > .md-ol:last-child {
+  margin-bottom: 0;
+}
+
+/* Vermilion is held out of the whole system so that it means exactly one
+   thing when it finally appears: this can hurt the machine. */
+.md-alert[data-level='danger'] {
+  border-color: var(--danger);
+  background: var(--danger-field);
+}
+
+.md-alert[data-level='danger'] .md-alert__label {
+  color: var(--danger-ink);
+}
+
+/* tables ---------------------------------------------------------------- */
+
+/* These READMEs are table-dense, so tables get the full width of the sheet,
+   margin column included, rather than being squeezed into the measure. */
+.md-tablewrap {
+  grid-column: margin / -1;
+  margin: var(--s5) 0;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+}
+
+.md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-small);
+  line-height: 1.5;
+}
+
+.md-table th {
+  font-family: var(--f-mono);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
+  padding: var(--s3) var(--s4);
+  background: var(--recess);
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.md-table td {
+  padding: var(--s3) var(--s4);
+  vertical-align: top;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+.md-table tr:last-child td {
+  border-bottom: none;
+}
+
+.md-table tbody tr:hover td {
+  background: var(--recess);
+}
+
+/* The first cell of a row names the thing the row is about. */
+.md-table td:first-child {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.md-table td:first-child .md-code {
+  white-space: nowrap;
+}

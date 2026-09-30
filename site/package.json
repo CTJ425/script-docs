@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "README-driven documentation portal for script-docs (React + MUI, deployed to GitHub Pages)",
+  "description": "README-driven documentation portal for script-docs (React + custom design system, deployed to GitHub Pages)",
   "scripts": {
     "sync": "node scripts/sync-content.mjs",
     "dev": "vite",
@@ -11,14 +11,10 @@
     "preview": "vite preview",
     "//typecheck": "manifest.json is generated and not committed, so it must exist before tsc can resolve it on a clean checkout.",
     "typecheck": "npm run sync && tsc --noEmit",
-    "test": "node scripts/smoke-test.mjs",
+    "test": "node scripts/check-contrast.mjs && node scripts/smoke-test.mjs",
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^6.4.12",
-    "@mui/material": "^6.4.12",
     "github-slugger": "^2.0.0",
     "prism-react-renderer": "^2.4.1",
     "react": "^18.3.1",

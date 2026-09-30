@@ -10,20 +10,32 @@
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Archivo is a width x weight grid, which is the thing Univers actually is.
+      EB Garamond is Sabon's own lineage. Noto Serif TC / Noto Sans TC carry the
+      same two jobs in Chinese, where a manual sets its body in 明體 and its
+      headings in 黑體. Chivo Mono shares Archivo's foundry and skeleton.
+    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=Chivo+Mono:wght@400..700&family=EB+Garamond:wght@400..600&family=Noto+Sans+TC:wght@700..900&family=Noto+Serif+TC:wght@400..600&display=swap"
       rel="stylesheet"
     />
     <script>
-      // Apply the stored palette mode before first paint to avoid a flash.
+      // Settle the theme before the first paint. The stylesheet reads
+      // data-theme; main.tsx keeps it true from here on.
       (function () {
+        var m = null;
         try {
-          var m = localStorage.getItem('scd-color-mode');
-          if (m === 'light' || m === 'dark') {
-            document.documentElement.style.colorScheme = m;
-            document.documentElement.dataset.initialMode = m;
-          }
+          m = localStorage.getItem('scd-color-mode');
         } catch (e) {}
+        if (m !== 'light' && m !== 'dark') {
+          m =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        }
+        document.documentElement.dataset.theme = m;
+        document.documentElement.style.colorScheme = m;
       })();
     </script>
   </head>
