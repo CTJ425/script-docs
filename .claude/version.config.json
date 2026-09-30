@@ -1,9 +1,0 @@
-{
-  "tagPrefix": "v",
-  "releaseBranch": "main",
-  "devBranch": null,
-  "changelog": "CHANGELOG.md",
-  "appDir": "site",
-  "syncFiles": [],
-  "release": { "enabled": true, "draft": false, "latest": true }
-}

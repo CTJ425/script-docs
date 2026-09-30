@@ -44,11 +44,67 @@ jobs:
                    container/k8s_env_init/k8s_env_initialization.sh \
                    container/k8s_install/k8s_cluster_install.sh \
                    script/pve_link_iso/pve_link_iso.sh \
-                   script/deploy-supabase/deploy-supabase.sh; do
+                   script/deploy-supabase/deploy-supabase.sh \
+                   AI/skill/install.sh; do
             [ -x "$f" ] || { echo "::error file=$f::not executable (chmod +x)"; fail=1; }
             bash "$f" --help >/dev/null 2>&1 || { echo "::error file=$f::--help failed"; fail=1; }
           done
           exit $fail
+
+  skills:
+    name: Claude Code skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The installer downloads exactly what manifest.json lists, so a file
+      # added to a skill folder and not listed there is a file nobody who
+      # installs ever receives. A name mismatch is just as silent: Claude Code
+      # keys a skill by its frontmatter `name`, the installer by its folder.
+      - name: manifest must match the skill folders
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re, sys
+          root = pathlib.Path('AI/skill')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          listed = {s['name']: set(s['files']) for s in manifest['skills']}
+          fail = []
+
+          on_disk = {d.name for d in root.iterdir() if d.is_dir()}
+          for extra in sorted(on_disk - listed.keys()):
+              fail.append(f'{extra}/ is not in manifest.json')
+          for missing in sorted(listed.keys() - on_disk):
+              fail.append(f'manifest.json lists {missing}/ but there is no such folder')
+
+          for name in sorted(listed.keys() & on_disk):
+              d = root / name
+              actual = {f.name for f in d.iterdir() if f.is_file()} - {'README.md'}
+              for extra in sorted(actual - listed[name]):
+                  fail.append(f'{name}/{extra} exists but manifest.json does not list it')
+              for missing in sorted(listed[name] - actual):
+                  fail.append(f'manifest.json lists {name}/{missing} but the file is missing')
+
+              skill = d / 'SKILL.md'
+              if skill.is_file():
+                  m = re.search(r'^name:\s*(\S+)\s*$', skill.read_text(encoding='utf-8'), re.M)
+                  if not m:
+                      fail.append(f'{name}/SKILL.md has no `name:` in its frontmatter')
+                  elif m.group(1) != name:
+                      fail.append(f'{name}/SKILL.md says name: {m.group(1)} — it must equal the folder name')
+
+          for line in fail:
+              print(f'::error::{line}')
+          sys.exit(1 if fail else 0)
+          PY
+
+      # A skill file is expanded for shell positional parameters before it is
+      # run, so a literal $1 in one is replaced by the skill's argument text.
+      - name: skills must not contain shell positional parameters
+        run: |
+          if grep -rnE '\$[0-9]' AI/skill/*/SKILL.md; then
+            echo "::error::the lines above use \$N, which the skill loader replaces before the shell sees it"
+            exit 1
+          fi
 
   compose:
     name: Docker Compose

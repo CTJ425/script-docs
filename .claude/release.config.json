@@ -1,0 +1,31 @@
+{
+  "repo": {
+    "tagPrefix": "v",
+    "releaseBranch": "main",
+    "devBranch": null,
+    "changelog": "CHANGELOG.md",
+    "changelogLang": "zh-TW",
+    "appDir": "site"
+  },
+  "version": {
+    "syncFiles": [],
+    "release": {
+      "enabled": true,
+      "publishedBy": "skill",
+      "draft": false,
+      "latest": true
+    }
+  },
+  "ship": {
+    "gates": [
+      {
+        "name": "site",
+        "cmd": "npm ci && npm run verify"
+      }
+    ],
+    "flow": {
+      "devFirst": false,
+      "askBeforeRelease": true
+    }
+  }
+}

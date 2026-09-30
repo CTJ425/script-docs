@@ -1,0 +1,16 @@
+{
+  "repo": "CTJ425/script-docs",
+  "root": "AI/skill",
+  "skills": [
+    {
+      "name": "versioning",
+      "files": ["SKILL.md"],
+      "summary": "Version numbers, CHANGELOG entries, and GitHub Releases."
+    },
+    {
+      "name": "ship",
+      "files": ["SKILL.md"],
+      "summary": "The release pipeline: gates, bump, dev push, deploy, verify, release."
+    }
+  ]
+}

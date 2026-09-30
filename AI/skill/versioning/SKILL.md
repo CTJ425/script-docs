@@ -1,45 +1,84 @@
 ---
-name: version
+name: versioning
 description: Decide the next version number, keep dev and release branches in sync, and publish or update a GitHub Release with gh. Use when you bump a version, cut a release, merge a dev branch into the release branch, write a CHANGELOG entry, or fix a wrong release body.
 ---
 
-# Version and release
+# Versioning and release
 
 This skill holds the **rules**. The project holds the **paths**.
 
-Read `.claude/version.config.json` in the repository root before you change any file.
+Read `.claude/release.config.json` in the repository root before you change any file.
 If that file does not exist, go to § Bootstrap. Do not guess file paths.
+
+> **Older name.** A repo set up before this skill was split may carry
+> `.claude/version.config.json` with the `repo` keys at the top level and no `ship`
+> section. Read it, work from it, and offer once to rename it to
+> `.claude/release.config.json` in the same commit. Never keep both files.
+
+The `ship` section of the same file belongs to the **`ship`** skill. Do not read or
+write it here.
 
 ---
 
 ## Config contract
 
+Every `path` in this file is **relative to the repository root**, never to `appDir`.
+`appDir` only says where to run commands.
+
 ```json
 {
-  "tagPrefix": "",
-  "releaseBranch": "main",
-  "devBranch": "dev",
-  "changelog": "docs/CHANGELOG.md",
-  "appDir": ".",
-  "syncFiles": [
-    { "path": "package.json", "type": "json", "key": "version" },
-    { "path": "package-lock.json", "type": "json", "key": "version" },
-    { "path": "src/version.ts", "type": "regex", "pattern": "APP_VERSION = '<version>'" },
-    { "path": "README.md", "type": "regex", "pattern": "badge/version-<version>-" }
-  ],
-  "release": { "enabled": true, "draft": false, "latest": true }
+  "repo": {
+    "tagPrefix": "",
+    "releaseBranch": "main",
+    "devBranch": "dev",
+    "changelog": "docs/CHANGELOG.md",
+    "changelogLang": "en",
+    "appDir": "."
+  },
+  "version": {
+    "syncFiles": [
+      { "path": "package.json", "type": "npm" },
+      { "path": "src/version.ts", "type": "regex", "pattern": "APP_VERSION = '<version>'" },
+      { "path": "README.md", "type": "regex", "pattern": "badge/version-<version>-" }
+    ],
+    "release": { "enabled": true, "publishedBy": "skill", "draft": false, "latest": true }
+  }
 }
 ```
 
+### `repo` — shared with the `ship` skill
+
 | Field | Meaning |
 | ---- | ---- |
-| `tagPrefix` | Text before the number in the git tag. Use `""` for no prefix, `"v"` for `v1.2.3` |
+| `tagPrefix` | Text before the number in the git tag. `""` for `1.2.3`, `"v"` for `v1.2.3` |
 | `releaseBranch` | The branch that carries official numbers |
-| `devBranch` | The branch that carries `-dev.N` numbers. Use `null` for a single-branch repo |
-| `changelog` | Path of the version history file. This file is the source of truth |
-| `appDir` | Directory to run `npm` from |
-| `syncFiles` | Every file that shows the version. `<version>` marks the number in a `regex` pattern. Use `[]` when no file shows it — then the git tag is the only carrier |
-| `release.enabled` | Set to `false` to skip all `gh` steps |
+| `devBranch` | The branch that carries `-dev.N` numbers. `null` for a single-branch repo |
+| `changelog` | Path of the version history file. **This file is the source of truth** |
+| `changelogLang` | Language of the changelog entries you write, as a BCP 47 tag (`zh-TW`, `en`). Absent means `en` |
+| `appDir` | Directory to run `npm` and other project commands from |
+
+### `version` — owned by this skill
+
+| Field | Meaning |
+| ---- | ---- |
+| `syncFiles` | Every file that shows the version. `[]` means no file shows it — then the git tag is the only carrier |
+| `release.enabled` | `false` skips all `gh` steps |
+| `release.publishedBy` | `"skill"` — you create the Release. `"ci"` — a workflow creates it on push and you only confirm and repair it. Absent means `"skill"` |
+| `release.draft` | `true` creates the Release as a draft |
+| `release.latest` | `false` does not mark the new Release as latest |
+
+### `syncFiles` entry types
+
+| `type` | How to write the version |
+| ---- | ---- |
+| `npm` | Run `npm version <version> --no-git-tag-version --allow-same-version` in `appDir`. **Use this for `package.json`** |
+| `json` | Set the JSON key named by `key` |
+| `regex` | Replace the number inside `pattern`, where `<version>` marks the number |
+
+**Never list `package-lock.json` as a `json` entry.** A lockfile holds the number in
+both `version` and `packages[""].version`; editing one key leaves the other stale and
+`npm ci` then installs a version that disagrees with the app. The `npm` type updates
+`package.json` and the lockfile together, which is the only edit that keeps them equal.
 
 ---
 
@@ -94,8 +133,8 @@ Rules:
 
 1. Read the current number. See the task above.
 2. Calculate the next number by the rules above.
-3. Write the new number into **every** file in `syncFiles`.
-4. Add a `changelog` entry under the new heading.
+3. Write the new number into **every** file in `syncFiles`, by its `type`.
+4. Add a `changelog` entry under the new heading, written in `changelogLang`.
 5. Verify: `grep -R "<old version>" <each syncFiles path>` returns nothing.
 
 ---
@@ -109,7 +148,8 @@ Rules:
    "not deployed" note. § GitHub Release explains why this order matters.
 4. Merge into `releaseBranch` and push.
 5. Sync the branches: `git push origin <releaseBranch>:<devBranch>`.
-6. Publish the Release. See § GitHub Release.
+   Skip when `devBranch` is `null`.
+6. Publish the Release, or confirm the one CI published. See § GitHub Release.
 7. The next versioned change on `devBranch` starts at `(patch + 1)-dev.1`.
 
 ---
@@ -134,9 +174,10 @@ Use `python3`. Keep every positional parameter out of this file.
 
 ```bash
 VERSION=0.6.48
-CHANGELOG=$(python3 -c "import json;print(json.load(open('.claude/version.config.json'))['changelog'])")
+CHANGELOG=$(python3 -c "import json;print(json.load(open('.claude/release.config.json'))['repo']['changelog'])")
+NOTES=$(mktemp -t "notes-$VERSION.XXXXXX.md")
 
-python3 - "$CHANGELOG" "$VERSION" > "/tmp/notes-$VERSION.md" <<'PY'
+python3 - "$CHANGELOG" "$VERSION" > "$NOTES" <<'PY'
 import re, sys
 path, ver = sys.argv[1], sys.argv[2]
 head = re.compile(r'^#+ +\[?' + re.escape(ver) + r'\]?([^0-9.]|$)')
@@ -153,18 +194,31 @@ text = re.sub(r'\n*-{3,}\s*$', '', ''.join(out).strip()).strip()
 sys.stdout.write(text + '\n')
 PY
 
-test -s "/tmp/notes-$VERSION.md" || echo "EMPTY — check the heading format"
+test -s "$NOTES" || echo "EMPTY — check the heading format"
 ```
 
 `re.escape` keeps `0.9.2` from matching `0.9.20`. The next version heading stops the
 scan, so trailing sections never leak into the notes.
 
+`mktemp` keeps two repos releasing at the same time from overwriting each other's notes.
 Always check that the file is not empty before you publish.
+
+### When CI publishes it
+
+With `release.publishedBy: "ci"`, a workflow creates the Release on the push to
+`releaseBranch`. Do **not** run `gh release create` — you would race the workflow.
+
+1. Wait for the workflow, then read the body: `gh release view "$TAG" | head -20`.
+2. Body wrong or missing a section → repair it with `gh release edit` (below).
+
+Such a workflow almost always creates only *missing* Releases and **skips existing
+ones**, which is why the changelog has to be final before the push. Once the Release
+exists, the only fix is by hand.
 
 ### Publish or update
 
 ```bash
-TAG="$VERSION"          # add tagPrefix if the config sets one
+TAG="$VERSION"          # prepend tagPrefix if the config sets one
 
 # 1. Does the Release exist?
 gh release view "$TAG" --json tagName -q .tagName 2>/dev/null
@@ -172,12 +226,12 @@ gh release view "$TAG" --json tagName -q .tagName 2>/dev/null
 # 2a. It does not exist — create it.
 gh release create "$TAG" \
   --title "$TAG" \
-  --notes-file "/tmp/notes-$VERSION.md" \
+  --notes-file "$NOTES" \
   --target "$(git rev-parse HEAD)" \
   --latest
 
 # 2b. It exists and the body is wrong — overwrite the body.
-gh release edit "$TAG" --notes-file "/tmp/notes-$VERSION.md"
+gh release edit "$TAG" --notes-file "$NOTES"
 
 # 3. Confirm.
 gh release view "$TAG" | head -20
@@ -204,12 +258,15 @@ Rules:
 
 ## Bootstrap
 
-Run these steps when `.claude/version.config.json` does not exist:
+Run these steps when `.claude/release.config.json` does not exist:
 
 1. Find the files that show a version:
    `grep -RIl --exclude-dir=node_modules --exclude-dir=.git -E '[0-9]+\.[0-9]+\.[0-9]+' README.md package.json src 2>/dev/null | head`
 2. Find the changelog: `ls CHANGELOG.md docs/CHANGELOG.md docs/**/CHANGELOG.md 2>/dev/null`
 3. Read the branch names: `git branch -r | head`
 4. Read the tag style: `git tag --sort=-creatordate | head -3`
-5. Show the proposed config to the user. Ask for approval.
-6. Write `.claude/version.config.json`. Then continue with the original task.
+5. Read the language of the existing changelog entries and set `changelogLang` to match.
+6. Show the proposed config to the user. **Ask for approval. Write nothing before it.**
+7. Write `.claude/release.config.json` with the `repo` and `version` sections. Leave the
+   `ship` section out — the `ship` skill bootstraps its own. Then continue with the
+   original task.
