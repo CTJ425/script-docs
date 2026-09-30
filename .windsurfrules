@@ -54,7 +54,7 @@ commit:**
 | --- | --- |
 | `README.md` (root) | H1 = the product name; opening line = the tagline. This *is* the landing page. |
 | `site/index.html` | `<title>` = the root H1; `<meta name="description">` = the tagline + what the project contains |
-| `site/src/components/AppShell.tsx` | App bar title = the root H1; subtitle = the tagline |
+| `site/src/components/AppShell.tsx` | App bar title is **read from the manifest** (the root H1) and cannot drift; only the subtitle/tagline is hand-held chrome here |
 | `<subproject>/README.md` | H1 = that page's nav label — renaming the H1 renames the nav entry |
 | `<subproject>/SPEC.md`, `TROUBLESHOOTING.md` | Their headings carry the same product name as the subproject's H1 |
 
