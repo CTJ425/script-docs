@@ -186,10 +186,13 @@ jobs:
         working-directory: site
     steps:
       - uses: actions/checkout@v4
+      # Astro 7 needs Node >= 22.12.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
+      # Types, contrast, content rules, the build and its search index, and a
+      # read of the built site (routes, links, share tags, feed, scripts verbatim).
       - run: npm run verify

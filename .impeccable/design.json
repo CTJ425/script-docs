@@ -1,281 +1,459 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-30T00:00:00Z",
-  "title": "Design System: Script Docs",
+  "generatedAt": "2026-10-02T00:00:00Z",
+  "title": "Design System: ivan note",
   "extensions": {
     "colorMeta": {
       "chrome-yellow": {
         "role": "primary",
-        "displayName": "Chrome Yellow Board",
+        "displayName": "Chrome Yellow",
         "canonical": "#F2B32B",
-        "tonalRamp": ["#44320c", "#7e5d16", "#b88821", "#f2b32b", "#f5c255", "#f7d384", "#fae4b3", "#fdf4e1"],
-        "notes": "Board hue at palette position 0; currently claimed by AI/. inkOn() gives it the dark ink. Light-mode solved leaf #f9e2b0 at alpha 0.700; dark-mode board #c08f24, leaf #241b07 at alpha 0.814."
+        "tonalRamp": [
+          "#44320c",
+          "#7e5d16",
+          "#b88821",
+          "#f2b32b",
+          "#f5c255",
+          "#f7d384",
+          "#fae4b3",
+          "#fdf4e1"
+        ],
+        "notes": "Category hue at palette position 0; currently claimed by AI/. resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "teal": {
         "role": "primary",
-        "displayName": "Teal Board",
+        "displayName": "Teal",
         "canonical": "#0F8A80",
-        "tonalRamp": ["#042724", "#084843", "#0b6961", "#0f8a80", "#3fa199", "#74bbb5", "#a9d5d1", "#ddefed"],
-        "notes": "Palette position 1; currently container/. Mid-luminance, so printable() pushes it to #168d83 in light mode before text goes on it. Light leaf #d5e9e5 at alpha 0.858; dark board #0f6f66, leaf #04201d."
+        "tonalRamp": [
+          "#042724",
+          "#084843",
+          "#0b6961",
+          "#0f8a80",
+          "#3fa199",
+          "#74bbb5",
+          "#a9d5d1",
+          "#ddefed"
+        ],
+        "notes": "Category hue at palette position 1; currently container/. resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "ultramarine": {
         "role": "primary",
-        "displayName": "Ultramarine Board",
+        "displayName": "Ultramarine",
         "canonical": "#1F55B8",
-        "tonalRamp": ["#091834", "#102c60", "#18418c", "#1f55b8", "#4c77c6", "#7d9cd6", "#aec2e5", "#e0e7f5"],
-        "notes": "Palette position 2; currently script/. Takes the light ink. Light leaf #dee5f1 at alpha 0.888; dark board #1c4692, leaf #0b1b39."
+        "tonalRamp": [
+          "#091834",
+          "#102c60",
+          "#18418c",
+          "#1f55b8",
+          "#4c77c6",
+          "#7d9cd6",
+          "#aec2e5",
+          "#e0e7f5"
+        ],
+        "notes": "Category hue at palette position 2; currently script/. resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "grass": {
         "role": "primary",
-        "displayName": "Grass Board",
+        "displayName": "Grass",
         "canonical": "#4E8B3C",
-        "tonalRamp": ["#162711", "#29481f", "#3b6a2e", "#4e8b3c", "#71a263", "#98bc8e", "#bfd5b9", "#e6efe4"],
-        "notes": "Palette position 3, held in reserve. The next top-level folder lands here with no code change. printable() seats it at #518d3f in light mode."
+        "tonalRamp": [
+          "#162711",
+          "#29481f",
+          "#3b6a2e",
+          "#4e8b3c",
+          "#71a263",
+          "#98bc8e",
+          "#bfd5b9",
+          "#e6efe4"
+        ],
+        "notes": "Category hue at palette position 3 (reserve). resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "oxide-orange": {
         "role": "primary",
-        "displayName": "Oxide Orange Board",
+        "displayName": "Oxide Orange",
         "canonical": "#DE5F26",
-        "tonalRamp": ["#3e1b0b", "#733114", "#a9481d", "#de5f26", "#e57f51", "#eca281", "#f3c5b1", "#fae9e1"],
-        "notes": "Palette position 4, held in reserve."
+        "tonalRamp": [
+          "#3e1b0b",
+          "#733114",
+          "#a9481d",
+          "#de5f26",
+          "#e57f51",
+          "#eca281",
+          "#f3c5b1",
+          "#fae9e1"
+        ],
+        "notes": "Category hue at palette position 4 (reserve). resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "violet": {
         "role": "primary",
-        "displayName": "Violet Board",
+        "displayName": "Violet",
         "canonical": "#6A55C0",
-        "tonalRamp": ["#1e1836", "#372c64", "#514192", "#6a55c0", "#8877cd", "#a99cda", "#c9c2e8", "#eae7f6"],
-        "notes": "Palette position 5, held in reserve."
+        "tonalRamp": [
+          "#1e1836",
+          "#372c64",
+          "#514192",
+          "#6a55c0",
+          "#8877cd",
+          "#a99cda",
+          "#c9c2e8",
+          "#eae7f6"
+        ],
+        "notes": "Category hue at palette position 5 (reserve). resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "sienna": {
         "role": "primary",
-        "displayName": "Sienna Board",
+        "displayName": "Sienna",
         "canonical": "#8C4A2B",
-        "tonalRamp": ["#27150c", "#492616", "#6a3821", "#8c4a2b", "#a36e55", "#bc9684", "#d6beb3", "#efe6e1"],
-        "notes": "Palette position 6, held in reserve. hueFor() wraps past this index rather than falling back to grey."
+        "tonalRamp": [
+          "#27150c",
+          "#492616",
+          "#6a3821",
+          "#8c4a2b",
+          "#a36e55",
+          "#bc9684",
+          "#d6beb3",
+          "#efe6e1"
+        ],
+        "notes": "Category hue at palette position 6 (reserve). resolveHue() derives its window-head fill (printable, deepened in dark), the ink printed on it (inkOn) and its ink-on-paper (inkFor, mixed toward the page ink until it clears 4.5:1 on every surface)."
       },
       "binder-tan": {
         "role": "secondary",
-        "displayName": "Binder Tan Buckram",
+        "displayName": "Binder Tan",
         "canonical": "#7A5A34",
-        "tonalRamp": ["#22190f", "#3f2f1b", "#5d4428", "#7a5a34", "#957b5d", "#b29f89", "#cfc4b6", "#ece8e3"],
-        "notes": "The board for the overview, which belongs to no category. Chromatic on purpose: a neutral grey mixed into the milk bleaches it instead of tinting it. Light leaf #eae4dc at alpha 0.879."
+        "tonalRamp": [
+          "#22190f",
+          "#3f2f1b",
+          "#5d4428",
+          "#7a5a34",
+          "#957b5d",
+          "#b29f89",
+          "#cfc4b6",
+          "#ece8e3"
+        ],
+        "notes": "The hue of everything that belongs to no category — posts, tools, pages — and the default accent and window-head fill. A tan with chroma on purpose: a hue with none, mixed toward warm paper, only bleaches it."
       },
       "vermilion": {
         "role": "tertiary",
         "displayName": "Vermilion (danger only)",
         "canonical": "#CE2E1A",
-        "tonalRamp": ["#3a0d07", "#6b180e", "#9d2314", "#ce2e1a", "#d85848", "#e3867a", "#edb4ad", "#f8e2df"],
-        "notes": "Held out of the board palette entirely. Destructive commands, errata, the sudo chip, the 404 panel. As ink on the leaf it is mixed by readableOn() to about #c22c19."
+        "tonalRamp": [
+          "#3a0d07",
+          "#6b180e",
+          "#9d2314",
+          "#ce2e1a",
+          "#d85848",
+          "#e3867a",
+          "#edb4ad",
+          "#f8e2df"
+        ],
+        "notes": "Danger only: the sudo flag, WARNING / CAUTION alerts, the 404 panel. Held out of the hue palette so it can never be mistaken for a category."
       },
       "vermilion-dark": {
         "role": "tertiary",
         "displayName": "Vermilion, dark mode",
         "canonical": "#FF7A63",
-        "tonalRamp": ["#47221c", "#853f33", "#c25d4b", "#ff7a63", "#ff9582", "#ffb2a5", "#ffcfc7", "#ffece9"],
-        "notes": "A light salmon; text on it is the dark ink #16150F, because white on it is 2.8:1."
+        "tonalRamp": [
+          "#47221c",
+          "#853f33",
+          "#c25d4b",
+          "#ff7a63",
+          "#ff9582",
+          "#ffb2a5",
+          "#ffcfc7",
+          "#ffece9"
+        ],
+        "notes": "Dark-mode vermilion. A light salmon, so the ink printed on it is the dark ink (#16150F), not white."
       },
-      "milk-light": {
+      "paper-light": {
         "role": "neutral",
-        "displayName": "Warm Manual Milk",
+        "displayName": "Manual Paper",
         "canonical": "#FBF7EC",
-        "tonalRamp": ["#464542", "#83807b", "#bfbcb3", "#fbf7ec", "#fcf9f0", "#fdfaf4", "#fefcf8", "#fefefc"],
-        "notes": "The acetate before compositing. The shipped reading field is this, carrying 0.14 of the board hue at the milk's own luminance, composited at the solved alpha. Target band: relative luminance 0.78."
+        "tonalRamp": [
+          "#464542",
+          "#83807b",
+          "#bfbcb3",
+          "#fbf7ec",
+          "#fcf9f0",
+          "#fdfaf4",
+          "#fefcf8",
+          "#fefefc"
+        ],
+        "notes": "The only ground in light mode, under the --tooth grain. Ink #16150F / #4D4937 / #635E49."
       },
-      "milk-dark": {
+      "paper-dark": {
         "role": "neutral",
-        "displayName": "Graphite Milk",
+        "displayName": "Graphite Paper",
         "canonical": "#141310",
-        "tonalRamp": ["#060504", "#0a0a08", "#0f0e0c", "#141310", "#434240", "#777674", "#aaaaa9", "#dedede"],
-        "notes": "Dark-mode acetate. Target band: relative luminance 0.0115."
+        "tonalRamp": [
+          "#060504",
+          "#0a0a08",
+          "#0f0e0c",
+          "#141310",
+          "#434240",
+          "#777674",
+          "#aaaaa9",
+          "#dedede"
+        ],
+        "notes": "The only ground in dark mode, under the --tooth grain."
       },
       "ink-light": {
         "role": "neutral",
         "displayName": "Press Ink",
         "canonical": "#16150F",
-        "tonalRamp": ["#060604", "#0b0b08", "#11100b", "#16150f", "#45443f", "#787774", "#ababa9", "#dededd"],
-        "notes": "Light-mode primary ink. Secondary #57533F, tertiary #68634d. All three clear 4.5:1 on every solved light leaf (4.75-4.79:1 for the tertiary), asserted by scripts/check-contrast.mjs."
+        "tonalRamp": [
+          "#060604",
+          "#0b0b08",
+          "#11100b",
+          "#16150f",
+          "#45443f",
+          "#787774",
+          "#ababa9",
+          "#dededd"
+        ],
+        "notes": "Light-mode primary ink. Secondary #4D4937, tertiary #635E49 — the tertiary was moved to clear 4.5:1 on a recess over aged paper."
       },
       "ink-dark": {
         "role": "neutral",
         "displayName": "Chalk Ink",
         "canonical": "#F2EDE0",
-        "tonalRamp": ["#44423f", "#7e7b74", "#b8b4aa", "#f2ede0", "#f5f1e6", "#f7f5ed", "#faf9f4", "#fdfcfb"],
-        "notes": "Dark-mode primary ink. Secondary #A9A391, tertiary #8D8875."
+        "tonalRamp": [
+          "#44423f",
+          "#7e7b74",
+          "#b8b4aa",
+          "#f2ede0",
+          "#f5f1e6",
+          "#f7f5ed",
+          "#faf9f4",
+          "#fdfcfb"
+        ],
+        "notes": "Dark-mode primary ink. Secondary #BAB4A2, tertiary #A29D8B — the tiers sit close because the quietest must still clear 4.5:1 on a yellowed recess."
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "The README's own H1, the largest line on the site. Archivo at width 82, caps, balanced wrap." },
-      "headline": { "displayName": "Headline", "purpose": "H2. Archivo at width 88, over a strong rule; the rule collapses when a markdown --- precedes it." },
-      "title": { "displayName": "Title", "purpose": "H3. Archivo at width 92." },
-      "subtitle": { "displayName": "Subtitle", "purpose": "H4-H6. Body size; family and weight carry the rank, not a second scale." },
-      "body": { "displayName": "Body", "purpose": "Every word meant to be read. One size for the whole site, 75ch measure, which lands Traditional Chinese at about 34 characters per line." },
-      "small": { "displayName": "Small", "purpose": "Index entries, TOC, provenance values, table body." },
-      "label": { "displayName": "Machine Label", "purpose": "Chivo Mono caps. Only for things a machine said or measured: category names, byte counts, revision dates, language names, state." },
-      "code": { "displayName": "Command", "purpose": "The punched window's contents. Three inks only: what the machine runs, what it is told to run, and incidental syntax dropped back." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles and a script README's own H1, the largest line on the site. Archivo at width 82, caps, balanced wrap. The home page's site name is set larger still."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "H2. Archivo at width 88, over a strong rule; the rule collapses when a markdown --- precedes it."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "H3. Archivo at width 92."
+      },
+      "subtitle": {
+        "displayName": "Subtitle",
+        "purpose": "H4-H6. Body size; family and weight carry the rank, not a second scale."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Every word meant to be read. One size for the whole site, 75ch measure, which lands Traditional Chinese at about 34 characters per line."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Contents, related links, table body."
+      },
+      "label": {
+        "displayName": "Machine Label",
+        "purpose": "Chivo Mono caps, 12px. Only for things a machine said or measured: dates, categories, status, byte counts, language names, the copy button."
+      },
+      "code": {
+        "displayName": "Command",
+        "purpose": "The punched window's contents. Three inks only: what the machine runs, what it is told to run, and incidental syntax dropped back."
+      }
     },
-    "runtimeSolvedTokens": {
-      "mechanism": "site/src/design.ts solves the palette per route and per theme; site/src/components/AppShell.tsx publishes the result onto document.documentElement. These five values do not exist as CSS constants anywhere in the build; base.css holds first-paint fallbacks only.",
+    "derivedTokens": {
+      "mechanism": "site/src/lib/design.mjs derives every colour; colorCss() renders it as text and site/src/layouts/Base.astro inlines it into <head>. No stylesheet holds a colour literal, so the value the contrast script measures is the value that ships.",
       "properties": [
-        { "name": "--board", "source": "boardFor(hueFor(categoryIndex), mode)", "purpose": "The section board at full strength: band, spine, tab rail, code-window head, selection background, caret." },
-        { "name": "--leaf", "source": "solveLeaf(board, mode).hex", "purpose": "The composited reading field. Alpha is binary-searched over sRGB source-over until relative luminance lands in the mode's band (light 0.78, dark 0.0115)." },
-        { "name": "--leaf-alpha", "source": "solveLeaf(board, mode).alpha", "purpose": "Published so the cut shadow can match the leaf it belongs to." },
-        { "name": "--on-board", "source": "inkOn(board, INK.light.primary, INK.dark.primary)", "purpose": "Whichever of the two inks reads better printed on the board." },
-        { "name": "--board-ink", "source": "readableOn(board, leaf, INK[mode].primary)", "purpose": "The board hue mixed toward the page's ink until it clears 4.5:1 as 13px text on the leaf." },
-        { "name": "--danger-ink", "source": "readableOn(DANGER[mode], leaf, INK[mode].primary)", "purpose": "The same treatment for vermilion, which is a fill colour and unreadable as small text untreated." },
-        { "name": "--age", "source": "var(--age-N) from revisionOf(markdown).step", "purpose": "The ageing wash laid over the solved field: 0 fresh, 1 yellowing at 90 days, 2 bleached at 270." }
+        {
+          "name": "--paper, --ink, --ink-2, --ink-3",
+          "source": "PAPER, INK",
+          "purpose": "The ground and its three inks, per theme."
+        },
+        {
+          "name": "--recess, --rule, --rule-strong",
+          "source": "WASH",
+          "purpose": "The ink at low alpha: the well under a code window, table head or inline code; hairline; strong hairline."
+        },
+        {
+          "name": "--danger, --on-danger, --danger-ink, --danger-field",
+          "source": "DANGER, ON_DANGER, inkFor()",
+          "purpose": "Vermilion as fill, the ink printed on it, vermilion as text on every surface, and its low-alpha field."
+        },
+        {
+          "name": "--age-0..2",
+          "source": "AGE",
+          "purpose": "Washes laid over the paper for a page that is a quarter / three quarters old."
+        },
+        {
+          "name": "--fill, --on-fill, --accent",
+          "source": "resolveHue(BINDER_HUE, mode)",
+          "purpose": "Default window-head fill, the ink printed on it, and the accent ink. Overridden by .hue-N on a script page."
+        },
+        {
+          "name": ".hue-0 … .hue-6",
+          "source": "resolveHue(HUES[i], mode)",
+          "purpose": "One class per palette hue, applied to a category's subtree."
+        }
       ]
     },
     "contrastFloor": {
       "enforcedBy": "npm test -> site/scripts/check-contrast.mjs",
       "min": "4.5:1 for every pair asserted; no pair is held to the 3:1 large-text allowance",
       "assertedPairs": [
-        "primary / secondary / tertiary ink on the solved leaf, for all 7 board hues plus the binder hue, in both themes",
-        "inkOn()'s chosen ink on the board itself, at full strength",
-        "readableOn(board) used as ink on the leaf",
-        "readableOn(danger) used as ink on the leaf",
-        "the chosen ink on a vermilion fill (the sudo chip, the 404 panel), both themes",
-        "revisionOf() ageing steps at 10 / 89 / 90 / 269 / 270 days, and no revision line at all"
+        "primary / secondary / tertiary ink on every surface in surfacesFor(): the paper, the recess, the danger field, and each again on paper aged to step 1 and 2 (tertiary is not held to the danger field it never sits on)",
+        "danger as ink (inkFor) on every surface",
+        "inkOn()'s chosen ink on each hue's window-head fill, all 7 hues plus the binder, both themes",
+        "each hue as ink (inkFor) on every surface",
+        "the ink printed on a vermilion fill (the sudo flag, a failed copy), both themes",
+        "the emitted stylesheet: three theme blocks defining the same properties; a .hue-N class per hue",
+        "ageOf() steps at 10 / 89 / 90 / 269 / 270 days, a Date input, no date, a malformed date"
       ]
     },
-    "shadows": [
-      { "name": "cut-shadow", "value": "7px 0 14px -9px rgba(22, 21, 15, 0.55), 2px 0 0 -1px rgba(22, 21, 15, 0.13)", "purpose": "The leaf standing a millimetre off the board: one blurred fall, one 2px hard cut edge. Only on .leaf. Dark mode: 7px 0 16px -9px rgba(0,0,0,0.85), 2px 0 0 -1px rgba(0,0,0,0.6)." },
-      { "name": "lift", "value": "0 2px 10px -6px rgba(22, 21, 15, 0.5)", "purpose": "The open tab cut proud of the fore edge, and the mobile index drawer. Dark mode: 0 2px 12px -6px rgba(0,0,0,0.8)." },
-      { "name": "hole", "value": "inset 0 1px 2px rgba(0, 0, 0, 0.45)", "purpose": "The two punched binder holes on the spine." }
-    ],
+    "shadows": [],
     "motion": [
-      { "name": "hinge", "value": "90ms steps(2, end)", "purpose": "The only motion value in the system. Every transition and the page-turn animation use it; nothing eases and nothing fades." },
-      { "name": "leaf-turn", "value": "from { transform: perspective(1400px) rotateY(-1.6deg) } to { transform: none }", "purpose": "The signature: the leaf turning on its punched edge on every route change. Disabled under prefers-reduced-motion." },
-      { "name": "no-smooth-scroll", "value": "scroll-padding-top: calc(var(--band) + 24px)", "purpose": "Anchors land on their heading without scroll-behavior: smooth, which would be the one easing this world has." }
+      {
+        "name": "hinge",
+        "value": "90ms steps(2, end)",
+        "purpose": "The only motion value in the system, used for hover and press. Nothing eases and nothing fades; prefers-reduced-motion turns it off."
+      }
     ],
     "breakpoints": [
-      { "name": "narrow", "value": "(max-width: 1023px)", "purpose": "The object narrows but survives: spine 16px, rail 26px, band 60px, spine and tab labels hidden, index becomes a drawer." },
-      { "name": "prose-two-track", "value": "(min-width: 1280px)", "purpose": "The prose grid drops to [margin] 132px [main] 1fr; the sheet loses its max-width and the measure is capped on the elements instead." },
-      { "name": "wide", "value": "(min-width: 1600px)", "purpose": "WIDE in site/src/useMedia.ts. The page's own contents move into the fore-edge margin. Set here because the margin column costs about 210px, which is close to what a curl | sudo bash one-liner needs on one line." }
+      {
+        "name": "aside",
+        "value": "(min-width: 1100px)",
+        "purpose": "The document layout becomes minmax(0, 880px) + 232px: the contents move to a sticky column and the related links sit beside the text. Below it, contents collapse into a block above the text and the related links fall below it."
+      },
+      {
+        "name": "row",
+        "value": "(max-width: 640px)",
+        "purpose": "A row's lead column folds above its title."
+      },
+      {
+        "name": "contrast",
+        "value": "(prefers-contrast: more)",
+        "purpose": "Syntax tokens that use the hue as ink step back to plain ink."
+      },
+      {
+        "name": "motion",
+        "value": "(prefers-reduced-motion: reduce)",
+        "purpose": "All transitions off."
+      }
     ],
     "texture": {
       "name": "tooth",
       "value": "an inline SVG feTurbulence fractalNoise tile, baseFrequency 0.9, 4 octaves, desaturated, opacity 0.09, 180x180",
       "blend": "multiply in light, screen in dark",
-      "purpose": "Paper tooth and print ink. Every full-strength board surface and the leaf carry it; a gradient cannot be a texture."
+      "purpose": "Paper tooth. The whole page carries it, as the body background; a gradient cannot be a texture."
     }
   },
   "components": [
     {
-      "name": "Open Tab",
-      "kind": "nav",
-      "refersTo": "tab-open",
-      "description": "One tab per category down the right fore edge; height is proportional to that category's page count, and the open one is cut proud of the edge.",
-      "html": "<nav class=\"ds-rail\"><a class=\"ds-tab\" style=\"--tab:#F2B32B;--tab-ink:#16150F;flex-grow:3\" aria-current=\"true\"><span class=\"ds-tab__label\">AI</span><span class=\"ds-tab__count\">3</span></a><a class=\"ds-tab\" style=\"--tab:#168d83;--tab-ink:#16150F;flex-grow:3\"><span class=\"ds-tab__label\">CONTAINER</span><span class=\"ds-tab__count\">3</span></a><a class=\"ds-tab\" style=\"--tab:#1F55B8;--tab-ink:#F2EDE0;flex-grow:4\"><span class=\"ds-tab__label\">SCRIPT</span><span class=\"ds-tab__count\">4</span></a></nav>",
-      "css": ".ds-rail { display: flex; flex-direction: column; width: 56px; height: 420px; background: #7A5A34; } .ds-tab { display: flex; align-items: center; justify-content: center; min-height: 72px; padding: 16px 0; text-decoration: none; background: var(--tab); color: var(--tab-ink); border-bottom: 1px solid rgba(0,0,0,0.28); transition: margin-left 90ms steps(2, end); } .ds-tab:hover { margin-left: -8px; } .ds-tab[aria-current=\"true\"] { margin-left: -22px; box-shadow: 0 2px 10px -6px rgba(22,21,15,0.5); border-bottom-color: transparent; } .ds-tab[aria-current=\"true\"] .ds-tab__label { font-weight: 700; } .ds-tab__label { writing-mode: vertical-rl; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; white-space: nowrap; } .ds-tab__count { writing-mode: vertical-rl; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; opacity: 0.66; margin-top: 8px; }"
+      "name": "Row",
+      "kind": "custom",
+      "refersTo": "row",
+      "description": "The one list. A lead column in the machine voice (date, status or category) and a title, one-line summary and tags. A line on the page divided by hairlines, never a card.",
+      "html": "<ul class=\"ds-rows\"><li class=\"ds-row\"><div class=\"ds-row__lead\">2026-10-02</div><div><h3 class=\"ds-row__title\">文件與腳本為什麼會各自漂移</h3><p class=\"ds-row__summary\">README 與腳本各走各的，是自動化腳本最常見的死法。</p><p class=\"ds-row__tags\">#ci #shell #docs</p></div></li><li class=\"ds-row\"><div class=\"ds-row__lead\"><span class=\"ds-mark\"></span> 使用中</div><div><h3 class=\"ds-row__title\">Ollama</h3><p class=\"ds-row__summary\">在自己的機器上跑本地大型語言模型。</p><p class=\"ds-row__tags\">#ollama #llm</p></div></li></ul>",
+      "css": ".ds-rows { list-style: none; margin: 0; padding: 0; } .ds-row { display: grid; grid-template-columns: 9.5rem 1fr; gap: 24px; padding: 16px 0; border-bottom: 1px solid rgba(22,21,15,0.17); } .ds-row__lead { display: flex; align-items: center; gap: 8px; align-self: start; padding-top: 0.45rem; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: #635E49; } .ds-row__title { margin: 0; font-family: 'Archivo', 'Noto Sans TC', sans-serif; font-variation-settings: 'wdth' 92; font-weight: 700; font-size: 1.25rem; line-height: 1.3; } .ds-row__summary { margin: 4px 0 0; color: #4D4937; font-family: 'EB Garamond', 'Noto Serif TC', serif; } .ds-row__tags { margin: 8px 0 0; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; color: #635E49; } .ds-mark { width: 9px; height: 9px; border: 1.5px solid #16150F; background: #16150F; }"
+    },
+    {
+      "name": "Status Mark",
+      "kind": "custom",
+      "refersTo": "status-mark",
+      "description": "A shape and a word, never the shape alone: solid = in use, hollow = tried, struck through = set aside.",
+      "html": "<p class=\"ds-status\"><span class=\"ds-mark ds-mark--using\"></span>使用中</p><p class=\"ds-status\"><span class=\"ds-mark ds-mark--tried\"></span>試過</p><p class=\"ds-status\"><span class=\"ds-mark ds-mark--dropped\"></span>已淘汰</p>",
+      "css": ".ds-status { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.75rem; letter-spacing: 0.1em; color: #4D4937; } .ds-mark { display: inline-block; width: 9px; height: 9px; border: 1.5px solid #16150F; } .ds-mark--using { background: #16150F; } .ds-mark--tried { background: transparent; } .ds-mark--dropped { border-color: #635E49; background: linear-gradient(to top right, transparent calc(50% - 0.75px), #16150F 50%, transparent calc(50% + 0.75px)); }"
     },
     {
       "name": "Punched Command Window",
       "kind": "custom",
       "refersTo": "code-window",
-      "description": "A command cut through the leaf to the board beneath it. The head prints on the board; a sudo chip states a fact about the command's own text.",
-      "html": "<figure class=\"ds-win\"><div class=\"ds-win__head\"><span class=\"ds-win__lang\">bash</span><span class=\"ds-win__sudo\">sudo</span><button class=\"ds-win__copy\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7V4.5h8.5V13H13\"/><path d=\"M4.5 7H13v8.5H4.5z\"/></svg>複製</button></div><pre class=\"ds-win__pre\"><code><span class=\"ds-win__line\">curl -fsSL https://example.com/seal.sh | <b>sudo</b> bash</span></code></pre></figure>",
-      "css": ".ds-win { margin: 24px 0; border: 1px solid rgba(22,21,15,0.42); border-radius: 2px; overflow: hidden; background: rgba(22,21,15,0.055); } .ds-win__head { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 0 8px 0 16px; background: #7A5A34; color: #F2EDE0; } .ds-win__lang { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; } .ds-win__sudo { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; padding: 2px 8px; border-radius: 2px; background: #CE2E1A; color: #FBF7EC; } .ds-win__copy { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: none; background: none; border-radius: 2px; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: inherit; cursor: pointer; transition: background-color 90ms steps(2, end); } .ds-win__copy:hover { background: rgba(0,0,0,0.2); } .ds-win__copy:active { background: rgba(0,0,0,0.32); } .ds-win__copy:focus-visible { outline: 2px solid #F2EDE0; outline-offset: 2px; } .ds-win__pre { margin: 0; padding: 16px; overflow-x: auto; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; line-height: 1.7; tab-size: 2; color: #16150F; } .ds-win__line { display: block; white-space: pre; } .ds-win__pre b { font-weight: 700; }"
-    },
-    {
-      "name": "Search Field",
-      "kind": "input",
-      "refersTo": "search-field",
-      "description": "A punched window in the leaf, not an input with a border radius. Focus swaps the hairline for the board's own ink.",
-      "html": "<label class=\"ds-field\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"><circle cx=\"9\" cy=\"9\" r=\"5.5\"/><path d=\"M13 13l4 4\"/></svg><input type=\"search\" placeholder=\"搜尋全文…\" /></label>",
-      "css": ".ds-field { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(22,21,15,0.055); border: 1px solid rgba(22,21,15,0.17); border-radius: 2px; color: #57533F; max-width: 260px; } .ds-field:focus-within { border-color: #7A5A34; box-shadow: inset 0 0 0 1px #7A5A34; color: #16150F; } .ds-field input { flex: 1; min-width: 0; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; color: #16150F; background: none; border: none; outline: none; } .ds-field input::placeholder { color: #68634d; }"
-    },
-    {
-      "name": "Index Entry",
-      "kind": "nav",
-      "refersTo": "index-item-current",
-      "description": "The index column: a category rule with the category's own hue punched through at index size, then its pages. The current page is marked by recess, weight and a 1px hue edge.",
-      "html": "<ul class=\"ds-index\" style=\"--chip:#0F8A80\"><li class=\"ds-index__rule\"><span class=\"ds-index__chip\"></span><span class=\"ds-label\">container</span></li><li class=\"ds-index__item\"><a href=\"#\" aria-current=\"page\">Kubernetes 1.36 叢集部署</a></li><li class=\"ds-index__item\"><a href=\"#\">Ollama + Open WebUI</a></li></ul>",
-      "css": ".ds-index { list-style: none; margin: 0; padding: 0; width: 288px; } .ds-index__rule { display: flex; align-items: center; gap: 12px; padding: 32px 24px 12px; color: #68634d; } .ds-index__rule::after { content: ''; flex: 1; height: 1px; background: rgba(22,21,15,0.17); } .ds-index__chip { flex: none; width: 10px; height: 10px; border-radius: 1px; background: var(--chip); } .ds-label { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; } .ds-index__item a { display: block; padding: 8px 24px 8px 40px; text-decoration: none; color: #57533F; font-family: 'EB Garamond', 'Noto Serif TC', Georgia, serif; font-size: 0.8125rem; line-height: 1.45; border-left: 1px solid transparent; transition: background-color 90ms steps(2, end), color 90ms steps(2, end); } .ds-index__item a:hover { background: rgba(22,21,15,0.055); color: #16150F; } .ds-index__item a[aria-current=\"page\"] { color: #16150F; font-weight: 600; background: rgba(22,21,15,0.055); border-left-color: var(--chip); }"
+      "description": "A command cut through the paper to a full-strength head whose colour is the command's origin. Flags state facts about the command's own text: sudo, --dry-run.",
+      "html": "<figure class=\"ds-win\"><div class=\"ds-win__head\"><span class=\"ds-win__lang\">bash</span><span class=\"ds-win__flag ds-win__sudo\">sudo</span><span class=\"ds-win__flag ds-win__dry\">dry-run</span><button class=\"ds-win__copy\">Copy</button></div><pre class=\"ds-win__pre\"><code>curl -fsSL https://example.com/seal.sh | <b>sudo</b> bash -s -- --dry-run</code></pre></figure>",
+      "css": ".ds-win { margin: 24px 0; border: 1px solid rgba(22,21,15,0.42); border-radius: 2px; overflow: hidden; background: rgba(22,21,15,0.055); } .ds-win__head { display: flex; align-items: center; gap: 12px; min-height: 34px; padding: 0 8px 0 16px; background: #1F55B8; color: #F2EDE0; } .ds-win__lang, .ds-win__flag, .ds-win__copy { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; } .ds-win__flag { padding: 2px 8px; border-radius: 2px; font-weight: 700; } .ds-win__sudo { background: #CE2E1A; color: #FBF7EC; } .ds-win__dry { box-shadow: inset 0 0 0 1px currentColor; } .ds-win__copy { margin-left: auto; padding: 4px 12px; border: none; background: none; border-radius: 2px; color: inherit; cursor: pointer; transition: background-color 90ms steps(2, end); } .ds-win__copy:hover { background: rgba(0,0,0,0.2); } .ds-win__pre { margin: 0; padding: 16px; overflow-x: auto; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; line-height: 1.7; tab-size: 2; color: #16150F; } .ds-win__pre b { font-weight: 700; }"
     },
     {
       "name": "Provenance Strip",
       "kind": "custom",
-      "refersTo": null,
-      "description": "The single-source guarantee in the machine's own voice, on its own rule at the head of every page: source file, byte count, revision date and age.",
-      "html": "<div class=\"ds-prov\"><span class=\"ds-prov__pair\"><span class=\"ds-prov__k\">source</span><span class=\"ds-prov__v ds-prov__v--file\">README.md</span></span><span class=\"ds-prov__pair\"><span class=\"ds-prov__k\">bytes</span><span class=\"ds-prov__v\">6,559</span></span><span class=\"ds-prov__pair\"><span class=\"ds-prov__k\">rev</span><span class=\"ds-prov__v\">2026-08-14 · 47 天前</span></span><a class=\"ds-prov__link\" href=\"#\">在 GitHub 檢視</a></div>",
-      "css": ".ds-prov { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-bottom: 12px; margin-bottom: 48px; border-bottom: 1px solid rgba(22,21,15,0.42); color: #68634d; } .ds-prov__pair { display: flex; align-items: baseline; gap: 8px; } .ds-prov__k { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: #68634d; } .ds-prov__v { font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; color: #57533F; font-variant-numeric: tabular-nums; } .ds-prov__v--file { color: #16150F; font-weight: 500; } .ds-prov__link { margin-left: auto; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.8125rem; color: #57533F; text-decoration: none; border-bottom: 1px solid rgba(22,21,15,0.17); transition: color 90ms steps(2, end), border-color 90ms steps(2, end); } .ds-prov__link:hover { color: #16150F; border-bottom-color: #16150F; }"
+      "refersTo": "row-lead",
+      "description": "Script pages only. Where the page came from, as derived state: the source file, its byte count, its revision date and age, its category. It carries a fingerprint of the exact bytes rendered, which verify-dist recomputes from the file on disk.",
+      "html": "<dl class=\"ds-prov\"><div><dt>Source</dt><dd>script/pve_link_iso/README.md</dd></div><div><dt>Bytes</dt><dd>3,359</dd></div><div><dt>Rev</dt><dd>2026-09-10 <span>22d</span></dd></div></dl>",
+      "css": ".ds-prov { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; padding: 12px 0; border-top: 1px solid rgba(22,21,15,0.42); border-bottom: 1px solid rgba(22,21,15,0.17); font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: #635E49; } .ds-prov > div { display: flex; gap: 8px; align-items: baseline; } .ds-prov dd { margin: 0; color: #16150F; text-transform: none; letter-spacing: 0.02em; } .ds-prov span { margin-left: 8px; color: #635E49; }"
     },
     {
-      "name": "Margin TOC",
+      "name": "Contents Marks",
       "kind": "nav",
-      "refersTo": null,
-      "description": "The margin column keeps position rather than merely listing headings. Passed is a crease, current is a punched hole, ahead is an open tick — three marks, not three shades, so it reads with the hue stripped out.",
-      "html": "<nav class=\"ds-toc\"><p class=\"ds-toc__head ds-label\">本頁</p><ul class=\"ds-toc__list\"><li data-state=\"passed\"><a href=\"#\"><span class=\"ds-toc__mark\"></span>為什麼有這個專案</a></li><li data-state=\"current\"><a href=\"#\"><span class=\"ds-toc__mark\"></span>內容</a></li><li><a href=\"#\"><span class=\"ds-toc__mark\"></span>一行指令執行 (One-liners)</a></li></ul></nav>",
-      "css": ".ds-toc { width: 204px; margin: 0; padding-top: 24px; border-top: 1px solid rgba(22,21,15,0.17); } .ds-toc__head { color: #68634d; margin: 0 0 12px; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; } .ds-toc__list { list-style: none; margin: 0; padding: 0; } .ds-toc a { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; font-family: 'EB Garamond', 'Noto Serif TC', Georgia, serif; font-size: 0.8125rem; line-height: 1.4; color: #68634d; text-decoration: none; transition: color 90ms steps(2, end); } .ds-toc a:hover { color: #16150F; } .ds-toc__mark { flex: none; width: 9px; height: 9px; align-self: center; border: 1px solid #68634d; border-radius: 50%; background: transparent; } .ds-toc [data-state=\"passed\"] .ds-toc__mark { border-color: transparent; border-radius: 0; background: linear-gradient(135deg, transparent 44%, #68634d 44%, #68634d 56%, transparent 56%); } .ds-toc [data-state=\"current\"] a { color: #16150F; font-weight: 600; } .ds-toc [data-state=\"current\"] .ds-toc__mark { border-color: #7A5A34; background: #7A5A34; box-shadow: 0 0 0 2px #eae4dc, 0 0 0 3px #7A5A34; }"
-    },
-    {
-      "name": "Danger Alert",
-      "kind": "card",
-      "refersTo": "alert-danger",
-      "description": "A GitHub alert rendered from README bytes. Vermilion is held out of the whole system so that here it means exactly one thing: this can hurt the machine.",
-      "html": "<div class=\"ds-alert ds-alert--danger\"><span class=\"ds-alert__label\">Warning</span><p class=\"ds-alert__p\">這支腳本會覆寫目標磁碟的分割表，沒有還原步驟。</p></div>",
-      "css": ".ds-alert { margin: 24px 0; padding: 16px 24px; border: 1px solid rgba(22,21,15,0.42); border-radius: 2px; background: rgba(22,21,15,0.055); max-width: 560px; } .ds-alert__label { display: block; font-family: 'Chivo Mono', ui-monospace, monospace; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #57533F; margin-bottom: 8px; } .ds-alert__p { margin: 0; font-family: 'EB Garamond', 'Noto Serif TC', Georgia, serif; font-size: 1.0625rem; line-height: 1.625rem; color: #16150F; } .ds-alert--danger { border-color: #CE2E1A; background: rgba(206,46,26,0.09); } .ds-alert--danger .ds-alert__label { color: #c22c19; }"
-    },
-    {
-      "name": "Band Tool Button",
-      "kind": "button",
-      "refersTo": "band-button",
-      "description": "The only buttons in the chrome: menu, theme toggle, GitHub. A 38px square on the board, die-cut corners, hand-drawn 20/1.5 icon.",
-      "html": "<div class=\"ds-band\"><span class=\"ds-band__name\">SCRIPT DOCS</span><button class=\"ds-band__btn\" aria-label=\"切換為深色主題\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16.5 11.5A7 7 0 0 1 8.5 3.5a7 7 0 1 0 8 8z\"/></svg></button></div>",
-      "css": ".ds-band { display: flex; align-items: center; gap: 24px; height: 76px; padding: 0 16px 0 24px; background: #7A5A34; color: #F2EDE0; border-bottom: 1px solid rgba(0,0,0,0.22); } .ds-band__name { font-family: 'Archivo', 'Noto Sans TC', system-ui, sans-serif; font-weight: 800; font-size: 1.375rem; line-height: 1; letter-spacing: -0.02em; text-transform: uppercase; white-space: nowrap; } .ds-band__btn { margin-left: auto; display: grid; place-items: center; width: 38px; height: 38px; border: none; background: none; border-radius: 2px; color: inherit; cursor: pointer; transition: background-color 90ms steps(2, end); } .ds-band__btn:hover { background: rgba(0,0,0,0.16); } .ds-band__btn:active { background: rgba(0,0,0,0.26); } .ds-band__btn:focus-visible { outline: 2px solid #F2EDE0; outline-offset: 2px; }"
+      "refersTo": "row-lead",
+      "description": "Three marks, three shapes: an open circle (not yet reached), a crease (read), a punched hole ringed by the paper (here). The state survives losing colour.",
+      "html": "<ol class=\"ds-toc\"><li data-state=\"read\">單一來源</li><li data-state=\"current\">可預演</li><li>CI 守門</li></ol>",
+      "css": ".ds-toc { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 0.8125rem; color: #635E49; } .ds-toc li { position: relative; padding-left: 24px; line-height: 1.45; } .ds-toc li::before { content: ''; position: absolute; left: 2px; top: 0.4em; width: 9px; height: 9px; border: 1px solid #635E49; border-radius: 50%; } .ds-toc li[data-state='read']::before { border: 0; border-radius: 0; background: linear-gradient(135deg, transparent calc(50% - 0.75px), #635E49 50%, transparent calc(50% + 0.75px)); } .ds-toc li[data-state='current'] { color: #16150F; font-weight: 600; } .ds-toc li[data-state='current']::before { border-color: #7A5A34; background: #7A5A34; box-shadow: 0 0 0 2px #FBF7EC; }"
     }
   ],
   "narrative": {
-    "northStar": "The Boxed-Software Reference Manual",
-    "overview": "這個世界是一本盒裝軟體的參考手冊：一塊印到滿版強度的分頁板（board），上面懸著一張薄薄一毫米的乳白賽璐珞內頁（leaf）。內頁是閱讀區，分頁板是分類。你不是在一份清單裡點選一個分類名稱，你是站在那個分類的顏色上。左緣有兩個裝訂孔與一條旋轉書背標，右側書口是一整排階梯式索引標籤，每個分類一片，高度按該分類的頁數分配，開啟中的那一片切出書口、變成當前的分頁板。\n\n這個系統最不尋常的地方是：閱讀區的顏色在 CSS 裡根本不存在。--board、--leaf、--on-board、--board-ink、--danger-ink 由 site/src/design.ts 在執行期針對當前路由與主題解出，再寫上 <html>。內頁的 alpha 不是設計師挑的數字，而是對 sRGB source-over 合成做二分搜尋，直到合成後的閱讀區落進固定的相對亮度帶（light 0.78、dark 0.0115）。因此不論讀者站在鉻黃還是群青上，內文對比度都相同——對比是算出來的，不是看出來的，而且由 npm test 擋住。\n\n材質是印刷品而非介面：分頁板與內頁都疊同一張程序生成的紙紋（--tooth，180×180 的 fractalNoise tile，light 用 multiply、dark 用 screen）。沒有卡片堆疊、沒有漸層裝飾、沒有毛玻璃、沒有圓角藥丸。整份文件是一張連續的內頁，層級靠髮絲線與留白，不靠陰影。",
+    "northStar": "The Field Notebook（工程師手札）",
+    "overview": "這個世界是一本寫在暖色紙上的手札：一種墨、髮絲線，沒有卡片、沒有陰影、沒有漸層。列表是一張紙被髮絲線切成一行一行。整個畫面只有一個飽和的東西 —— 被打孔切穿的指令視窗，而它的顏色不是裝飾，是這條指令的出處：腳本頁上是該腳本所屬分類的顏色，文章裡是裝訂布的褐。\n\n這個設計繼承自前一版「盒裝軟體參考手冊」。那個外框為三個分類的手冊設計，裝不下一條隨時間長長的文章列表，所以拿掉了；留下來的是它最好的部分 —— 字體系統、紙紋、被算出來的色彩、指令視窗、頁面老化，以及「狀態用記號不用色相」。",
     "keyCharacteristics": [
-      "分頁板滿版上色，內頁半透明壓在上面；顏色由執行期解算，不由 CSS 常數決定。",
-      "分類色按照分類在 manifest 中的位置指派，永遠不按名稱；七色在冊，目前用三色。",
-      "朱紅（vermilion）被整個抽離出分類色盤，只花在危險上。",
-      "一種內文級數、75ch 行長；標題不長大，而是掛進外側的 margin 欄。",
-      "動態只有一種文法：90ms steps(2, end) 的兩格鉸鏈。沒有任何 easing、沒有任何 fade、也沒有 scroll-behavior: smooth。",
-      "狀態用記號表示，不用色相：勾、摺痕、打孔。",
-      "前端只持有 chrome；頁面內容一律是 README.md 的逐位元組渲染。"
+      "一張連續的紙；層級靠髮絲線、留白與字重，不靠陰影或卡片。",
+      "顏色全部算出來（src/lib/design.mjs），樣式表裡沒有任何色碼。",
+      "分類色按位置指派，永遠不按名稱；七色在冊，目前用三色。",
+      "朱紅被整個抽離出色盤，只花在危險上。",
+      "動態只有一種文法：90ms steps(2, end) 的兩格鉸鏈。",
+      "狀態用記號加文字表示：方塊、圓、摺痕、打孔。",
+      "前端只持有 chrome；散文一律是 markdown 檔。"
     ],
     "rules": [
-      { "name": "The Solved Field Rule", "body": "--board、--leaf、--on-board、--board-ink、--danger-ink 永遠不是 CSS 常數。它們由 AppShell.tsx 的 effect 逐路由、逐主題解出並寫上 document.documentElement，所有樣式表只能消費。想加一個顏色語意，加的是解算規則，不是色票。", "section": "colors" },
-      { "name": "The Position-Not-Name Rule", "body": "分類色按 manifest 順序中的位置指派，永遠不按分類名稱。程式碼裡不存在 AI 這個字串對應鉻黃的地方。", "section": "colors" },
-      { "name": "The Vermilion Reserve Rule", "body": "朱紅不進分類色盤。它只有一個意思：這會弄壞讀者的機器。任何把朱紅當強調色、當品牌色、當 hover 色的用法都破壞這條規則。", "section": "colors" },
-      { "name": "The Computed Contrast Rule", "body": "對比下限由 npm test（site/scripts/check-contrast.mjs）強制，不靠自律。腳本對八塊板（七個分類色加裝訂褐）× 兩種主題逐一斷言：三級墨壓在解出的閱讀區上、inkOn() 選出的墨壓在滿版板上、readableOn() 混過的板色當墨、readableOn() 混過的朱紅當墨，全部 ≥ 4.5:1；再加上朱紅填色上的文字，以及 90/270 天的老化階梯。新增色相或重調亮度帶會在這裡失敗，而不是在讀者的螢幕上。", "section": "colors" },
-      { "name": "The Ink-Is-Never-Hand-Tuned Rule", "body": "板色要當小字用，不是另外挑一個「文字版」色票，而是用 readableOn() 把同一個色相往頁面自己的墨色混，直到過 4.5:1；要印在滿版板上的字則用 inkOn() 從兩支墨裡挑贏的那一支。明年新增的分類自動被同一套搜尋涵蓋。", "section": "colors" },
-      { "name": "The Width-Axis Rule", "body": "標題的層級由 Archivo 的寬度軸承擔一部分：H1 wdth 82、H2 88、H3 92。寬度是這套顯示聲音的一部分，不是可有可無的裝飾；不要用預設寬度設標題。", "section": "typography" },
-      { "name": "The One Body Size Rule", "body": "內文只有一個級數。密集的 README 靠字重、髮絲線與留白得到骨架，不靠第二套級距。行長寫成 75ch 而不是 62ch——ch 是拉丁 0 的寬度，繁體中文在 62ch 只有約 30 字，遠短於中文排版所需；75ch 讓拉丁落在上限、中文落在約 34 字，一個值同時成立。", "section": "typography" },
-      { "name": "The Machine Voice Rule", "body": "等寬字只給機器說過或量過的東西：指令、標籤、位元組數、修訂日期、狀態。它不是「技術感」的戲服；沒有機器在說話的地方就不要用它。", "section": "typography" },
-      { "name": "The Hanging Head Rule", "body": "H1–H3 橫跨 margin / wide 兩條軌道掛出文字欄之外，而不是靠放大來取得層級。", "section": "typography" },
-      { "name": "The Measure Rule", "body": "散文永遠不超過 75ch；表格與指令視窗永遠可以吃掉整張紙。判準是「這段東西是拿來讀的，還是拿來檢查後複製的」。", "section": "layout" },
-      { "name": "The Fore-Edge Rule", "body": "只有在 1600px 以上，本頁目錄才移進書口邊欄。任何時候都不能因此壓縮指令視窗的可視寬度。", "section": "layout" },
-      { "name": "The Chrome-Only Rule", "body": "前端只擁有 chrome——產品名、標語、meta。頁面上所有散文都是 README.md 的逐位元組渲染，DESIGN.md 的任何規則都不得被理解成允許在 TSX 裡寫內容。", "section": "layout" },
-      { "name": "The No-Stack Rule", "body": "一張連續的內頁，永遠不是一疊卡片。需要區隔就畫線或留白；需要強調就換墨色或字重。加一層陰影去分隔內容，等於承認這不是一本手冊。", "section": "elevation" },
-      { "name": "The Printed-Not-Filled Rule", "body": "分頁板與內頁都不是純色填滿，而是色 + --tooth 紙紋，以 multiply（light）／screen（dark）混合。新增任何滿版板色的表面都要帶上同一張紙紋，否則它會從物件上掉出來。", "section": "elevation" },
-      { "name": "The Two-Frame Hinge Rule", "body": "全站只有一種動態文法：--hinge: 90ms steps(2, end)。沒有任何 easing、沒有任何 fade、沒有 scroll-behavior: smooth。簽名動作是換頁時內頁沿打孔邊翻起的兩格鉸鏈，並在 prefers-reduced-motion: reduce 下完全關閉。", "section": "components" }
+      {
+        "name": "The Derived Colour Rule",
+        "body": "paper、ink、rule、recess、danger、fill、accent 與 .hue-N 全部由 colorCss() 生成並內嵌進 <head>。樣式表只消費它們。想加一個顏色語意，加的是推導規則，不是色票。",
+        "section": "colors"
+      },
+      {
+        "name": "The Position-Not-Name Rule",
+        "body": "分類色按順序中的位置指派，永遠不按名稱。",
+        "section": "colors"
+      },
+      {
+        "name": "The Vermilion Reserve Rule",
+        "body": "朱紅只有一個意思：這會弄壞讀者的機器，或這一頁不存在。",
+        "section": "colors"
+      },
+      {
+        "name": "The Every-Surface Rule",
+        "body": "墨要在紙上、凹槽上、老化的紙上、危險底上都 ≥ 4.5:1。surfacesFor() 列出所有這些底，推導與測試都走同一份清單。",
+        "section": "colors"
+      },
+      {
+        "name": "The Measure Rule",
+        "body": "散文永遠不超過 75ch；表格與指令視窗取整條閱讀欄寬。",
+        "section": "layout"
+      },
+      {
+        "name": "The One-List Rule",
+        "body": "文章、工具、腳本、標籤頁、搜尋結果用同一個 .row。",
+        "section": "layout"
+      },
+      {
+        "name": "The Two-Frame Hinge Rule",
+        "body": "全站只有一種動態文法：--hinge: 90ms steps(2, end)。沒有 easing、沒有 fade、沒有 smooth scroll。",
+        "section": "motion"
+      }
     ],
     "dos": [
-      "Do 讓新的顏色語意經過 design.ts 的解算函式（solveLeaf()、readableOn()、inkOn()、printable()），而不是新增手調色票。",
-      "Do 為新增的分類只做一件事：新增一個頂層資料夾。色相、標籤、書口高度都會自己長出來。",
-      "Do 在改動色相、亮度帶或墨色之後跑 npm test；scripts/check-contrast.mjs 是這套系統唯一的對比裁判。",
-      "Do 用 --hinge 當所有過場的唯一值，並為每個動態補上 prefers-reduced-motion: reduce 的關閉分支。",
-      "Do 讓散文守住 75ch，讓表格與指令視窗跨 margin / -1 取整張紙寬。",
-      "Do 用記號（形狀）表達狀態，並在顏色之外另給一個字面載體。",
-      "Do 給任何滿版板色的新表面疊上 --tooth 紙紋與對應的 background-blend-mode。",
-      "Do 需要新圖示時照 20 框 / 1.5 線寬 / 無填色的規格手繪一支。"
+      "Do 讓新的顏色語意經過 design.mjs 的推導函式，而不是新增手調色票。",
+      "Do 為新增的分類只做一件事：新增一個頂層資料夾。",
+      "Do 在改動色相、墨色或底之後跑 npm test。",
+      "Do 用記號（形狀）加文字表達狀態。",
+      "Do 為新的內容種類重用 .row、.tags、.status 與 .prose。"
     ],
     "donts": [
-      "Don't 在 CSS 裡硬寫 --board、--leaf、--on-board、--board-ink 或 --danger-ink 的值；base.css 那組僅是首次繪製前的回退。",
+      "Don't 在任何 CSS 裡寫色碼或 rgb()。",
       "Don't 把任何分類名稱綁到特定色相；指派永遠按位置。",
-      "Don't 把朱紅用在危險以外的任何地方——不當品牌色、不當強調色、不當 hover 色、不當第八個分類色。",
-      "Don't 加入 easing、fade、transition: all、scroll-behavior: smooth 或任何超過兩格的動畫。",
-      "Don't 用陰影或卡片堆疊來分隔內容；除了 --cut-shadow、--lift 與裝訂孔的內陰影之外，這個世界沒有第四支陰影。",
-      "Don't 加入漸層裝飾、毛玻璃、藥丸圓角或 --r（2px）以外的圓角——三個有物理理由的例外除外。",
-      "Don't 為標題引入第二套字級；層級由字重、Archivo 的寬度軸與掛出邊界承擔。",
+      "Don't 把朱紅用在危險以外的任何地方。",
+      "Don't 加入 easing、fade、transition: all、smooth scroll 或任何超過兩格的動畫。",
+      "Don't 用陰影或卡片堆疊來分隔內容。",
       "Don't 只用顏色表達狀態。",
-      "Don't 引入圖示字型、圖示套件，或拿 emoji 當介面圖示。",
-      "Don't 引入第四支字族，也不要讓 system-ui / Georgia 從回退位置升格成實際使用的顯示字體。",
-      "Don't 在 TSX 或 HTML 裡寫任何頁面散文；那是 README.md 的工作，這條是產品層級的硬約束。"
+      "Don't 在 .astro / .ts 裡寫任何頁面散文，也不要在腳本頁加任何 README 沒說過的字。"
     ]
   }
 }

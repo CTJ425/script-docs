@@ -1,0 +1,101 @@
+---
+import Footer from '../components/Footer.astro';
+import Masthead from '../components/Masthead.astro';
+import { colorCss } from '../lib/design.mjs';
+import { SITE, absolute, url } from '../lib/site';
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/layout.css';
+import '../styles/entries.css';
+import '../styles/prose.css';
+import '../styles/code.css';
+
+interface Props {
+  /** The page's own title. The site name is appended, except on the home page. */
+  title: string;
+  description?: string;
+  /** Site path of this page, e.g. `/posts/hello/`: the canonical URL is derived from it. */
+  path: string;
+  type?: 'website' | 'article';
+  /** Which masthead entry is the current section. */
+  active?: string;
+  noindex?: boolean;
+  published?: string;
+  updated?: string;
+}
+
+const { title, description = SITE.tagline, path, type = 'website', active, noindex = false, published, updated } =
+  Astro.props;
+
+// The tab title is the root README's H1 on the home page, so the tab, the
+// masthead and the repository's front page all name the product the same way.
+const fullTitle = path === '/' ? SITE.name : `${title} · ${SITE.name}`;
+const canonical = absolute(path);
+---
+
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content="zh_TW" />
+    {published && <meta property="article:published_time" content={published} />}
+    {updated && <meta property="article:modified_time" content={updated} />}
+    <meta name="twitter:card" content="summary" />
+
+    <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
+    <link rel="alternate" type="application/rss+xml" title={SITE.name} href={url('/rss.xml')} />
+    <link rel="sitemap" href={url('/sitemap-index.xml')} />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Archivo is a width x weight grid, which is the thing Univers actually is.
+      EB Garamond is Sabon's own lineage. Noto Serif TC / Noto Sans TC carry the
+      same two jobs in Chinese: body in 明體, headings in 黑體. Chivo Mono shares
+      Archivo's foundry and skeleton.
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=Chivo+Mono:wght@400..700&family=EB+Garamond:wght@400..600&family=Noto+Sans+TC:wght@700..900&family=Noto+Serif+TC:wght@400..600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Colours are derived in lib/design.mjs and inlined, so the first paint has them. -->
+    <style is:inline set:html={colorCss()} />
+    <script is:inline>
+      // Settle the theme before the first paint; client/enhance.ts keeps it true.
+      (function () {
+        var m = null;
+        try {
+          m = localStorage.getItem('ivan-note-color-mode');
+        } catch (e) {}
+        if (m !== 'light' && m !== 'dark') {
+          m = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = m;
+        document.documentElement.style.colorScheme = m;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到內容</a>
+    <Masthead active={active} />
+    <main id="main" class="page">
+      <slot />
+    </main>
+    <Footer />
+    <script>
+      import '../client/enhance.ts';
+    </script>
+  </body>
+</html>

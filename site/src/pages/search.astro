@@ -1,0 +1,25 @@
+---
+import Icon from '../components/Icon.astro';
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/site';
+---
+
+<Base title="搜尋" description="搜尋所有文章、工具與腳本的全文。" path="/search/" active="search" noindex>
+  <header class="index__head">
+    <h1 class="doc__title">搜尋</h1>
+  </header>
+
+  <form class="search" role="search" data-search data-index={url('/pagefind/pagefind.js')} data-base={url('')}>
+    <label class="field">
+      <Icon name="search" />
+      <input type="search" name="q" placeholder="搜尋全文…" autocomplete="off" aria-label="搜尋全文" />
+    </label>
+  </form>
+
+  <p class="search__status label" data-search-status role="status" aria-live="polite"></p>
+  <ol class="rows search__results" data-search-results></ol>
+
+  <script>
+    import '../client/search.ts';
+  </script>
+</Base>

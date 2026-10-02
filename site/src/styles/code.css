@@ -1,14 +1,14 @@
 /*
  * The punched window.
  *
- * A command is the one thing on this site that leaves with the reader, so it
- * is not set in a grey box: the leaf is cut through to the board beneath it,
- * and the board is the loudest thing on the page.
+ * A command is the one thing on this site that leaves with the reader, so it is
+ * not set in a grey box: the paper is cut through to a full-strength head, and
+ * the head is the loudest thing on the page. Its colour is where the command
+ * came from — the script's category, or the binder's tan for a post.
  */
 
 .win {
-  grid-column: margin / -1;
-  margin: var(--s5) 0;
+  margin-block: var(--s5);
   border: 1px solid var(--rule-strong);
   border-radius: var(--r);
   overflow: hidden;
@@ -21,8 +21,8 @@
   gap: var(--s3);
   min-height: 34px;
   padding: 0 var(--s2) 0 var(--s4);
-  background: var(--board);
-  color: var(--on-board);
+  background: var(--fill);
+  color: var(--on-fill);
 }
 
 .win__lang {
@@ -34,26 +34,28 @@
 }
 
 /*
- * A factual read of the command's own text, not a judgement about it: this
- * block contains the string `sudo`. The reader is about to paste it into a
- * machine they care about, and that is worth saying at window size.
+ * A factual read of the command's own text, not a judgement about it: the block
+ * contains the string `sudo`, or the flag `--dry-run`. The reader is about to
+ * paste it into a machine they care about, so both are said at window size.
  */
-.win__sudo {
+.win__flag {
+  padding: 2px var(--s2);
+  border-radius: var(--r);
   font-family: var(--f-mono);
   font-size: var(--t-label);
   font-weight: 700;
   letter-spacing: var(--tr-label);
-  padding: 2px var(--s2);
-  border-radius: var(--r);
+}
+.win__sudo {
   background: var(--danger);
   color: var(--on-danger);
+}
+.win__dry {
+  box-shadow: inset 0 0 0 1px currentColor;
 }
 
 .win__copy {
   margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s2);
   padding: var(--s1) var(--s3);
   border-radius: var(--r);
   font-family: var(--f-mono);
@@ -64,22 +66,19 @@
   color: inherit;
   transition: background-color var(--hinge);
 }
-
 .win__copy:hover {
   background: rgba(0, 0, 0, 0.2);
 }
-
-.win__copy:active {
-  background: rgba(0, 0, 0, 0.32);
-}
-
+.win__copy:active,
 .win__copy[data-status='copied'] {
-  background: rgba(0, 0, 0, 0.26);
+  background: rgba(0, 0, 0, 0.3);
 }
-
 .win__copy[data-status='failed'] {
   background: var(--danger);
   color: var(--on-danger);
+}
+.win__head :focus-visible {
+  outline-color: var(--on-fill);
 }
 
 .win__pre {
@@ -90,25 +89,18 @@
   font-size: 0.8125rem;
   line-height: 1.7;
   tab-size: 2;
-}
-
-.win__line {
-  display: block;
   white-space: pre;
+}
+.win__pre code {
+  color: var(--ink);
+  font: inherit;
 }
 
 /*
- * Syntax, in three inks.
- *
- * Prism's own class names, coloured from the leaf's palette rather than from a
- * stock editor theme: what the machine runs in ink, what it is told to run in
- * the board's own hue, and everything incidental dropped back. A command has
- * to read as one string a reader can trust, not as a fruit salad.
+ * Syntax, in three inks: what the machine runs in ink, what it is told to run
+ * in the window's own hue, and everything incidental dropped back. A command
+ * has to read as one string a reader can trust, not as a fruit salad.
  */
-.win__pre code {
-  color: var(--ink);
-}
-
 .token.comment,
 .token.shebang,
 .token.punctuation,
@@ -116,7 +108,6 @@
 .token.file-descriptor {
   color: var(--ink-3);
 }
-
 .token.comment,
 .token.shebang {
   font-style: italic;
@@ -138,7 +129,7 @@
 .token.property,
 .token.tag,
 .token.attr-name {
-  color: var(--board-ink);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -149,11 +140,9 @@
   color: var(--ink-2);
 }
 
-/*
- * The board hue is chosen for a full-strength field, not for hairline text on
- * the leaf. Where it is used as ink it gets enough weight and size to clear
- * its contrast band; where it would not, it falls back to ink.
- */
+/* The hue is chosen for a full-strength head, not for hairline text on paper;
+   readableOn() mixes it until it reads. Where a reader asks for more contrast,
+   it steps back to ink. */
 @media (prefers-contrast: more) {
   .token.variable,
   .token.number,

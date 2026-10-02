@@ -1,83 +1,83 @@
-# 文件入口網站 (site/)
+# 網站原始碼 (site/)
 
-React + 自訂設計系統的文件網站，部署到 GitHub Pages：<https://ctj425.github.io/script-docs/>
+> 最後更新：2026-10-02
 
-外觀是一本「打開在某個分頁上的盒裝軟體參考手冊」：分類是一片滿版色的分隔板，
-README 是懸在它上方的乳白透明內頁，書口有一排階梯式分頁標籤。設計決策記在
-[`DESIGN.md`](./DESIGN.md)。
+[ivan note](../README.md) 的網站：Astro 靜態站，把這個 repo 裡的文章、工具與腳本 README 產生成一個個人資訊部落格。設計決策記在 [`DESIGN.md`](./DESIGN.md)，產品定位記在 [`../PRODUCT.md`](../PRODUCT.md)。
 
-## 核心原則：README 是唯一真相來源
+## 內容從哪來
 
-網站不儲存任何文件內容。`scripts/sync-content.mjs` 會掃描 repo 內所有 `README.md`，
-把**原始位元組**寫進 `src/content/manifest.json`，前端再以 `react-markdown` 渲染。
+網站不儲存任何內容。每一頁都直接來自 repo 裡的檔案，而**誰擁有那些字**由檔案種類決定：
 
-因此：
+| 種類 | 來源 | 網址 | 載入方式 |
+| --- | --- | --- | --- |
+| 文章 | `../posts/<slug>.md` | `/posts/<slug>/` | content collection（`glob` loader）+ frontmatter |
+| 工具 | `../tools/<slug>.md` | `/tools/<slug>/` | 同上 |
+| 首頁、關於 | `../pages/{home,about}.md` | `/`、`/about/` | 同上 |
+| 腳本 | `../<分類>/<專案>/README.md` | `/scripts/<專案>/` | 自訂 loader：把 README 當**位元組**讀進來，一個字都不改 |
 
-- 子頁內容與 `README.md` 永遠一致，不可能漂移（有測試逐一比對）
-- 導覽、路由、搜尋全部由 manifest 驅動，**沒有任何硬編碼的專案清單**
-- 新增子專案 = 建立資料夾 + 放入 `README.md` + push，網站自動出現新頁面
+腳本頁是特別的一種。網站上看到的就是那份 README，旁邊只多一條**來源列**（檔名、位元組數、修訂日期、分類），都是派生狀態而不是散文。`verify-dist` 會對每支腳本重算磁碟上檔案的指紋，和頁面渲染時記下的比對。
 
-`src/content/manifest.json` 是產生物，不進版控（每次 dev/build 都會重新產生）。
+**站名與標語**讀自根 `README.md`：第一個 `#` 是站名，第一段是標語。頁首、首頁 `<title>`、RSS 都從那裡來，所以不可能各叫各的。
 
 ## 指令
 
 ```bash
-npm install
+npm ci
 
-npm run dev        # 開發伺服器；改任何 README.md 會即時重新載入
-npm run build      # 產生 dist/（build 前自動重新掃描 README）
-npm run preview    # 以 /script-docs/ 子路徑預覽 dist/
+npm run dev         # 開發伺服器（搜尋頁在 build 之前沒有索引，會直接說明）
+npm run build       # astro build，接著用 Pagefind 建立搜尋索引 → dist/
+npm run preview     # 預覽 dist/
 
-npm run sync       # 只重新產生 manifest
-npm run typecheck  # tsc --noEmit
-npm run test       # 對比度斷言 + 渲染每一頁並驗證錨點、程式碼區塊、連結、內容一致性
-npm run verify     # typecheck + test + build（CI 跑的同一道關卡）
+npm run check       # astro check：型別檢查
+npm run test        # check-contrast（對比度）+ verify-content（build 前的內容規則）
+npm run test:dist   # verify-dist：檢查 build 出來的網站（需先 build）
+npm run verify      # 以上全部，依序；CI 跑的同一道關卡
 ```
 
-## 可選的每資料夾設定
+## 部署
 
-預設值（標題取 `README.md` 第一個 `#` 標題、slug 取資料夾名）通常就夠用。
-若要調整，在子資料夾放一個 `docs.json`：
+網站是純靜態的（`dist/`）。部署在哪裡由環境變數決定，不用改程式：
 
-```json
-{
-  "title": "自訂標題",
-  "icon": "description",
-  "order": 1,
-  "tags": ["kubernetes"]
-}
-```
+| 變數 | 意思 | 預設 |
+| --- | --- | --- |
+| `SITE_URL` | 對外網址的 origin，例如 `https://note.example.com` | GitHub Actions 上是 `https://<owner>.github.io`；Cloudflare Pages 上是 `CF_PAGES_URL` |
+| `BASE_PATH` | 路徑前綴；網域根目錄就是 `/` | GitHub Actions 上是 `/<repo>`；其他地方是 `/` |
 
-`markdown` 內容永遠不可被 `docs.json` 覆寫。
+**GitHub Pages**（目前）：`.github/workflows/pages.yml` 在 push 到 `main` 且動到內容或 `site/` 時重新部署。
+
+**Cloudflare Pages**（之後）：
+
+- Root directory：`site`
+- Build command：`npm ci && npm run build`
+- Build output directory：`dist`
+- 環境變數：`NODE_VERSION=22`，並把 `SITE_URL` 設成正式網域
+
+`public/_headers` 讓 `/_astro/*`（檔名帶雜湊）可以永久快取。搬家之後可以把 `pages.yml` 刪掉。
 
 ## 架構
 
 | 檔案 | 職責 |
 | --- | --- |
-| `scripts/sync-content.mjs` | 掃描 README → `manifest.json`；同時解析 git remote 供連結改寫使用 |
-| `scripts/smoke-test.mjs` | 以 `react-dom/server` 渲染每一頁並斷言結果 |
-| `vite.config.ts` | Pages base path（由 repo 名稱推導，非寫死）、build 前 sync、dev 監看 README |
-| `scripts/check-contrast.mjs` | 對每個分類色板、兩種主題斷言 ink 對內頁 ≥ 4.5:1 |
-| `src/content.ts` | manifest 的型別化存取與相對路徑解析 |
-| `src/design.ts` | 設計系統：色彩數學、色板指派、內頁 alpha 求解、頁面年齡 |
-| `src/styles/*.css` | token、基礎層、外殼、閱讀欄、markdown、程式碼視窗 |
-| `src/components/Markdown.tsx` | markdown → 語意元素對應、README 連結改寫 |
-| `src/components/CodeBlock.tsx` | 語法高亮 + 複製按鈕（複製來源是 markdown AST 原字串） |
-| `src/components/Toc.tsx` | 從 markdown 抽出 h2/h3；用 `github-slugger` 與 `rehype-slug` 對齊錨點 |
+| `astro.config.mjs` | origin 與 base path（來自環境）、sitemap、把站名與標語注入成建置期常數 |
+| `scripts/content-sources.mjs` | 純 Node：找出腳本 README（兩層深度規則、slug、摘要、修訂日期）、讀 `docs.json`、讀站名、判斷部署位置。**不可被 bundle 進伺服器端程式** |
+| `src/content.config.ts` | 四個 collection 與它們的 schema（frontmatter 寫錯會在這裡失敗並指出哪個欄位） |
+| `src/lib/markdown.mjs` | 唯一的 markdown 管線：GFM → 清理 → 標題 id → 站內轉換（alerts、連結改寫、指令視窗、表格外框） |
+| `src/lib/design.mjs` | 設計系統：色彩數學、色相指派、所有「墨會落在哪些底上」、頁面年齡、`colorCss()` |
+| `src/lib/content.ts` | 頁面對內容的所有查詢：排序、草稿規則、文章／工具／腳本之間的交叉參照、標籤索引 |
+| `src/layouts/Base.astro` | `<head>`（title、description、canonical、Open Graph、RSS、內嵌色彩與主題初始化）、頁首、頁尾 |
+| `src/pages/` | 首頁、文章、工具、腳本、標籤、搜尋、關於、404、`rss.xml`、`robots.txt` |
+| `src/client/` | 唯一會出貨的 JavaScript：主題切換、複製鈕、目錄記號；搜尋頁自己的腳本 |
+| `scripts/check-contrast.mjs` | 每一種墨在每一種底上 ≥ 4.5:1，兩種主題，所有色相 |
+| `scripts/verify-content.mjs` | build 前：站名、規則檔一致、腳本 README 的 H1 與日期、frontmatter 的形狀 |
+| `scripts/verify-dist.mjs` | build 後：路由、連結與錨點、每頁 meta、feed、sitemap、搜尋索引、腳本逐位元組 |
 
 ## 幾個實作上的決定
 
-- **HashRouter**：GitHub Pages 沒有 SPA rewrite。hash 路由讓 `/#/k8s-install`
-  這類深層連結直接可用，不需要 `404.html` 轉址技巧。站內錨點用
-  `to={{ hash }}` 形式，才不會蓋掉當前路由。
-- **連結改寫**：README 的相對連結是為 GitHub 寫的。指向「有 README 的資料夾」→ 轉為站內路由；
-  指向檔案 → 轉為 GitHub blob 連結。
-- **複製按鈕**取 markdown AST 的原始字串，不是 DOM 文字，所以含 `Copy` 字樣的指令不會被破壞。
-- **單一 vendor chunk**：把 markdown 與語法高亮拆成兩個 chunk 會產生 circular
-  chunk，有 module 初始化順序風險。
-- **內頁 alpha 在執行期解出**：閱讀區是乳白透明內頁疊在滿版色分隔板上，alpha 用
-  二分搜尋逼到合成後亮度落進固定區間，才發佈成 custom property。所以「站在哪個
-  分類上」不會改變正文對比度 —— 這是計算保證，不是挑色號挑出來的，
-  `check-contrast.mjs` 對每個色板（含尚未使用的四個）逐一斷言。
-- **狀態用記號而不是顏色**：目次的已讀／當前／未讀是摺痕、打孔、勾點三種形狀，
-  色盲或去色後仍可讀。
+- **為什麼是 Astro**：這個站需要真實網址、每頁自己的分享預覽、RSS 與可被搜尋引擎讀的索引。前一版是 React 單頁應用加 HashRouter（網址是 `/#/slug`），這三樣都做不到。
+- **自己的 markdown 管線，而不是 Astro 內建的**：文章、工具、頁面與腳本 README 必須長得一樣，而腳本 README 需要照著檔案路徑改寫相對連結。一條管線、一個純 Node 模組，所以 verify 腳本跑的就是 build 跑的那一份。
+- **清理在站內轉換之前**：`rehype-sanitize` 先跑，所以後面加上去的 class 與屬性不會被剝掉，而內容裡任何 `<script>` 或事件處理器都進不來。
+- **連結改寫**：README 的相對連結是為 GitHub 寫的。指向「是已發佈腳本的資料夾」→ 站內路由；指向其他檔案 → GitHub 連結；指向 repo 之外或協定不安全 → 只留下文字。
+- **複製鈕讀 `<pre>` 的文字**：`<pre>` 裡只有指令，沒有行包裝，所以複製出去的就是檔案裡寫的那串字。`verify-dist` 逐區塊比對。
+- **腳本不內嵌**：`assetsInlineLimit: 0`。Vite 會把搜尋頁對 Pagefind 的動態 `import()` 包進一個預載輔助函式，只有在腳本是獨立檔案時才解得開。
+- **顏色在 `<head>` 內嵌**：第一次繪製就有顏色，沒有額外請求；也只有一份定義，測試量的就是出貨的。
+- **版面與色彩都不在執行期計算**：前一版在瀏覽器裡對每條路由做二分搜尋。現在的色彩是建置期推導、以測試保證，沒有 effect、沒有閃爍。

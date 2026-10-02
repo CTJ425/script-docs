@@ -8,136 +8,171 @@ web
 
 ## Stack
 
-React 18 + Vite 5 + React Router (HashRouter), TypeScript, deployed as a static
-site to GitHub Pages. Content pipeline: `site/scripts/sync-content.mjs` scans
-every `README.md` in the repo and writes its raw bytes into the generated
-`site/src/content/manifest.json`; the front end renders those bytes with
-`react-markdown` + `remark-gfm` + `rehype-slug`, and `prism-react-renderer`
-highlights fenced code.
+Astro 7 (static output) + TypeScript, with a plain-Node content layer.
+Posts, tools and pages are markdown with frontmatter (Astro content collections
+via the `glob` loader, pointed at `../posts`, `../tools`, `../pages`). Script
+pages come from a custom loader that reads each `<category>/<project>/README.md`
+as bytes. One unified pipeline (`remark-gfm` → `rehype-raw` → `rehype-sanitize` →
+`rehype-slug` → the site's own transform) renders all four, and `prismjs` tokenises
+fenced code. Search is Pagefind, built after Astro. Almost no client JavaScript: a
+theme toggle, copy buttons, table-of-contents marks, and the search page.
 
-**Confirmed 2026-09-30:** MUI (`@mui/material`, `@mui/icons-material`, Emotion)
-is to be removed and replaced by a custom token + CSS presentation layer. The
-markdown-to-component mapping, app shell, and code block are rewritten against
-those tokens. React, Vite, Router, react-markdown and prism-react-renderer stay.
+Colour is derived in `site/src/lib/design.mjs` and inlined into `<head>`; there are
+no colour literals in any stylesheet.
+
+**Replaced 2026-10-02:** the previous React + Vite single-page app (HashRouter,
+manifest.json holding every README, runtime colour solving) is gone. It could not
+give a blog what a blog needs — real URLs, per-page share previews, a feed, an
+index search engines can read.
 
 ## Users
 
-Primary: a sysadmin / infrastructure engineer arriving for the first time from
-GitHub or a search result, who has found a script that would do the job and now
-has to decide whether they dare run it against a real machine. They read
-Traditional Chinese.
+Three readers, all of whom read Traditional Chinese:
 
-Secondary: the author and colleagues who already know what the repo contains
-and return only to locate and copy one specific command.
+- **Peers** — engineers and sysadmins who arrive from GitHub or a search result with
+  a task (a Kubernetes node to prepare, a template VM to seal) and want to know
+  whether to trust a script before pasting it into a root shell.
+- **The author, later** — returning to find one command, or to remember why a tool
+  was dropped.
+- **Anyone judging the work** — a hiring manager or collaborator reading the site to
+  see how the author thinks and what they have actually run.
 
-**Confirmed priority:** design serves the first-time visitor first. The landing
-page carries persuasion and trust; subproject pages carry look-up.
+**Priority:** the first two. A page earns the third reader by being honest and
+specific, not by being written for them.
 
 ## Product Purpose
 
-Publish an operations handbook whose pages are directly executable. Every
-script has a page stating its use case, parameters and risks, and can be run on
-a target machine with a single `curl` line — without cloning the repo and
-without reading the full source on a production box first.
+A personal information blog. It publishes what the author has written (scripts),
+what the author has used (tools, with an honest status), and the notes in between
+(posts) — and it connects them: a post names the tools and scripts it is about, and
+those pages point back.
 
 Success: a stranger reaches a script page, understands what it will do to their
-machine, and copies a command they trust.
+machine, and copies a command they trust; and a returning reader can find what the
+author used, whether they still do, and why.
 
 ## Positioning
 
-The mechanism a neighboring docs site cannot truthfully copy: three enforced
-constraints against doc/script drift.
+The mechanism a generic tech blog cannot truthfully copy: **the commands are
+verified, and the script pages are the repository's own files.**
 
-1. **Single source.** Every page is a byte-for-byte render of the corresponding
-   folder's `README.md`. No second copy of the prose exists, so docs and script
-   always come from the same commit. A smoke test asserts byte equality.
+1. **Single source.** A script's page is a byte-for-byte render of its `README.md`.
+   There is no second copy of the prose, so the page and GitHub cannot disagree.
+   `verify-dist` recomputes a fingerprint of the file's bytes and compares it to the
+   one on the page.
 2. **Rehearsable.** Every script that changes host state supports `--help` and
-   `--dry-run`.
-3. **CI-gated.** Shell syntax + ShellCheck, Docker Compose configs, and whether
+   `--dry-run`. The command window shows the flag when it is in the command.
+3. **CI-gated.** Shell syntax and ShellCheck, Docker Compose configs, and whether
    every `raw.githubusercontent.com` command in the docs still resolves are each
-   verified in CI — so a broken published command is caught before a reader
-   copies it.
+   verified in CI.
+
+What this does *not* claim: that a script works on the reader's machine. That is why
+`--dry-run` is first-class.
+
+## Content Model
+
+| Kind | Where | Authored as | Owner of the words |
+| --- | --- | --- | --- |
+| Post | `posts/<slug>.md` | frontmatter + markdown | the author, for this site |
+| Tool | `tools/<slug>.md` | frontmatter + markdown | the author, for this site |
+| Script | `<category>/<project>/README.md` | markdown, no frontmatter | the file — rendered verbatim |
+| Page | `pages/{home,about}.md` | frontmatter + markdown | the author, for this site |
+
+- **Tool status** is `using`, `tried` or `dropped`, each shown as a mark and a word.
+  A tool the author wrote themselves carries `mine: true` and a `repo`.
+- **Links between kinds** are by slug: a post lists `tools:` and `scripts:`; a tool
+  lists `scripts:`. The destination pages list the posts that mention them. An unknown
+  slug fails the build.
+- **Tags** are shared across all three kinds; `/tags/<tag>/` lists everything.
+- **Scripts** are `<category>/<project>/README.md`, exactly two levels; the first level
+  is the category and the only thing that groups them.
 
 ## Operating Context
 
-- Readers arrive mid-task, often on a terminal-adjacent second screen, and leave
-  with a command on the clipboard that they paste into a root shell.
-- Content is authored as GitHub-flavored Markdown READMEs: dense tables,
-  `> [!TIP]` / `> [!IMPORTANT]` alerts, long `curl | sudo bash` one-liners with
-  line continuations, relative links written for GitHub.
-- Subprojects live at exactly `<category>/<project>/README.md`. The first-level
-  folder is the category and the only thing that decides the sidebar group.
-  Current categories: `AI/` (AI CLI usage statuslines), `container/` (containers
-  and Kubernetes), `script/` (host-level one-off scripts). A new category is a
-  new top-level folder and needs no front-end change.
+- Readers arrive mid-task, often on a terminal-adjacent second screen, and leave with
+  a command on the clipboard that they paste into a root shell.
+- Script content is GitHub-flavoured markdown: dense tables, `> [!TIP]` /
+  `> [!IMPORTANT]` alerts, long `curl | sudo bash` one-liners with line continuations,
+  and relative links written for GitHub. The renderer rewrites those links: a folder
+  that is a published script becomes a site route; any other path becomes a GitHub link.
+- The repository is both the scripts' source and the site's content. A push to `main`
+  republishes.
 
 ## Capabilities and Constraints
 
-- **Chrome only.** The HTML/TSX may hold nothing but chrome: product name,
-  tagline, meta description. All prose lives in a `README.md`. Writing doc
-  content into the front end is forbidden — it is what the single-source
-  guarantee rules out.
-- **No hardcoded project list.** Navigation, routes, page titles, nav labels and
-  search are all manifest-driven. Adding a subproject is a folder plus a README.
-- **Nothing may be added to a page that the README did not say.** No invented
-  hero copy, claims, badges, counts or testimonials on top of rendered content.
-- **HashRouter is required** — GitHub Pages has no SPA rewrite. In-page anchors
-  must navigate as hash-only targets so they do not clobber the current route.
-- **Anchor ids must stay aligned** between the TOC extractor and `rehype-slug`
-  (both use `github-slugger`), including duplicate-heading `-1`/`-2` suffixes.
-- **Copy actions read the markdown AST string**, never DOM text.
-- **Static build only.** No server, no runtime data source; `npm run verify`
-  (typecheck + smoke test + production build) is the gate.
-- **Confirmed must-keep:** the light/dark dual theme, including applying the
-  stored mode before first paint so there is no flash.
-- **Explicitly open to redesign or removal** (user did not mark them must-keep):
-  the sidebar full-text search, the right-hand "On this page" TOC, and the
-  per-page provenance strip.
+- **Chrome only in the front end.** `.astro` / `.ts` / `.css` hold the product name,
+  the tagline, navigation and UI labels. All prose lives in markdown.
+- **A script page says only what its README says.** Provenance (file, bytes, revision
+  date, category) is derived state and may sit beside it; invented intros, claims,
+  counts, badges and testimonials may not.
+- **Real URLs.** Every page is `…/index.html` under a trailing-slash path, so it works
+  unchanged on GitHub Pages and Cloudflare Pages, is indexable, and has its own
+  `<title>`, description, canonical and Open Graph tags.
+- **Deploy-agnostic.** Origin and base path come from `SITE_URL` / `BASE_PATH`; the
+  site is moving from GitHub Pages (`/script-docs/`) to Cloudflare Pages (a domain root)
+  and that is a setting, not an edit.
+- **Static build only.** No server, no database. `npm run verify` is the gate.
+- **Copy reads the `<pre>`'s own text**, which holds the command and nothing else.
+- **Must keep:** light and dark themes, with the stored choice applied before first
+  paint so there is no flash.
+- **Interface language:** Traditional Chinese (zh-TW). Code, identifiers, commands, file
+  paths and log output stay verbatim. English is deferred, not excluded.
+- **Deferred (not built):** comments, analytics, generated Open Graph images, an English
+  edition.
 
 ## Brand Commitments
 
-- Product name: **Script Docs**. It is simultaneously the root `README.md` H1,
-  the `<title>`, and the app-bar title, and all three must name it identically.
-- Tagline (root README's opening line): 一份可以直接執行的維運手冊。
-- Interface language: Traditional Chinese (zh-TW). Code, identifiers, commands,
-  file paths and log output stay verbatim in their original form.
-- Published URL: <https://ctj425.github.io/script-docs/>. License: MIT.
-- No logo, wordmark, brand palette or typeface has ever been chosen. The current
-  blue/Roboto/Material appearance is the MUI default theme, not a decision —
-  treat it as anti-reference, not as identity.
+- Product name: **ivan note** — the root `README.md`'s H1. The masthead, the home
+  `<title>` and the feed read it from there, and `verify-dist` asserts it.
+- Tagline: the root README's first paragraph (個人資訊部落格：我寫過的 script、用過的工具，
+  以及 GitHub 上的專案筆記。).
+- Published URL: today <https://ctj425.github.io/script-docs/>; moving to Cloudflare
+  Pages. License: MIT.
+- No logo, wordmark or illustration exists. The favicon is the binder: a tan square
+  with two punched holes.
+- The earlier name, **Script Docs**, now names only the repository.
 
 ## Evidence on Hand
 
-- 8 real subprojects with complete READMEs, plus their actual shell / compose
-  sources in-repo.
-- 8 real, CI-verified one-liner commands, listed in the root README.
+- Ten published scripts with complete READMEs, plus their real shell / Python /
+  compose sources in the repo.
+- Eight CI-verified one-liner commands, listed in the root README.
 - Real CI workflows: `.github/workflows/ci.yml`, `.github/workflows/pages.yml`.
 - A real `CHANGELOG.md`.
+- **Seed entries.** The two posts and four tool cards on the site at launch are
+  drafted from what the repository itself shows (what was written, which tool each
+  script serves). Their statuses and one-line verdicts are the author's to correct.
 - **Absent, and not to be fabricated:** install counts, stars, downloads, user
   testimonials, company logos, benchmarks, uptime figures, "trusted by" claims,
-  screenshots of the scripts running, and any imagery or illustration assets.
-  The repo contains no images at all.
+  screenshots of the scripts running, and any imagery. The repository contains no
+  images at all.
 
 ## Product Principles
 
-1. **The command is the product.** The page exists to get one trustworthy line
+1. **The command is the product.** A script page exists to get one trustworthy line
    onto a reader's clipboard; everything else is supporting evidence.
-2. **Earn the root shell.** The reader is about to run this as root on a machine
-   they care about. Risk, reversibility and `--dry-run` are first-class content,
-   not footnotes.
-3. **One source, no drift.** The site may never hold a second copy of anything a
-   README says. If it would look better restated in TSX, it belongs in the README.
-4. **Structure comes from the filesystem.** Categories, titles, nav labels and
-   ordering are derived, never authored in the front end.
-5. **Degrade, don't crash.** The same discipline the scripts follow (parse
-   failure degrades, never breaks) applies to the site: a missing doc, an unknown
-   language, an unsafe link protocol all render as something safe.
+2. **Earn the root shell.** The reader is about to run this as root on a machine they
+   care about. Risk, reversibility and `--dry-run` are first-class content, not
+   footnotes.
+3. **One source, no drift.** A script's page is its README. If a sentence would look
+   better restated in a template, it belongs in the README.
+4. **Honest status.** A tool is `using`, `tried` or `dropped`, and an old page admits
+   its age. The site never claims a freshness the file does not have.
+5. **Structure comes from the filesystem.** Categories, titles, slugs and ordering are
+   derived from folders and files, never authored in the front end.
+6. **Degrade, don't crash.** A missing doc, an unknown language, an unsafe link
+   protocol and a missing search index all render as something safe.
 
 ## Accessibility & Inclusion
 
-No formal standard was established. Product-specific needs that are already
-real: light and dark themes at usable contrast (the current build renders body
-text, list items and table cells at secondary-text color, which fails this);
-long `curl` commands must remain readable and copyable without a mouse; the
-interface is zh-TW, so the type system must handle CJK alongside Latin
-monospace command text.
+No formal standard was established. Product-specific needs that are already real:
+
+- Light and dark at enforced contrast: every ink clears 4.5:1 on the paper, the
+  recessed wells, aged paper and the danger field (`check-contrast.mjs`).
+- Long `curl` commands stay readable and copyable without a mouse; the command window
+  scrolls horizontally rather than wrapping a command nobody could check.
+- State is never colour alone: status is a square plus a word; table-of-contents
+  position is a circle, a crease or a hole.
+- The interface is zh-TW, so the type system sets CJK alongside Latin monospace; labels
+  are 12px because a 黑體 glyph at 11px is not legible.
+- A skip link, visible focus on every control, and `prefers-reduced-motion` honoured.

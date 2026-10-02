@@ -1,0 +1,38 @@
+---
+import { KIND_LABEL, type Card } from '../lib/content';
+import StatusMark from './StatusMark.astro';
+import TagList from './TagList.astro';
+
+interface Props {
+  card: Card;
+  /** Lead with the kind (文章 / 工具 / 腳本): for lists that mix them. */
+  showKind?: boolean;
+}
+const { card, showKind = false } = Astro.props;
+---
+
+<li class:list={['row', card.hue]} data-kind={card.kind}>
+  <div class="row__lead label">
+    {showKind && <span class="row__kind">{KIND_LABEL[card.kind]}</span>}
+    {
+      card.kind === 'tool' && card.status ? (
+        <StatusMark status={card.status} />
+      ) : card.kind === 'script' && card.category ? (
+        <span class="row__category">
+          <span class="chip" aria-hidden="true" />
+          {card.category}
+        </span>
+      ) : card.date ? (
+        <time datetime={card.date}>{card.date}</time>
+      ) : null
+    }
+  </div>
+  <div class="row__main">
+    <h3 class="row__title">
+      <a href={card.href}>{card.title}</a>
+      {card.mine && <span class="row__own label">自製</span>}
+    </h3>
+    <p class="row__summary">{card.summary}</p>
+    <TagList tags={card.tags} />
+  </div>
+</li>

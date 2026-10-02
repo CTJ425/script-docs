@@ -1,0 +1,22 @@
+---
+import { tagHref } from '../lib/content';
+
+interface Props {
+  tags: string[];
+}
+const { tags } = Astro.props;
+---
+
+{
+  tags.length > 0 && (
+    <ul class="tags" aria-label="標籤" data-pagefind-ignore>
+      {
+        tags.map((t) => (
+          <li>
+            <a href={tagHref(t)}>{t}</a>
+          </li>
+        ))
+      }
+    </ul>
+  )
+}

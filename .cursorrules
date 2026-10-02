@@ -38,60 +38,52 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
 
 <!-- docs/site consistency -->
-## The HTML must stay in sync with the READMEs
+## Who owns the words
 
-The site is not a second copy of the docs: `site/scripts/sync-content.mjs`
-renders every `README.md` **verbatim**, and each file's first `#` heading
-becomes that page's title *and* its nav label. So the only text the HTML/TSX
-may hold is chrome — product name, tagline, meta description. Whenever that
-chrome disagrees with a README, the product appears under two different names
-and the site is wrong no matter which one is "right".
+The site is a personal blog (**ivan note**) that publishes this repository. Every
+page is built from a file in the repo, and *which kind of file* decides who owns
+its prose:
 
-**When a README's title or positioning changes, update all of these in the same
-commit:**
+| Kind | Source | The site may… |
+| --- | --- | --- |
+| **Script** | `<category>/<project>/README.md` | render it **verbatim** and nothing else. No intro, no summary, no badge added to the page. What may sit beside the text is *derived state*: file name, byte count, revision date, category. |
+| **Post** | `posts/<slug>.md` (frontmatter) | render it. Written for this site, in the author's voice. |
+| **Tool** | `tools/<slug>.md` (frontmatter) | render it. Same. |
+| **Page** | `pages/{home,about}.md` (frontmatter) | render it. Same. |
+| **Chrome** | `.astro` / `.ts` / `.css` | hold the product name, the tagline, nav and UI labels (搜尋, 本頁目錄…) and **no other prose**. |
 
-| Where | What must match |
-| --- | --- |
-| `README.md` (root) | H1 = the product name; opening line = the tagline. This *is* the landing page. |
-| `site/index.html` | `<title>` = the root H1; `<meta name="description">` = the tagline + what the project contains |
-| `site/src/components/AppShell.tsx` | App bar title is **read from the manifest** (the root H1) and cannot drift; only the subtitle/tagline is hand-held chrome here |
-| `<subproject>/README.md` | H1 = that page's nav label — renaming the H1 renames the nav entry |
-| `<subproject>/SPEC.md`, `TROUBLESHOOTING.md` | Their headings carry the same product name as the subproject's H1 |
+- **Never hand-write content into `.astro` / `.ts`.** If a sentence belongs to a
+  reader, it belongs in a markdown file.
+- **Never edit generated output**: `site/dist/`, `site/.astro/`.
+- A script's `docs.json` sidecar may hold only `slug`, `tags` and `order`. The title
+  and the text come from the README; the build rejects any other key.
 
-**Rules**
+## One product, one name
 
-- **One product, one name.** Never leave the tab title, the header and the
-  landing page naming the same thing differently.
-- **Never hand-write doc content into HTML/TSX.** Prose belongs in a `README.md`
-  so the site and the repo cannot drift; the HTML holds chrome only.
-- **Never edit `site/src/content/manifest.json`.** It is generated (and
-  gitignored) — edit the source README instead.
-- **Every published README carries a `> 最後更新：YYYY-MM-DD` line** directly
-  under its H1, and it is maintained by hand. **Change a README's content and
-  you change that date in the same commit** — a date nobody updates is worse
-  than no date, because it asserts freshness the file does not have. The date
-  states when the *content* last changed, so a commit that only touches the
-  date line, or reformats without changing meaning, leaves it alone.
-- Adding a subproject means adding a folder with a `README.md`. Nothing in the
-  front end is hardcoded per project, so no TSX change should be needed.
+The product name is the root `README.md`'s first `#` heading, and its tagline is the
+root README's first paragraph. `site/astro.config.mjs` reads both and
+`site/src/lib/site.ts` exposes them, so the masthead, the home `<title>`, the feed
+and the repository's front page cannot drift. `verify-dist` asserts it.
 
-**Verify before committing**
+Renaming the product therefore means: edit the root README H1 (and tagline), then
+update the headings in `PRODUCT.md` and `site/DESIGN.md`. Nothing in the front end
+holds the name.
 
-```bash
-cd site && npm ci && npm run verify   # typecheck + smoke test + production build
-```
+## Dates
 
-The smoke test asserts the manifest's markdown is byte-identical to the files on
-disk, so a README edited without re-syncing fails here rather than on the
-published site.
+- Every **script README** carries `> 最後更新：YYYY-MM-DD` directly under its H1
+  (`verify-content` asserts it). It is maintained by hand: **change a README's
+  content and you change that date in the same commit.** The date states when the
+  *content* last changed, so a commit that only reformats leaves it alone.
+- A **post** has `date` (first published) and, once it changes in a way a reader
+  would care about, `updated`. A **tool** has `updated`. The age mark on a page
+  (yellowing at 90 days, bleaching at 270) is derived from these; never fake it.
 
-<!-- classification -->
-## Where a new subproject goes
+## Where a new script goes
 
-Every subproject is `<category>/<project>/README.md` — **exactly two levels**.
-The first level is the category and it is the only thing that decides the
-sidebar group, so choosing the folder *is* the classification step. No front-end
-change is ever needed to add or re-file a project.
+Every script is `<category>/<project>/README.md` — **exactly two levels**. The first
+level is the category and is the only thing that decides the grouping, so choosing
+the folder *is* the classification step. No front-end change is ever needed.
 
 | Category | Put it here when the subject is… |
 | --- | --- |
@@ -100,21 +92,63 @@ change is ever needed to add or re-file a project.
 | `script/` | a plain script that runs on a host and exits — VM sealing, ISO linking |
 
 - **Classify by the subject, not the file type.** A shell script that builds a
-  Kubernetes cluster is `container/` — the subject is the cluster. `script/` is
-  for host-level one-offs, not "everything written in bash".
-- **A fourth category is just a new top-level folder.** It becomes a sidebar
-  group automatically. Add it to `CATEGORY_ORDER` in
-  `site/scripts/sync-content.mjs` only when its position in the sidebar matters;
-  unlisted categories sort after the listed ones, alphabetically.
-- **The wrong depth fails the build, on purpose.** A `README.md` left at the
-  repo root (uncategorised) or buried a level too deep used to produce a page
-  that simply never appeared; `sync-content.mjs` now rejects both with the fix
-  spelled out in the error.
+  Kubernetes cluster is `container/` — the subject is the cluster.
+- **A fourth category is just a new top-level folder.** It becomes a group and gets
+  the next hue automatically. List it in `CATEGORY_ORDER` in
+  `site/src/lib/categories.mjs` only when its position matters.
+- **The wrong depth fails the build, on purpose**, with the fix spelled out.
+- The page URL is `/scripts/<project>/` (the project folder, slugified). Two projects
+  that collide fail the build; set `"slug"` in one `docs.json`.
 - Re-filing a project is `git mv` plus a sweep of its `raw.githubusercontent.com`
-  URLs — the paths are published install commands, so every one of them, in
-  every README and installer, has to move with the folder.
+  URLs — those paths are published install commands, so every one of them, in every
+  README, post and installer, has to move with the folder.
 
-<!-- these three files are byte-identical mirrors -->
+Posts and tools reference scripts by slug (`scripts: [pve-link-iso]`) and tools by
+file name (`tools: [ollama]`). An unknown slug fails the build.
+
+## Design invariants
+
+Full rules are in `site/DESIGN.md`; the ones a change must not break:
+
+- **Colour is derived, never typed.** Paper, ink, rules, danger and every category
+  fill come from `site/src/lib/design.mjs` and are inlined into `<head>`. No hex or
+  `rgb()` in a stylesheet. A new colour meaning is a new derivation rule, not a swatch.
+- **Contrast is enforced, not hoped for.** `site/scripts/check-contrast.mjs` measures
+  every ink on every surface (paper, recess, aged paper, danger field) in both themes.
+- **Vermilion means danger and nothing else.** Not a brand colour, not hover, not a
+  category hue.
+- **Category colour is by position, never by name.**
+- **State is a mark plus a word**, never colour alone (status squares, TOC circle /
+  crease / hole).
+- **One motion grammar:** `--hinge` (90ms, two steps). No easing, no fade, no smooth scroll.
+- **The command is the product.** The command window keeps its `sudo` / `dry-run`
+  flags (literal reads of the text) and its copy button reads the `<pre>`'s own text.
+- **Light and dark both**, with the stored choice applied before first paint.
+
+## Verify before committing
+
+```bash
+cd site && npm ci && npm run verify
+```
+
+`verify` = `astro check` (types) + `check-contrast` + `verify-content` (the repo
+before the build) + `astro build` and the Pagefind index + `verify-dist` (the built
+site: every route, every internal link and anchor, per-page title / description /
+canonical / Open Graph, the feed, the sitemap, the search index, and for each script
+that the page was rendered from exactly the bytes on disk).
+
+## Deploying
+
+The site is static (`site/dist`). Where it is served from comes from the environment:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `SITE_URL` | public origin, e.g. `https://note.example.com` | `https://<owner>.github.io` on GitHub Actions; `CF_PAGES_URL` on Cloudflare Pages |
+| `BASE_PATH` | path prefix, `/` at a domain root | `/<repo>` on GitHub Actions, `/` elsewhere |
+
+Cloudflare Pages: root directory `site`, build command `npm ci && npm run build`,
+output directory `dist`, `NODE_VERSION=22`, and `SITE_URL` set to the production domain.
+
 > [!IMPORTANT]
 > `CLAUDE.md`, `.cursorrules` and `.windsurfrules` are kept byte-identical.
 > Edit one, copy it over the other two in the same commit.

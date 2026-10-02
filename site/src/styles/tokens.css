@@ -1,28 +1,26 @@
 /*
- * Tokens.
+ * Tokens that are not colours.
  *
- * Three values are not here because they cannot be: --board, --leaf and
- * --on-board are solved at runtime in main.tsx (see design.ts, solveLeaf) and
- * written onto the document element. Everything below consumes them.
+ * Every colour — paper, ink, rules, danger, the category fills — is derived in
+ * lib/design.mjs and inlined into <head> by the base layout. They are not here
+ * because a colour written down twice is a colour that can drift, and the
+ * contrast script measures the one in design.mjs.
  */
 
 :root {
   /* type ------------------------------------------------------------ */
 
   /* Archivo is a width x weight grid, which is the thing Univers actually is;
-     Noto Sans TC carries the same job in Chinese, where a manual sets its
+     Noto Sans TC carries the same job in Chinese, where a notebook sets its
      headings in 黑體 and its body in 明體. */
   --f-display: 'Archivo', 'Noto Sans TC', system-ui, sans-serif;
   --f-body: 'EB Garamond', 'Noto Serif TC', Georgia, serif;
-  /* Chivo Mono shares Archivo's foundry and its grotesque skeleton, exactly as
-     Univers 57 Mono shares Univers 57's. */
-  --f-mono: 'Chivo Mono', ui-monospace, SFMono-Regular, monospace;
+  /* Chivo Mono shares Archivo's foundry and its grotesque skeleton. */
+  --f-mono: 'Chivo Mono', ui-monospace, SFMono-Regular, 'Noto Sans TC', monospace;
 
-  /* One body size does the work. 17/26.
-     The measure is stated in ch, which is the width of a Latin `0`; a line of
-     Traditional Chinese at the world's nominal 62ch comes out at about 30
-     characters, well under what Chinese setting wants. 75ch is the top of the
-     Latin range and lands Chinese at about 34 — both in range at one value. */
+  /* One body size does the work: 17/26. The measure is stated in ch, the width
+     of a Latin `0`; at 75ch Latin sits at the top of its range and Traditional
+     Chinese lands near 34 characters a line, both in range at one value. */
   --t-body: 1.0625rem;
   --lh-body: 1.625rem;
   --measure: 75ch;
@@ -32,12 +30,10 @@
   --t-h3: 1.25rem;
   --t-h4: 1.0625rem;
   --t-small: 0.8125rem;
-  --t-label: 0.6875rem;
+  /* 12px, not 11: labels carry Chinese too, and a 黑體 glyph at 11px is not legible. */
+  --t-label: 0.75rem;
 
-  /* Archivo carries a real width axis, which is the thing Univers is; the
-     display voice is set near-condensed rather than at the default width. */
   --wdth-display: 82;
-
   --tr-display: -0.035em;
   --tr-label: 0.1em;
 
@@ -53,17 +49,15 @@
   --s8: 64px;
   --s9: 96px;
 
-  /* What a `curl | sudo bash` one-liner needs to sit on one line. The sheet is
-     capped here rather than stretched, so a very wide window gives its extra
-     width to the fore edge instead of to the reading field. */
-  --field: 992px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --page: 1180px;
+  /* What a `curl | sudo bash` one-liner needs to sit on one line. The reading
+     column is capped here, and a very wide window gives its extra width to the
+     margin rather than to the text. */
+  --field: 880px;
+  --aside: 232px;
 
-  --spine: 40px;
-  --rail: 56px;
-  --index: 288px;
-  --band: 76px;
-
-  /* A manual is die-cut, not rounded. */
+  /* A notebook is die-cut, not rounded. */
   --r: 2px;
 
   /* motion ----------------------------------------------------------- */
@@ -71,102 +65,6 @@
   /* Nothing eases and nothing fades. Every change is a two-frame hinge. */
   --hinge: 90ms steps(2, end);
 
-  /*
-   * Paper tooth and print ink.
-   *
-   * Generated noise rather than a stack of CSS gradients: a gradient cannot be
-   * a texture, and this world names print ink as a material in its own right.
-   * One tile, reused by the leaf and by the board.
-   */
+  /* Paper tooth: generated noise rather than a stack of gradients. */
   --tooth: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='t' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23t)' opacity='0.09'/%3E%3C/svg%3E");
-}
-
-/* light: the leaf is a warm manual page --------------------------------- */
-
-:root,
-:root[data-theme='light'] {
-  color-scheme: light;
-
-  --tooth-blend: multiply;
-
-  --ink: #16150f;
-  --ink-2: #57533f;
-  --ink-3: #68634d;
-
-  --milk: #fbf7ec;
-  --recess: rgba(22, 21, 15, 0.055);
-  --rule: rgba(22, 21, 15, 0.17);
-  --rule-strong: rgba(22, 21, 15, 0.42);
-
-  --danger: #ce2e1a;
-  --on-danger: #fbf7ec;
-  --danger-field: rgba(206, 46, 26, 0.09);
-
-  /* Offset and blur, both real: the leaf stands a millimetre off the board. */
-  --cut-shadow: 7px 0 14px -9px rgba(22, 21, 15, 0.55), 2px 0 0 -1px rgba(22, 21, 15, 0.13);
-  --lift: 0 2px 10px -6px rgba(22, 21, 15, 0.5);
-
-  /* The ageing steps. A leaf whose revision is old yellows by a measurable
-     amount, on top of the solved reading field rather than instead of it. */
-  --age-0: transparent;
-  --age-1: rgba(210, 160, 30, 0.085);
-  --age-2: rgba(190, 132, 24, 0.17);
-
-}
-
-/* dark: the leaf is graphite milk --------------------------------------- */
-
-:root[data-theme='dark'] {
-  color-scheme: dark;
-
-  --tooth-blend: screen;
-
-  --ink: #f2ede0;
-  --ink-2: #a9a391;
-  --ink-3: #8d8875;
-
-  --milk: #141310;
-  --recess: rgba(242, 237, 224, 0.06);
-  --rule: rgba(242, 237, 224, 0.16);
-  --rule-strong: rgba(242, 237, 224, 0.4);
-
-  --danger: #ff7a63;
-  /* The dark vermilion is a light salmon; white on it is 2.8:1. */
-  --on-danger: #16150f;
-  --danger-field: rgba(255, 122, 99, 0.12);
-
-  --cut-shadow: 7px 0 16px -9px rgba(0, 0, 0, 0.85), 2px 0 0 -1px rgba(0, 0, 0, 0.6);
-  --lift: 0 2px 12px -6px rgba(0, 0, 0, 0.8);
-
-  --age-0: transparent;
-  --age-1: rgba(214, 170, 60, 0.07);
-  --age-2: rgba(214, 170, 60, 0.14);
-
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-
-    --tooth-blend: screen;
-
-    --ink: #f2ede0;
-    --ink-2: #a9a391;
-    --ink-3: #8d8875;
-
-    --milk: #141310;
-    --recess: rgba(242, 237, 224, 0.06);
-    --rule: rgba(242, 237, 224, 0.16);
-    --rule-strong: rgba(242, 237, 224, 0.4);
-
-    --danger: #ff7a63;
-    --danger-field: rgba(255, 122, 99, 0.12);
-
-    --cut-shadow: 7px 0 16px -9px rgba(0, 0, 0, 0.85), 2px 0 0 -1px rgba(0, 0, 0, 0.6);
-    --lift: 0 2px 12px -6px rgba(0, 0, 0, 0.8);
-
-    --age-1: rgba(214, 170, 60, 0.07);
-    --age-2: rgba(214, 170, 60, 0.14);
-
-  }
 }

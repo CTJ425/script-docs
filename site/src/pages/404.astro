@@ -1,0 +1,17 @@
+---
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/site';
+---
+
+<Base title="找不到這一頁" path="/404/" noindex>
+  <section class="lost">
+    <p class="lost__code label">404</p>
+    <h1 class="doc__title">找不到這一頁</h1>
+    <p>網址可能打錯了，或是這篇已經搬走。</p>
+    <ul class="lost__links">
+      <li><a href={url('/')}>回首頁</a></li>
+      <li><a href={url('/posts/')}>文章</a></li>
+      <li><a href={url('/search/')}>搜尋</a></li>
+    </ul>
+  </section>
+</Base>

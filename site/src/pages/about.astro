@@ -1,0 +1,16 @@
+---
+import Base from '../layouts/Base.astro';
+import { getPage, renderEntry } from '../lib/content';
+
+const page = await getPage('about');
+const { html } = await renderEntry(page.body, 'pages');
+---
+
+<Base title={page.data.title} description={page.data.description} path="/about/" active="about">
+  <article class="doc doc--narrow" data-pagefind-body data-pagefind-meta="kind:關於">
+    <header class="doc__head">
+      <h1 class="doc__title">{page.data.title}</h1>
+    </header>
+    <div class="prose" set:html={html} />
+  </article>
+</Base>

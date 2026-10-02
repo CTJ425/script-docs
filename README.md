@@ -1,35 +1,45 @@
-# Script Docs
+# ivan note
 
-> 最後更新：2026-08-14
+> 最後更新：2026-10-02
 
-一份**可以直接執行的維運手冊**。每支腳本都在自己的說明頁上帶著使用情境、參數與風險，並且能用一行 `curl` 指令在目標機器上跑起來 —— 不必先 clone，也不必在正式環境上讀完整份原始碼才敢動手。
+個人資訊部落格：我寫過的 script、用過的工具，以及 GitHub 上的專案筆記。
 
-📖 **線上文件：<https://ctj425.github.io/script-docs/>**
-
----
-
-## 為什麼有這個專案
-
-自動化腳本最常見的死法不是寫錯邏輯，而是**文件與腳本各自漂移**：README 上的參數腳本早就改掉了，複製貼上的指令指向已經改名的 repo。這裡用三個約束把漂移擋住：
-
-- **單一來源**：網站每一頁都是對應資料夾 `README.md` 的逐位元組渲染，不另外維護一份文案。文件與腳本永遠出自同一個 commit。
-- **可預演**：會動到主機狀態的腳本一律支援 `--help` 與 `--dry-run`。先看它要做什麼，再決定要不要真的做。
-- **CI 守門**：shell 語法與 ShellCheck、Docker Compose 設定、以及文件裡每一條 `raw.githubusercontent.com` 指令是否仍能解析，都在 CI 逐條驗證 —— 貼出去的指令壞掉時，是我們先知道，而不是複製它的人。
+📖 **線上網站：<https://ctj425.github.io/script-docs/>**（之後會搬到 Cloudflare Pages）
 
 ---
 
-## 內容
+## 這個 repo 是什麼
 
-子專案依用途分成三類，資料夾結構就是分類本身 —— 網站的側欄群組也是從第一層資料夾名稱自動長出來的。
+這個 repo 同時是兩件事：**腳本的原始碼**，和**從它們長出來的網站**。網站沒有另一份內容，每一頁都直接來自這個 repo 裡的檔案：
 
-### 🤖 [`AI/`](./AI) —— AI CLI 用量狀態列
+| 內容 | 放在哪 | 檔案格式 |
+| --- | --- | --- |
+| 文章 | [`posts/`](./posts) | `<slug>.md`，開頭有 frontmatter |
+| 工具 | [`tools/`](./tools) | `<slug>.md`，開頭有 frontmatter |
+| 腳本 | `AI/`、`container/`、`script/` | `<分類>/<專案>/README.md`，原文照登 |
+| 首頁、關於 | [`pages/`](./pages) | `home.md`、`about.md` |
 
-把用量配額顯示在提示列上。純 ASCII、無背景服務、無網路請求，解析失敗一律降級而不崩潰。
+腳本頁是特別的一種：它是該資料夾 `README.md` 的**逐位元組渲染**，網站上看到的和 GitHub 上看到的是同一份。這也是這個專案的核心約束 —— 自動化腳本最常見的死法不是寫錯邏輯，而是文件與腳本各自漂移，所以：
+
+- **單一來源**：腳本頁就是 README，不另外維護一份文案。
+- **可預演**：會動到主機狀態的腳本一律支援 `--help` 與 `--dry-run`。
+- **CI 守門**：shell 語法與 ShellCheck、Docker Compose 設定，以及文件裡每一條 `raw.githubusercontent.com` 指令是否仍能解析，都在 CI 逐條驗證。
+
+---
+
+## 腳本
+
+子專案依用途分成三類，資料夾結構就是分類本身 —— 網站上的分組也是從第一層資料夾名稱自動長出來的。
+
+### 🤖 [`AI/`](./AI) —— AI CLI 與 agent
+
+把用量配額顯示在提示列上，以及給 Claude Code 用的全域設定。純 ASCII、無背景服務、無網路請求，解析失敗一律降級而不崩潰。
 
 | 專案 | 說明 |
 | --- | --- |
 | [AGY Usage HUD](./AI/agy_usage_hud) | Antigravity CLI (`agy`) 狀態列：模型名稱、Context Window 用量、5h 與每週配額用量、重置倒數 |
 | [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code 狀態列：模型名稱、5h / 每週用量、context window，含冷啟動快取 |
+| [Global CLAUDE.md](./AI/md) | 給 Claude Code 用的全域指令檔，套用在所有專案 |
 
 ### ☸️ [`container/`](./container) —— 容器與 Kubernetes
 
@@ -50,6 +60,7 @@
 | [RHEL-Family-Temp](./script/RHEL-Family-Temp) | 把已裝好的 RHEL/Rocky/Alma 虛擬機清理成乾淨範本，並裝上首次開機的互動式網路設定精靈 |
 | [deploy-supabase](./script/deploy-supabase) | Supabase Self-Hosted 自動化部署，支援多專案同機部署、Port 智慧偏移與擴充模組 |
 | [pve_link_iso](./script/pve_link_iso) | 用 symbolic link 把 NAS 上的 ISO 掛進 Proxmox VE 的 ISO 目錄，PVE 看得到但不必複製檔案 |
+| [setup-en-cli-zh-tw-desktop](./script/setup-en-cli-zh-tw-desktop) | 終端機輸出英文訊息、桌面環境維持繁體中文 |
 
 ---
 
@@ -74,25 +85,41 @@
 
 ---
 
-## 網站與內容管線
+## 新增內容
 
-網站是 React + Vite 的靜態站，部署在 GitHub Pages。導覽、路由與搜尋全部由內容管線從 repo 裡的 `README.md` 產生，前端不硬編碼任何子專案。
+**一篇文章**：在 `posts/` 放一個 `<slug>.md`。
 
-新增子專案只要三步 —— 在對應分類下建立資料夾、放一份 `README.md`、push。網站會自動長出對應頁面，並歸到該分類的導覽群組底下，不需要改任何前端程式碼：
-
-```bash
-mkdir script/my_script          # 或 AI/ 、container/
-$EDITOR script/my_script/README.md
-git add script/my_script && git commit -m "Add my_script" && git push
+```markdown
+---
+title: 標題
+date: 2026-10-02
+summary: 一兩句話，會出現在列表、搜尋結果與 RSS 裡。
+tags: [kubernetes, linux]
+tools: [ollama]          # 這篇在講哪些工具（tools/ 裡的檔名）
+scripts: [k8s-install]   # 這篇在講哪些腳本（網址上的 slug）
+---
 ```
 
-分類資料夾（`AI` / `container` / `script`）就是側欄的群組名稱，README 的第一個 `#` 標題則是該頁的標題與導覽標籤。
+**一項工具**：在 `tools/` 放一個 `<slug>.md`。`status` 是 `using`（使用中）、`tried`（試過）或 `dropped`（已淘汰）；自己寫的 GitHub 專案加 `mine: true` 並填 `repo: owner/name`。
 
-**放哪一類？看「主題是什麼」，不是看用什麼語言寫的** —— 用 bash 寫的 Kubernetes 叢集部署屬於 `container/`，因為主題是叢集；`script/` 留給在主機上跑完就結束的一次性作業。三類都不合適時，直接開第四個資料夾即可，它會自動成為新的側欄群組。
+**一支腳本**：建立 `<分類>/<專案>/README.md`，標題寫在第一個 `#`，標題正下方放一行 `> 最後更新：YYYY-MM-DD`。要加標籤時，在同一個資料夾放 `docs.json`：`{ "tags": ["kubernetes"] }`。
 
-路徑深度固定是 `<分類>/<專案>/README.md`。放在根目錄（沒分類）或多包一層（太深），建置會直接失敗並指出該怎麼移 —— 這比產出一個永遠沒人點得到的頁面好。
+放哪一類？**看「主題是什麼」，不是看用什麼語言寫的** —— 用 bash 寫的 Kubernetes 叢集部署屬於 `container/`，因為主題是叢集；`script/` 留給在主機上跑完就結束的一次性作業。三類都不合適時，直接開第四個資料夾即可，它會自動成為新的分組。
 
-網站原始碼在 [`site/`](./site)，內容管線與設計說明見 [`site/README.md`](./site/README.md)。
+路徑深度固定是 `<分類>/<專案>/README.md`。放在根目錄或多包一層，建置會直接失敗並指出該怎麼移。
+
+---
+
+## 網站
+
+網站是 [Astro](https://astro.build) 的靜態站，原始碼在 [`site/`](./site)，設計與建置說明見 [`site/README.md`](./site/README.md)。
+
+```bash
+cd site
+npm ci
+npm run dev       # 開發伺服器
+npm run verify    # 型別檢查 + 對比度與內容檢查 + build + 產出檢查（CI 跑的同一道關卡）
+```
 
 ---
 

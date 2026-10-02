@@ -1,0 +1,53 @@
+---
+import Related from '../../components/Related.astro';
+import TagList from '../../components/TagList.astro';
+import Toc from '../../components/Toc.astro';
+import Base from '../../layouts/Base.astro';
+import { ageOfEntry, getPosts, refsOfPost, renderEntry } from '../../lib/content';
+import { isoDate } from '../../lib/site';
+
+export async function getStaticPaths() {
+  return (await getPosts()).map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { html, headings, minutes } = await renderEntry(post.body, 'posts');
+const refs = await refsOfPost(post);
+
+const published = isoDate(post.data.date);
+const updated = post.data.updated ? isoDate(post.data.updated) : null;
+const age = ageOfEntry(updated ?? published);
+---
+
+<Base
+  title={post.data.title}
+  description={post.data.summary}
+  path={`/posts/${post.id}/`}
+  type="article"
+  active="posts"
+  published={published}
+  updated={updated ?? undefined}
+>
+  <article class="doc" data-age={age?.step ?? 0} data-pagefind-body data-pagefind-meta="kind:文章">
+    <header class="doc__head">
+      <h1 class="doc__title">{post.data.title}</h1>
+      <p class="doc__lede">{post.data.summary}</p>
+      <p class="doc__meta label" data-pagefind-ignore>
+        <time datetime={published}>{published}</time>
+        {updated && updated !== published && <span>更新 <time datetime={updated}>{updated}</time></span>}
+        <span>{minutes} 分鐘</span>
+        {age && age.step > 0 && <span class="age">{age.days} 天前</span>}
+      </p>
+      <TagList tags={post.data.tags} />
+    </header>
+
+    <div class="doc__layout">
+      <Toc headings={headings} variant="inline" />
+      <div class="prose" set:html={html} />
+      <aside class="doc__aside" data-pagefind-ignore>
+        <Toc headings={headings} variant="aside" />
+        <Related tools={refs.tools} scripts={refs.scripts} />
+      </aside>
+    </div>
+  </article>
+</Base>

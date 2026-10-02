@@ -1,0 +1,15 @@
+---
+import { STATUS_LABEL, type Status } from '../lib/content';
+
+interface Props {
+  status: Status;
+  /** Show the word as well as the mark. A mark alone is never the only carrier. */
+  label?: boolean;
+}
+const { status, label = true } = Astro.props;
+---
+
+<span class="status" data-status={status}>
+  <span class="status__mark" aria-hidden="true"></span>
+  {label ? <span class="status__label">{STATUS_LABEL[status]}</span> : <span class="sr-only">{STATUS_LABEL[status]}</span>}
+</span>

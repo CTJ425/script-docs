@@ -1,0 +1,27 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getTagIndex, tagHref } from '../../lib/content';
+
+const tags = await getTagIndex();
+---
+
+<Base title="標籤" description="所有標籤，依使用次數排列。" path="/tags/">
+  <header class="index__head">
+    <h1 class="doc__title">標籤</h1>
+  </header>
+  {
+    tags.length > 0 ? (
+      <ul class="tagcloud">
+        {tags.map((t) => (
+          <li>
+            <a href={tagHref(t.tag)}>
+              {t.tag} <span class="label">{t.cards.length}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <p class="empty">還沒有標籤。</p>
+    )
+  }
+</Base>
