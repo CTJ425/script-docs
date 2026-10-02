@@ -1,0 +1,56 @@
+---
+import { url } from '../lib/site';
+import type { Post, Script, Tool } from '../lib/content';
+import StatusMark from './StatusMark.astro';
+
+interface Props {
+  tools?: Tool[];
+  scripts?: Script[];
+  posts?: Post[];
+}
+const { tools = [], scripts = [], posts = [] } = Astro.props;
+---
+
+{
+  (tools.length > 0 || scripts.length > 0 || posts.length > 0) && (
+    <div class="related">
+      {tools.length > 0 && (
+        <section>
+          <h2 class="label">相關工具</h2>
+          <ul>
+            {tools.map((t) => (
+              <li>
+                <a href={url(`/tools/${t.id}/`)}>{t.data.title}</a>
+                <StatusMark status={t.data.status} label={false} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {scripts.length > 0 && (
+        <section>
+          <h2 class="label">相關腳本</h2>
+          <ul>
+            {scripts.map((s) => (
+              <li>
+                <a href={url(`/scripts/${s.id}/`)}>{s.data.title}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {posts.length > 0 && (
+        <section>
+          <h2 class="label">提到它的文章</h2>
+          <ul>
+            {posts.map((p) => (
+              <li>
+                <a href={url(`/posts/${p.id}/`)}>{p.data.title}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}

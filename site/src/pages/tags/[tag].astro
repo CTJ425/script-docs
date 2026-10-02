@@ -1,0 +1,33 @@
+---
+import Row from '../../components/Row.astro';
+import Base from '../../layouts/Base.astro';
+import { KIND_LABEL, getTagIndex } from '../../lib/content';
+import { url } from '../../lib/site';
+
+export async function getStaticPaths() {
+  return (await getTagIndex()).map((entry) => ({ params: { tag: entry.tag }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const kinds = (['post', 'tool', 'script'] as const)
+  .map((kind) => ({ kind, cards: entry.cards.filter((c) => c.kind === kind) }))
+  .filter((g) => g.cards.length > 0);
+---
+
+<Base title={`標籤：${entry.tag}`} description={`所有標記為 ${entry.tag} 的文章、工具與腳本。`} path={`/tags/${encodeURIComponent(entry.tag)}/`}>
+  <header class="index__head">
+    <p class="label"><a href={url('/tags/')}>標籤</a></p>
+    <h1 class="doc__title">{entry.tag}</h1>
+  </header>
+  {
+    kinds.map((g) => (
+      <section class="section" aria-labelledby={`k-${g.kind}`}>
+        <header class="section__head">
+          <h2 class="label" id={`k-${g.kind}`}>{KIND_LABEL[g.kind]}</h2>
+          <span class="section__count label">{g.cards.length}</span>
+        </header>
+        <ul class="rows">{g.cards.map((c) => <Row card={c} />)}</ul>
+      </section>
+    ))
+  }
+</Base>

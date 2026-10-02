@@ -5,67 +5,54 @@ primary_target: "site/src"
 related_targets: []
 ---
 
-Scope: the whole documentation site (`site/`), every route. Visitor mode: **Read**.
-Audience: a sysadmin arriving for the first time from GitHub or search, about to decide
-whether to paste a `curl | sudo bash` into a machine they care about. Secondary: the
-author returning to find one command. Trust first, look-up second (user-confirmed).
-Task: understand what a script does to a host, then copy one command.
-Content: every page is a byte-for-byte render of a `README.md`; the front end may hold
-chrome only. Constraint: light and dark themes are both required and must not flash.
+Scope: the whole site (`site/`), every route. Visitor mode: **Read**.
+Audience: three readers — a peer arriving from GitHub or search with a task and a
+doubt about pasting a `curl | sudo bash` into a machine they care about; the author,
+returning to find one command or remember why a tool was dropped; and anyone judging
+the work. Trust first, look-up second.
+Task: understand what a script does to a host, then copy one command — or find what
+the author used, whether they still do, and why.
+Content: posts, tools and pages are authored for this site; every script page is a
+byte-for-byte render of a `README.md`. The front end may hold chrome only.
+Constraint: light and dark themes are both required and must not flash; real URLs,
+per-page share tags, a feed, and a search index are not optional.
 
-Unresolved: none open; MUI removal and the four category hues are confirmed.
+Unresolved: none open. English is deferred; comments, analytics and generated Open
+Graph images are deferred.
 
 ## Direction contract
 
-THESIS: This site is a boxed-software reference manual, so it is built as one. It
-refuses the category-default arrangement — sidebar, content well, right-hand TOC,
-restrained grey, one blue-violet accent — in which a category is a line of text in a
-list. Here a category is a full-strength colour board you are standing on, and the
-README is a milk-acetate leaf hinged a millimetre above it.
+THESIS: This site is a field notebook, so it is built as one. It refuses the
+category-default blog arrangement — card grid, hero image, gradient, rounded pills,
+one accent — in which a post is a rectangle in a grid. Here the page is one sheet of
+warm paper, and a list is that sheet divided by hairlines.
 
-OWN-WORLD: A warm manual-page cream leaf (graphite-milk in dark) over a section board
-at full strength: chrome yellow `AI/`, teal `container/`, ultramarine `script/`, with
-grass, oxide orange, violet and sienna held in reserve for future categories.
-Vermilion is held out of the whole system and spends only on danger. Two punched
-binder holes down the left margin; a rotated spine label at the far left edge; a
-stepped tab rail down the right fore edge, one tab per category, height proportional
-to that category's page count, the open tab extending and becoming the board. Hairline
-panels, no elevation, no card stack, no gradient, no glass. Type does three jobs and
-only three: a heavy near-condensed grotesque in caps for display, a serif for every
-word meant to be read, a mono for machine voice — commands, labels, metadata, state. Body sets at one size, 62-character measure; headings hang in a fifth margin
-column outside the four-column field. Commands sit in punched windows cut through the
-leaf to the board beneath.
+OWN-WORLD: Warm manual-page cream (graphite in dark) under a paper grain, one ink in
+three weights, hairline rules. The only saturated thing is the punched command window,
+and its colour is the command's origin: chrome yellow `AI/`, teal `container/`,
+ultramarine `script/`, the binder's tan for everything else, with grass, oxide orange,
+violet and sienna held in reserve. Vermilion is held out of the whole system and spends
+only on danger. Type does three jobs and only three: a heavy near-condensed grotesque
+in caps for display, a serif for every word meant to be read, a mono for the machine's
+voice — commands, labels, dates, state. Body sets at one size, 75ch measure.
 
-STORY: The visitor lands on a page that is visibly a manual opened at a tab, not a
-website about scripts. They read what the script does, what it changes, and whether it
-is reversible, in type set to be read rather than skimmed past. They see the page
-declare its own provenance and its own age. They copy one command from a punched
-window and leave, having decided it was safe to.
+STORY: The visitor lands on a page that reads like a notebook, not a feed. They see
+what the author has written, what they have used, and whether they still use it — each
+status a shape and a word. On a script page they read what it does and what it changes,
+see the page declare its own source, size and age, and copy one command from a punched
+window that tells them, in its own head, when the command says `sudo` or `--dry-run`.
 
-FIRST VIEWPORT: The root README as the open manual at its `AI/` tab. Far left: the
-rotated spine label and two punched holes. Right fore edge: the full-height stepped
-tab rail, one saturated band per category, the open one extended. Between them the
-cream leaf with its hard short shadow along the cut edge. The README's own H1 sets as
-the display line at the largest size on the site; the tagline directly under it in
-serif at reading size; the provenance line as a mono strip on the rule beneath. The
-first punched window — the first `curl` one-liner — is above the fold, and copying is
-the only primary action on the page.
+FIRST VIEWPORT: The site name at display size, the tagline under it in serif, two lines
+of the author's own introduction. Below the fold, three hairline-ruled lists — latest
+posts, tools in use, recently revised scripts — all the same row.
 
-FORM: The fused challenger `rw-manual-acetate-tab-board`, which beat the assigned
-grounded direction (candidate 3 of 7, engineering drawing title block) on both
-audience identification and product clarity. Seed key `5bb5bdf5`. Raised by the four
-declined challengers, each raise named: **staleness is material** (from the sticker
-accretion — a leaf whose `最後更新` is old yellows by a measurable step, so a stale
-page admits it); **one continuous ruled field, never a card stack** (from the daylight
-section); **a strict margin column that keeps position, and passed headings stay
-creased rather than erased** (from the orizuru sequence); **state is a mark, never a
-hue — punched hole, struck rule, doubled line, errata slip — and anchor navigation
-settles on heading pitch, never between** (from the cutting-bench rail). Build path:
-code-led, by necessity — this harness has no image generation, so there is no comp and
-no comp round. Signature interaction: nothing eases or fades; every page and theme
-change is a two-frame `steps(2)` 90ms hinge at the punched edge, and the leaf's alpha
-is solved at runtime by binary search over sRGB source-over compositing against the
-active board hue until the reading field lands in a fixed luminance band, then
-published as a custom property — reading contrast is computed, not eyeballed.
+FORM: Derived from the previous "boxed-software manual" system by keeping what carried
+over — the type system, the paper grain, derived colour, the punched window, the ageing
+paper, state as a mark — and dropping what only worked for a three-category manual: the
+band, spine, tab rail and the runtime-solved reading leaf. Colour is now derived at build
+time and asserted by `check-contrast.mjs` against every surface text can land on.
+Signature interaction: nothing eases or fades; every change is a two-frame `steps(2)`
+90ms hinge.
 
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+FINISH: unreviewed is unfinished — screenshots of every route in both themes at desktop
+and phone width, and `npm run verify` green.

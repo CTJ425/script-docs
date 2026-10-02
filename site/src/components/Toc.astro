@@ -1,0 +1,38 @@
+---
+interface Props {
+  headings: { depth: number; text: string; id: string }[];
+  /** `inline` is the collapsible block above the text; `aside` is the fore-edge column. */
+  variant: 'inline' | 'aside';
+}
+const { headings, variant } = Astro.props;
+---
+
+{
+  headings.length >= 2 && (
+    <nav class={`toc toc--${variant}`} aria-label="本頁目錄" data-toc data-pagefind-ignore>
+      {variant === 'inline' ? (
+        <details open>
+          <summary class="label">本頁目錄</summary>
+          <ol>
+            {headings.map((h) => (
+              <li data-depth={h.depth}>
+                <a href={`#${h.id}`}>{h.text}</a>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : (
+        <>
+          <p class="label">本頁目錄</p>
+          <ol>
+            {headings.map((h) => (
+              <li data-depth={h.depth}>
+                <a href={`#${h.id}`}>{h.text}</a>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+    </nav>
+  )
+}

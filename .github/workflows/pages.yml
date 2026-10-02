@@ -1,11 +1,19 @@
-name: Deploy docs portal to GitHub Pages
+name: Deploy site to GitHub Pages
 
-# The site is generated from the repo's README.md files, so any push that
-# touches a README republishes the portal — there is no separate content step.
+# The site is generated from the repo's own files — posts, tools, pages and each
+# script's README — so any push that touches one of them republishes it. There is
+# no separate content step.
+#
+# GitHub Pages is the current host; the site is moving to Cloudflare Pages, which
+# builds from the repo itself (see site/README.md). When that is live, delete this
+# workflow.
 on:
   push:
     branches: [main]
     paths:
+      - 'posts/**'
+      - 'tools/**'
+      - 'pages/**'
       - '**/README.md'
       - '**/docs.json'
       - 'site/**'
@@ -31,25 +39,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Astro 7 needs Node >= 22.12.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
 
       - run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run check
 
-      - name: Smoke test (render every README, check anchors, code blocks, links)
+      - name: Contrast and content rules
         run: npm run test
 
-      # sync-content.mjs runs inside the Vite build, so the manifest is always
-      # regenerated from the READMEs at this commit. The Pages base path is
-      # derived from GITHUB_REPOSITORY, so renaming the repo needs no edit here.
+      # Origin and base path come from the environment: on Actions they default to
+      # https://<owner>.github.io and /<repo>, derived from GITHUB_REPOSITORY, so
+      # renaming the repo needs no edit here. The build also writes the search index.
       - name: Build
         run: npm run build
+
+      - name: Verify the built site
+        run: npm run test:dist
 
       - uses: actions/configure-pages@v5
 

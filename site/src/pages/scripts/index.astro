@@ -1,0 +1,29 @@
+---
+import Row from '../../components/Row.astro';
+import Base from '../../layouts/Base.astro';
+import { getCategories, scriptCard } from '../../lib/content';
+
+const categories = await getCategories();
+const groups = await Promise.all(
+  categories.map(async (c) => ({ ...c, cards: await Promise.all(c.scripts.map(scriptCard)) }))
+);
+---
+
+<Base title="腳本" description="我寫過的腳本，每一支都能用一行 curl 在目標機器上執行。" path="/scripts/" active="scripts">
+  <header class="index__head">
+    <h1 class="doc__title">腳本</h1>
+  </header>
+
+  {
+    groups.map((g) => (
+      <section class={`section hue-${g.index % 7}`} aria-labelledby={`c-${g.name}`}>
+        <header class="section__head">
+          <span class="chip" aria-hidden="true" />
+          <h2 class="label" id={`c-${g.name}`}>{g.name}</h2>
+          <span class="section__count label">{g.cards.length}</span>
+        </header>
+        <ul class="rows">{g.cards.map((c) => <Row card={c} />)}</ul>
+      </section>
+    ))
+  }
+</Base>

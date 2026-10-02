@@ -1,0 +1,49 @@
+---
+import { GITHUB_PROFILE, SITE, url } from '../lib/site';
+import Icon from './Icon.astro';
+
+interface Props {
+  /** Which nav entry is the current section. */
+  active?: string;
+}
+const { active } = Astro.props;
+
+/** Chrome: the section names are the interface's own vocabulary, not content. */
+const NAV = [
+  { key: 'posts', label: '文章', href: '/posts/' },
+  { key: 'tools', label: '工具', href: '/tools/' },
+  { key: 'scripts', label: '腳本', href: '/scripts/' },
+  { key: 'about', label: '關於', href: '/about/' },
+];
+---
+
+<header class="masthead">
+  <a class="masthead__name" href={url('/')} aria-label={`${SITE.name} 首頁`}>{SITE.name}</a>
+
+  <nav class="masthead__nav" aria-label="主選單">
+    {
+      NAV.map((n) => (
+        <a href={url(n.href)} aria-current={active === n.key ? 'page' : undefined}>
+          {n.label}
+        </a>
+      ))
+    }
+  </nav>
+
+  <div class="masthead__tools">
+    <a class="tool" href={url('/search/')} aria-label="搜尋" title="搜尋" aria-current={active === 'search' ? 'page' : undefined}>
+      <Icon name="search" />
+    </a>
+    <button class="tool" type="button" data-theme-toggle aria-label="切換深色或淺色主題" title="切換深色或淺色主題">
+      <span class="tool__moon"><Icon name="moon" /></span>
+      <span class="tool__sun"><Icon name="sun" /></span>
+    </button>
+    {
+      GITHUB_PROFILE && (
+        <a class="tool" href={GITHUB_PROFILE} target="_blank" rel="noreferrer noopener" aria-label="GitHub" title="GitHub">
+          <Icon name="github" />
+        </a>
+      )
+    }
+  </div>
+</header>

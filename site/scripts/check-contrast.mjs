@@ -1,192 +1,121 @@
 /**
- * Proves the design system's central claim.
+ * Holds the design system to its contrast claims.
  *
- * The leaf's alpha is binary-searched at runtime so that the reading field
- * lands in a fixed luminance band whatever board it sits on. That is only
- * worth anything if the ink tokens actually clear 4.5:1 against every solved
- * field — on every category, in both themes, including a category nobody has
- * created yet. This asserts exactly that, so a new hue or a retuned band fails
- * here rather than on someone's screen.
+ * Every colour that carries text is derived in src/lib/design.mjs and inlined
+ * into <head> by the base layout, so the value measured here is the value that
+ * ships — there is no second copy in a stylesheet to drift. What this asserts is
+ * that every ink clears 4.5:1 on every surface it can land on: the paper, the
+ * recessed wells (code windows, table heads, inline code), the ageing washes,
+ * the danger fill, and the category fills — in both themes, for every hue,
+ * including the ones no category has claimed yet.
  *
  *   node scripts/check-contrast.mjs
  */
-import * as esbuild from 'esbuild';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { SITE_ROOT } from './sync-content.mjs';
-
-const cacheDir = join(SITE_ROOT, 'node_modules', '.cache');
-mkdirSync(cacheDir, { recursive: true });
-const outFile = join(cacheDir, `design-${process.pid}.mjs`);
-
-const { code } = await esbuild.transform(readFileSync(join(SITE_ROOT, 'src/design.ts'), 'utf8'), {
-  loader: 'ts',
-  format: 'esm',
-});
-writeFileSync(outFile, code);
-
-const design = await import(pathToFileURL(outFile).href);
-process.on('exit', () => {
-  try {
-    rmSync(outFile);
-  } catch {
-    /* best effort */
-  }
-});
-
-const {
-  BOARD_HUES,
+import {
+  AGE,
   BINDER_HUE,
   DANGER,
-  MILK,
+  HUES,
   INK,
-  boardFor,
-  solveLeaf,
-  inkOn,
-  readableOn,
-  hexToRgb,
+  ON_DANGER,
+  PAPER,
+  ageOf,
+  colorCss,
   contrast,
-} = design;
+  hexToRgb,
+  hueFor,
+  inkFor,
+  resolveHue,
+  surfacesFor,
+} from '../src/lib/design.mjs';
 
 const BODY = 4.5;
-const LARGE = 3;
 
 let failures = 0;
-const check = (label, ratio, min) => {
+const check = (label, ratio, min = BODY) => {
   const ok = ratio >= min;
   if (!ok) failures++;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label} — ${ratio.toFixed(2)}:1 (need ${min})`);
 };
-
-// Every board a category can ever land on, plus the binder the overview uses.
-const boards = [...BOARD_HUES, BINDER_HUE];
+const ok = (label, pass, detail = '') => {
+  if (!pass) failures++;
+  console.log(`  ${pass ? 'ok  ' : 'FAIL'} ${label}${detail ? ` — ${detail}` : ''}`);
+};
 
 for (const mode of ['light', 'dark']) {
   const ink = INK[mode];
-  console.log(`\n=== ${mode}`);
+  const surfaces = surfacesFor(mode);
 
-  for (const hue of boards) {
-    const board = boardFor(hue, mode);
-    const leaf = solveLeaf(board, mode);
-    const field = hexToRgb(leaf.hex);
-
-    check(`${hue}  body ink on the solved leaf`, contrast(hexToRgb(ink.primary), field), BODY);
-    check(`${hue}  secondary ink on the solved leaf`, contrast(hexToRgb(ink.secondary), field), BODY);
-    check(`${hue}  tertiary ink on the solved leaf`, contrast(hexToRgb(ink.tertiary), field), BODY);
-
-    // The band, the spine and the open tab are the board at full strength.
-    const on = inkOn(board, INK.light.primary, INK.dark.primary);
-    check(`${hue}  chosen ink on the board itself`, contrast(hexToRgb(on), hexToRgb(board)), BODY);
-
-    // The hue used as ink, after readableOn has mixed it toward the page.
-    check(
-      `${hue}  board-as-ink on the leaf`,
-      contrast(hexToRgb(readableOn(board, leaf.hex, ink.primary)), field),
-      BODY
-    );
-
-    // Vermilion only ever appears on the leaf, and only for danger — and it
-    // is set as small text there, so it is held to the body ratio.
-    check(
-      `${hue}  danger-as-ink on the leaf`,
-      contrast(hexToRgb(readableOn(DANGER[mode], leaf.hex, ink.primary)), field),
-      BODY
-    );
-  }
-}
-
-/*
- * The ageing raise: a leaf whose revision is old yellows by a measurable step.
- * No page in this repo is old enough to show it yet, so the behaviour is
- * asserted here rather than left as a claim nobody can check.
- */
-/*
- * Everything above measures design.ts. The browser paints tokens.css — so if
- * the two disagree, every assertion here is about a value nobody ships. That
- * is exactly what happened once: design.ts moved its light tertiary ink to
- * clear the floor, tokens.css kept the old one, and this script stayed green
- * while the page shipped 4.34:1. The values are compared here so that drift
- * fails the build instead of hiding behind it.
- */
-console.log('\n=== design.ts vs tokens.css');
-{
-  const css = readFileSync(join(SITE_ROOT, 'src/styles/tokens.css'), 'utf8');
-
-  // Innermost brace pairs, each with the selector that precedes it. The block
-  // inside the prefers-color-scheme query is recognised by its own selector,
-  // `:root:not([data-theme='light'])`, because backtracking leaves the @media
-  // line out of the text captured before it.
-  const themed = { light: [], dark: [] };
-  for (const [, before, body] of css.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
-    // Dark is tested first, and by the negation: the dark media block's own
-    // selector mentions `data-theme='light'` and would otherwise read as light.
-    if (/data-theme='dark'|:not\(\[data-theme='light'\]\)/.test(before)) themed.dark.push(body);
-    else if (/data-theme='light'/.test(before)) themed.light.push(body);
+  console.log(`\n=== ${mode}: ink on every surface`);
+  for (const [name, hex] of Object.entries(ink)) {
+    for (const s of surfaces) {
+      // The danger field sits behind an alert's label and body; the quietest ink is
+      // never set there, so it is not held to a surface it cannot appear on.
+      if (name === 'tertiary' && s.name.startsWith('danger field')) continue;
+      check(`${name} on ${s.name}`, contrast(hexToRgb(hex), s.rgb));
+    }
   }
 
-  // The dark values are written twice — an explicit [data-theme='dark'] block
-  // and a prefers-color-scheme block — so every occurrence is checked, which
-  // also catches the two copies drifting apart from each other.
-  const same = (label, name, theme, expected) => {
-    const want = expected.toLowerCase();
-    const found = themed[theme]
-      .map((b) => b.match(new RegExp(`--${name}:\\s*([^;]+);`)))
-      .filter(Boolean)
-      .map((m) => m[1].trim().toLowerCase());
-    const ok = found.length > 0 && found.every((v) => v === want);
-    if (!ok) failures++;
-    console.log(
-      `  ${ok ? 'ok  ' : 'FAIL'} ${label} — design.ts ${want}, tokens.css ${
-        found.length ? found.join(' / ') : '(not found)'
-      }`
-    );
-  };
-
-  for (const theme of ['light', 'dark']) {
-    same(`${theme}  --ink`, 'ink', theme, INK[theme].primary);
-    same(`${theme}  --ink-2`, 'ink-2', theme, INK[theme].secondary);
-    same(`${theme}  --ink-3`, 'ink-3', theme, INK[theme].tertiary);
-    same(`${theme}  --danger`, 'danger', theme, DANGER[theme]);
-    same(`${theme}  --milk`, 'milk', theme, MILK[theme]);
-  }
-}
-
-// The `sudo` chip and the 404 panel print text directly on a vermilion fill.
-console.log('\n=== text on a danger fill');
-for (const [mode, on] of [
-  ['light', '#FBF7EC'],
-  ['dark', '#16150F'],
-]) {
+  console.log(`\n=== ${mode}: danger`);
+  const dangerInk = hexToRgb(inkFor(DANGER[mode], mode));
+  for (const s of surfaces) check(`danger as ink on ${s.name}`, contrast(dangerInk, s.rgb));
   check(
-    `${mode}  chosen ink on the vermilion fill`,
-    contrast(hexToRgb(on), hexToRgb(DANGER[mode])),
-    BODY
+    'text printed on the vermilion fill (sudo flag, failed copy)',
+    contrast(hexToRgb(ON_DANGER[mode]), hexToRgb(DANGER[mode]))
   );
+
+  console.log(`\n=== ${mode}: every hue a category can claim`);
+  for (const hue of [BINDER_HUE, ...HUES]) {
+    const r = resolveHue(hue, mode);
+    check(`${hue}  ink printed on the window head`, contrast(hexToRgb(r.onFill), hexToRgb(r.fill)));
+    // Link underlines and syntax tokens in the hue sit on the paper, in a
+    // code window's recess, and on a page that has aged.
+    for (const s of surfaces) check(`${hue}  hue as ink on ${s.name}`, contrast(hexToRgb(r.ink), s.rgb));
+  }
 }
 
-console.log('\n=== revision ageing');
-const at = (days) => {
-  const then = new Date(Date.UTC(2026, 0, 1));
-  const now = new Date(then.getTime() + days * 86400000);
-  return design.revisionOf(`# X\n\n> 最後更新：2026-01-01\n`, now);
-};
-const step = (label, days, want) => {
-  const got = at(days)?.step;
-  const ok = got === want;
-  if (!ok) failures++;
-  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label} — step ${got}, expected ${want}`);
-};
-step('fresh, 10 days', 10, 0);
-step('one day short of a quarter', 89, 0);
-step('a quarter old, yellowing', 90, 1);
-step('269 days, still yellowing', 269, 1);
-step('three quarters old, bleached', 270, 2);
+console.log('\n=== the stylesheet that ships');
 {
-  const none = design.revisionOf('# X\n\nno revision line\n');
-  const ok = none === null;
-  if (!ok) failures++;
-  console.log(`  ${ok ? 'ok  ' : 'FAIL'} a README with no revision line ages not at all`);
+  const css = colorCss();
+
+  // Three blocks carry the full custom-property set: light, an explicit dark,
+  // and dark under prefers-color-scheme. They come from one function, but the
+  // check is cheap and catches a block that quietly loses a property.
+  const blocks = [];
+  for (const [, head, body] of css.matchAll(/([^{}]+)\{([^{}]*--ink:[^{}]*)\}/g)) {
+    blocks.push({ head: head.trim().split('\n').pop().trim(), props: [...body.matchAll(/(--[\w-]+):/g)].map((m) => m[1]) });
+  }
+  ok('three theme blocks are emitted (light, dark, dark-by-preference)', blocks.length === 3, blocks.map((b) => b.head).join(' | '));
+  const sets = blocks.map((b) => [...new Set(b.props)].sort().join(','));
+  ok('every theme block defines the same custom properties', sets.every((s) => s === sets[0]));
+
+  const has = (needle) => css.includes(needle);
+  ok('paper and ink are the design-system values', has(`--paper: ${PAPER.light}`) && has(`--paper: ${PAPER.dark}`) && has(`--ink: ${INK.light.primary}`) && has(`--ink: ${INK.dark.primary}`));
+  ok('a hue class exists for every palette entry', HUES.every((_, i) => has(`.hue-${i} {`)));
+  ok('the stored theme beats the system setting in both directions', has(`:root[data-theme='dark']`) && has(`:root:not([data-theme='light'])`));
+}
+
+console.log('\n=== hue assignment');
+ok('by position: the first category is the first hue', hueFor(0) === HUES[0]);
+ok('wraps past the palette instead of going grey', hueFor(HUES.length) === HUES[0] && hueFor(HUES.length + 2) === HUES[2]);
+ok('no category is the binder', hueFor(null) === BINDER_HUE && hueFor(-1) === BINDER_HUE);
+ok('vermilion is held out of the palette', !HUES.some((h) => h.toLowerCase() === DANGER.light.toLowerCase() || h.toLowerCase() === DANGER.dark.toLowerCase()));
+
+console.log('\n=== ageing');
+{
+  const at = (days) => {
+    const then = new Date(Date.UTC(2026, 0, 1));
+    return ageOf('2026-01-01', new Date(then.getTime() + days * 86400000));
+  };
+  const step = (label, days, want) => ok(label, at(days)?.step === want, `step ${at(days)?.step}, expected ${want}`);
+  step('fresh, 10 days', 10, 0);
+  step('one day short of a quarter', 89, 0);
+  step('a quarter old: yellowing', 90, 1);
+  step('269 days: still yellowing', 269, 1);
+  step('three quarters old: bleached', 270, 2);
+  ok('a date from a Date object reads the same as the string', ageOf(new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 3, 1)))?.days === 90);
+  ok('no date, no age', ageOf(null) === null && ageOf(undefined) === null);
+  ok('a malformed date, no age', ageOf('not-a-date') === null);
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall design-system checks passed');

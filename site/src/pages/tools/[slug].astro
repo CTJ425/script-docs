@@ -1,0 +1,73 @@
+---
+import Icon from '../../components/Icon.astro';
+import Related from '../../components/Related.astro';
+import StatusMark from '../../components/StatusMark.astro';
+import TagList from '../../components/TagList.astro';
+import Toc from '../../components/Toc.astro';
+import Base from '../../layouts/Base.astro';
+import { ageOfEntry, getTools, refsOfTool, renderEntry } from '../../lib/content';
+import { isoDate, url } from '../../lib/site';
+
+export async function getStaticPaths() {
+  return (await getTools()).map((tool) => ({ params: { slug: tool.id }, props: { tool } }));
+}
+
+const { tool } = Astro.props;
+const d = tool.data;
+const { html, headings } = await renderEntry(tool.body, 'tools');
+const refs = await refsOfTool(tool);
+
+const year = (v?: Date) => (v ? isoDate(v).slice(0, 7) : null);
+const span = [year(d.since), d.status === 'using' ? '至今' : year(d.until)].filter(Boolean).join(' – ');
+const updated = d.updated ? isoDate(d.updated) : null;
+const age = ageOfEntry(updated);
+const repoUrl = d.repo ? `https://github.com/${d.repo}` : null;
+---
+
+<Base title={d.title} description={d.summary} path={`/tools/${tool.id}/`} active="tools" updated={updated ?? undefined}>
+  <article class="doc" data-age={age?.step ?? 0} data-pagefind-body data-pagefind-meta="kind:工具">
+    <header class="doc__head">
+      <p class="doc__meta label" data-pagefind-ignore>
+        <StatusMark status={d.status} />
+        {span && <span>{span}</span>}
+        {d.mine && <span class="row__own">自製</span>}
+        {updated && <span>更新 <time datetime={updated}>{updated}</time></span>}
+      </p>
+      <h1 class="doc__title">{d.title}</h1>
+      <p class="doc__lede">{d.summary}</p>
+      {
+        (d.url || repoUrl) && (
+          <p class="doc__links label" data-pagefind-ignore>
+            {d.url && (
+              <a href={d.url} target="_blank" rel="noreferrer noopener">
+                <Icon name="external" size={13} /> 官網
+              </a>
+            )}
+            {repoUrl && (
+              <a href={repoUrl} target="_blank" rel="noreferrer noopener">
+                <Icon name="github" size={13} /> {d.repo}
+              </a>
+            )}
+          </p>
+        )
+      }
+      {
+        refs.replacedBy && (
+          <p class="doc__note label" data-pagefind-ignore>
+            後來換成 <a href={url(`/tools/${refs.replacedBy.id}/`)}>{refs.replacedBy.data.title}</a>
+          </p>
+        )
+      }
+      <TagList tags={d.tags} />
+    </header>
+
+    <div class="doc__layout">
+      <Toc headings={headings} variant="inline" />
+      <div class="prose" set:html={html} />
+      <aside class="doc__aside" data-pagefind-ignore>
+        <Toc headings={headings} variant="aside" />
+        <Related scripts={refs.scripts} posts={refs.posts} />
+      </aside>
+    </div>
+  </article>
+</Base>

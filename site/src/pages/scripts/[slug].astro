@@ -1,0 +1,76 @@
+---
+import Related from '../../components/Related.astro';
+import TagList from '../../components/TagList.astro';
+import Toc from '../../components/Toc.astro';
+import Base from '../../layouts/Base.astro';
+import { createHash } from 'node:crypto';
+import { ageOfEntry, getScripts, hueClassFor, refsOfScript, renderEntry } from '../../lib/content';
+import { SITE, url } from '../../lib/site';
+
+export async function getStaticPaths() {
+  return (await getScripts()).map((script) => ({ params: { slug: script.id }, props: { script } }));
+}
+
+const { script } = Astro.props;
+const d = script.data;
+// The README, rendered as written. Nothing around it may add to what it says.
+const { html, headings } = await renderEntry(script.body, d.dir);
+const refs = await refsOfScript(script);
+const hue = await hueClassFor(d.category);
+const age = ageOfEntry(d.updated);
+
+const source = SITE.repo.url ? `${SITE.repo.url}/blob/${SITE.repo.branch}/${d.file}` : null;
+// A fingerprint of the exact bytes this page was rendered from. verify-dist
+// recomputes it from the file on disk, which is how "the page is the README"
+// is held to rather than merely claimed.
+const sha = createHash('sha256').update(script.body ?? '').digest('hex').slice(0, 16);
+const description = d.summary;
+---
+
+<Base title={d.title} description={description} path={`/scripts/${script.id}/`} active="scripts" updated={d.updated ?? undefined}>
+  <article
+    class={`doc doc--script ${hue}`}
+    data-age={age?.step ?? 0}
+    data-source={d.file}
+    data-bytes={d.bytes}
+    data-sha={sha}
+    data-pagefind-body
+    data-pagefind-meta="kind:腳本"
+  >
+    <dl class="prov label" data-pagefind-ignore>
+      <div>
+        <dt>Source</dt>
+        <dd>{source ? <a href={source} target="_blank" rel="noreferrer noopener">{d.file}</a> : d.file}</dd>
+      </div>
+      <div>
+        <dt>Bytes</dt>
+        <dd>{d.bytes.toLocaleString('en-US')}</dd>
+      </div>
+      {
+        d.updated && (
+          <div>
+            <dt>Rev</dt>
+            <dd>
+              <time datetime={d.updated}>{d.updated}</time>
+              {age && <span class="age" data-step={age.step}>{age.days}d</span>}
+            </dd>
+          </div>
+        )
+      }
+      <div class="prov__cat">
+        <dt>Category</dt>
+        <dd><a href={url('/scripts/')}><span class="chip" aria-hidden="true" />{d.category}</a></dd>
+      </div>
+    </dl>
+
+    <div class="doc__layout">
+      <Toc headings={headings} variant="inline" />
+      <div class="prose" set:html={html} />
+      <aside class="doc__aside" data-pagefind-ignore>
+        <Toc headings={headings} variant="aside" />
+        {d.tags.length > 0 && <TagList tags={d.tags} />}
+        <Related tools={refs.tools} posts={refs.posts} />
+      </aside>
+    </div>
+  </article>
+</Base>

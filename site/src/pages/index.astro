@@ -1,0 +1,72 @@
+---
+import Row from '../components/Row.astro';
+import Base from '../layouts/Base.astro';
+import {
+  getCategories,
+  getPage,
+  getPosts,
+  getTools,
+  postCard,
+  renderEntry,
+  scriptCard,
+  toolCard,
+} from '../lib/content';
+import { SITE, url } from '../lib/site';
+
+const page = await getPage('home');
+const { html } = await renderEntry(page.body, 'pages');
+
+const posts = (await getPosts()).slice(0, 5).map(postCard);
+const using = (await getTools()).filter((t) => t.data.status === 'using').slice(0, 6).map(toolCard);
+const categories = await getCategories();
+// The five most recently revised: the home page is a front door, /scripts/ is the shelf.
+const recent = categories
+  .flatMap((c) => c.scripts)
+  .sort((a, b) => (b.data.updated ?? '').localeCompare(a.data.updated ?? ''))
+  .slice(0, 5);
+const scriptCards = await Promise.all(recent.map(scriptCard));
+---
+
+<Base title={SITE.name} description={SITE.tagline} path="/">
+  <section class="hero" data-pagefind-body data-pagefind-meta="kind:首頁">
+    <h1 class="hero__name">{SITE.name}</h1>
+    <p class="hero__tagline">{SITE.tagline}</p>
+    <div class="prose prose--lede" set:html={html} />
+  </section>
+
+  {
+    posts.length > 0 && (
+      <section class="section" aria-labelledby="sec-posts">
+        <header class="section__head">
+          <h2 class="label" id="sec-posts">最新文章</h2>
+          <a class="section__more label" href={url('/posts/')}>全部文章</a>
+        </header>
+        <ul class="rows">{posts.map((c) => <Row card={c} />)}</ul>
+      </section>
+    )
+  }
+
+  {
+    using.length > 0 && (
+      <section class="section" aria-labelledby="sec-tools">
+        <header class="section__head">
+          <h2 class="label" id="sec-tools">目前在用的工具</h2>
+          <a class="section__more label" href={url('/tools/')}>工具架</a>
+        </header>
+        <ul class="rows">{using.map((c) => <Row card={c} />)}</ul>
+      </section>
+    )
+  }
+
+  {
+    scriptCards.length > 0 && (
+      <section class="section" aria-labelledby="sec-scripts">
+        <header class="section__head">
+          <h2 class="label" id="sec-scripts">最近更新的腳本</h2>
+          <a class="section__more label" href={url('/scripts/')}>全部腳本</a>
+        </header>
+        <ul class="rows">{scriptCards.map((c) => <Row card={c} />)}</ul>
+      </section>
+    )
+  }
+</Base>

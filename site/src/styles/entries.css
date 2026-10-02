@@ -1,0 +1,153 @@
+/*
+ * One list, everywhere.
+ *
+ * Posts, tools and scripts all render as the same row — a lead column in the
+ * machine's voice and a title in the display voice — so the home page, a tag
+ * page and a search result can sit side by side without a second design. A row
+ * is a line on the page, never a card: the list is one sheet divided by
+ * hairlines.
+ */
+
+.row {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: var(--s5);
+  padding-block: var(--s4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.row__lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding-top: 0.45rem;
+  color: var(--ink-3);
+}
+.row__kind {
+  color: var(--ink-2);
+}
+.row__category {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.row__title {
+  font-family: var(--f-display);
+  font-variation-settings: 'wdth' 92;
+  font-stretch: 92%;
+  font-weight: 700;
+  font-size: var(--t-h3);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.row__title a {
+  text-decoration: none;
+}
+.row__title a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+.row__own {
+  margin-left: var(--s2);
+  padding: 1px var(--s2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-weight: 500;
+  vertical-align: 0.15em;
+}
+
+.row__summary {
+  max-width: var(--measure);
+  margin-top: var(--s1);
+  color: var(--ink-2);
+}
+
+@media (max-width: 640px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s1);
+  }
+  .row__lead {
+    flex-direction: row;
+    gap: var(--s3);
+    padding-top: 0;
+  }
+}
+
+/* status: a mark and a word, never the mark alone --------------------- */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--ink-2);
+}
+.status__mark {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--ink);
+  flex: none;
+}
+/* in use: solid */
+.status[data-status='using'] .status__mark {
+  background: var(--ink);
+}
+/* tried: hollow */
+.status[data-status='tried'] .status__mark {
+  background: transparent;
+}
+/* set aside: struck through */
+.status[data-status='dropped'] .status__mark {
+  background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--ink) 50%, transparent calc(50% + 0.75px));
+  border-color: var(--ink-3);
+}
+
+/* tags ---------------------------------------------------------------- */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin-top: var(--s2);
+}
+.tags a {
+  font-family: var(--f-mono);
+  font-size: var(--t-small);
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color var(--hinge);
+}
+.tags a::before {
+  content: '#';
+  opacity: 0.6;
+}
+.tags a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.tagcloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3) var(--s6);
+  margin-top: var(--s5);
+}
+.tagcloud a {
+  font-family: var(--f-display);
+  font-weight: 600;
+  font-size: 1.125rem;
+  text-decoration: none;
+}
+.tagcloud a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.tagcloud .label {
+  margin-left: var(--s1);
+  color: var(--ink-3);
+}

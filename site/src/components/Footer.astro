@@ -1,0 +1,30 @@
+---
+import { SITE, isoDate, url } from '../lib/site';
+import Icon from './Icon.astro';
+
+/** Built once per deploy: the date states when the site was last generated. */
+const built = isoDate(new Date());
+---
+
+<footer class="footer">
+  <p class="footer__name">{SITE.name}</p>
+  <ul class="footer__links">
+    <li>
+      <a href={url('/rss.xml')}><Icon name="rss" size={15} /> RSS</a>
+    </li>
+    <li><a href={url('/tags/')}>標籤</a></li>
+    <li><a href={url('/search/')}>搜尋</a></li>
+    {
+      SITE.repo.url && (
+        <li>
+          <a href={SITE.repo.url} target="_blank" rel="noreferrer noopener">
+            <Icon name="github" size={15} /> 原始碼
+          </a>
+        </li>
+      )
+    }
+  </ul>
+  <p class="footer__meta label">
+    MIT · BUILT {built}
+  </p>
+</footer>

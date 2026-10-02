@@ -57,6 +57,7 @@ else
     echo ''
     echo "$MARK_START"
     echo '# 只在真正的終端機視窗（pts 虛擬終端機）且為互動模式時才套用，避免滲透到桌面環境本身'
+    # shellcheck disable=SC2016  # written verbatim into the rc file; must not expand here
     echo 'if [[ $- == *i* ]] && [[ "$(tty)" == /dev/pts/* ]]; then'
     echo '    export LC_MESSAGES=en_US.UTF-8'
     echo '    export LANGUAGE=en_US:en'

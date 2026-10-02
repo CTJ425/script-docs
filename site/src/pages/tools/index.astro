@@ -1,0 +1,30 @@
+---
+import Row from '../../components/Row.astro';
+import Base from '../../layouts/Base.astro';
+import { STATUS_LABEL, STATUS_ORDER, getTools, toolCard } from '../../lib/content';
+
+const tools = (await getTools()).map(toolCard);
+const groups = STATUS_ORDER.map((status) => ({
+  status,
+  cards: tools.filter((c) => c.status === status),
+})).filter((g) => g.cards.length > 0);
+---
+
+<Base title="工具" description="用過的工具：現在還在用的、試過的，以及已經淘汰的。" path="/tools/" active="tools">
+  <header class="index__head">
+    <h1 class="doc__title">工具</h1>
+  </header>
+
+  {
+    groups.map((g) => (
+      <section class="section" aria-labelledby={`s-${g.status}`}>
+        <header class="section__head">
+          <h2 class="label" id={`s-${g.status}`}>{STATUS_LABEL[g.status]}</h2>
+          <span class="section__count label">{g.cards.length}</span>
+        </header>
+        <ul class="rows">{g.cards.map((c) => <Row card={c} />)}</ul>
+      </section>
+    ))
+  }
+  {tools.length === 0 && <p class="empty">還沒有工具。</p>}
+</Base>
