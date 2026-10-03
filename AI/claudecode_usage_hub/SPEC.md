@@ -1,157 +1,134 @@
 # Claude Code Usage HUD — Spec
 
 ## Purpose
-A global Claude Code `statusLine` that shows, in one line:
-1. Current model name
-2. 5-hour rolling rate-limit usage
-3. Weekly rate-limit usage
+A Claude Code plugin (function hooks) that shows, in one line above the prompt:
+1. Current model name and reasoning effort
+2. 5-hour rolling rate-limit usage and its reset countdown
+3. Weekly rate-limit usage (no reset time)
 4. Current session's context window usage (tokens used / max)
 
 ## Scope decisions
-- Account-level rate limits only (5h + weekly), not derived/estimated from local
-  transcripts. If the native payload doesn't have the field, fall back to the
-  last value cached on disk; if there is none, show `N/A` for that item — no
-  computation/estimation from other sources.
-- Requires a Claude.ai Pro/Max login for `rate_limits` to be populated. API-key
-  users will see `N/A` for both rate-limit items.
-- No extra info beyond model name + the three usage items (no cwd, no git branch,
-  no cost).
+- Account-level rate limits only (5h + weekly), as Claude Code reports them.
+  No estimation from transcripts. Missing with nothing stored -> `–`.
+- Requires a Claude.ai Pro/Max login for rate limits to be populated.
+- No extra info beyond model + effort and the three usage items.
+- Dim plain text: the 1.x color thresholds are replaced by one text mark
+  (`!`, below).
 
 ## Output format
 ```
-<model> | 5h 45.0% (2h10m) | Wk 23.0% (3d04h) | Ctx 156K/200K
+<model> · <effort>   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
-- Model name truncated to 20 chars.
-- Percentage only (no progress bar), always one decimal place.
-- Color thresholds: green <70%, yellow 70-89.9%, red >=90% (ANSI codes).
-- Reset countdown format: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`.
-- Any missing/unparseable field with no usable cache renders as `N/A` for that
-  segment only — the rest of the line still renders.
-- Cached values are rendered identically to live ones (no staleness marker).
-- On top-level parse failure (empty stdin, invalid JSON, non-object), print a
-  static fallback line and exit 0. Never throw/crash — Claude Code should never
-  see a non-zero exit or stack trace from this command.
+Drawn by a `ui.render` hook on `AbovePrompt` as one `Text` (`dimColor`,
+`wrap="truncate-end"`), so it carries no prefix. Not `$.ui.status`: Claude Code
+shows that as a pinned notice under the prompt, prefixed `⚠ usage-hud: `, and
+the plugin cannot turn the prefix off.
+- The line is held in `$.state` `usage-hud.line` (`string | null`); each look
+  writes it, and the write redraws the band.
+- The band passes (`next(e)`) while a survey holds it (`hasSurvey`) and before
+  the first look. Claude Code raises `AbovePrompt` on the terminal and desktop
+  surfaces only.
+- Segments are three spaces apart; ` · ` binds a value to its qualifier
+  (model to effort, 5h usage to its countdown).
+- Model name (`$.session.model()`) truncated to 20 chars; ` · <effort>` follows
+  it outside that limit, and is left out while no effort is known.
+- Percentage clamped to 0..100 and rounded to a whole number.
+- `!` follows a percentage when the rounded figure is >= 90 (`WARN_PCT`), so a
+  shown `90%` is always marked. One threshold only: a text mark cannot carry
+  the 1.x two-step yellow/red distinction without being misread.
+- 5h reset countdown: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`.
+  The weekly window shows no reset time.
+- Context tokens: `N` below 1000, `NK` below a million, `N.NM` above (`1M`,
+  not `1000K`).
+- Any window with no live or stored value renders `–`; the rest still renders.
+- Stored values render identically to live ones (no staleness marker).
+- A failing read keeps the previous line; no error is surfaced.
+- Non-interactive sessions (`-p`, SDK) draw nothing.
 
-## Data source (Claude Code statusLine stdin JSON)
-Confirmed against the official docs (https://code.claude.com/docs/en/statusline):
-- `model.display_name` -> model name
-- `rate_limits.five_hour.used_percentage` / `.resets_at` -> 5h bar
-- `rate_limits.seven_day.used_percentage` / `.resets_at` -> weekly bar
-- `context_window.used_percentage` / `.context_window_size` -> context tokens
-  (used tokens derived as `round(used_percentage / 100 * context_window_size)`)
+## Data source
+`$.session.usage()` (`SessionUsage`):
+- `rateLimits[]`: `{ kind, percentUsed, resetsAt? }`; only `five_hour` and
+  `seven_day` are used. `resetsAt` is ISO 8601, converted to epoch ms.
+- `context.window` -> max tokens; `context.tokens` -> used tokens, absent until
+  the live window's first response (treated as `0`).
 
-Documented caveats:
-- `rate_limits` is only populated for Pro/Max logins, and only after the first
-  API response in a session — absent before that. Handled by the disk cache
-  below rather than rendering `N/A`.
-- `context_window.used_percentage` can be `null` early in a session — treated
-  as `0` rather than `N/A`, since `context_window_size` (the max) is still known.
+## Effort
+- Read from `turn.step`, the event each model request passes through, on the
+  main loop only (no `agentId`); a subagent's effort is not the session's.
+- The hook observes: it passes the request on unchanged (`yield* next(e)`) and
+  records the effort beside it, never ahead of it.
+- Held in `$.state` `usage-hud.effort` (`string | null`); a change redraws the
+  line at once. `null` when the request carries no effort (a model without the
+  setting). Nothing is shown before the session's first request.
 
-## Cold-start cache
-- File: `~/.claude/usage_hub/cache.json` (override with `USAGE_HUB_CACHE`, used
-  by the tests so they never touch the real `~/.claude`).
-- Shape: `{ version: 1, saved_at: <unix s>, rate_limits: { five_hour, seven_day },
-  context_window_size, sessions }` (`sessions` is described in the per-session
-  freshness bullet below). Each bucket stores `used_percentage` + `resets_at`.
-- Read on every invocation. Resolution order per bucket: live payload value ->
-  fresh cached value -> `N/A`. When both exist, the precedence rule below
-  (shared-cache bullet) picks the rendered value too.
-- A cache is "fresh" for 7 days (`saved_at`); older than that is ignored — both
-  for rendering *and* for the write below, so an expired cache can never be
-  merged forward under a new `saved_at` and thereby outlive its own age limit.
-- A cached bucket whose `resets_at` has already passed has rolled over: renders
-  `0.0%` with no countdown (nothing ran to accrue usage since). This needs a
-  *known* past reset time; a cached bucket with no `resets_at` renders its
-  stored percentage with no countdown, never a `0.0%` it cannot justify.
-- `context_window_size` is also cached, so a payload with no `context_window`
-  still renders `Ctx 0/200K` instead of `Ctx N/A`.
-- Written after the line is printed, only when a live bucket was present and the
-  values actually changed (this runs on every render — avoid pointless writes).
-  Buckets merge over the previous *fresh* cache so a payload carrying only
-  `five_hour` doesn't drop `seven_day`. Write is `mkdirSync -p` -> temp file -> `renameSync`.
-- The cache is shared by every Claude Code session on the machine, and an idle
-  session keeps re-rendering (see `refreshInterval` below) with the
-  `rate_limits` of its own last API response. The account can also *lower*
-  usage inside one window (observed: weekly 35% -> 5% with an unchanged
-  `resets_at`, while `/usage` showed 5%), so "higher wins" is not a safe
-  tie-break: it latched 35% until the window reset.
-- Per-session freshness (payload has a string `session_id`): the cache holds
-  `sessions: { <session_id>: { seen_at, rate_limits } }`, the normalized
-  buckets that session last rendered and the unix time they last changed. The
-  payload is *fresh* when that session has no entry, or when any bucket in
-  `BUCKET_KEYS` differs from the entry (present/absent, `used_percentage`, or
-  `resets_at`) -- `rate_limits` only changes when the session gets an API
-  response. Otherwise it is a *replay*. Per bucket, live `L`, fresh cached
-  bucket `C`:
-  1. `C` absent -> `L`.
-  2. `L.resets_at` has passed and `C.resets_at` is in the future -> `C` (an
-     ended window is stale even when fresh).
-  3. Fresh -> `L`, even with a lower `used_percentage` in the same window.
-  4. Replay -> `C` while `C.resets_at` is in the future; otherwise `L`.
-  The same rule picks the rendered value (against the cache as read at the
-  start of the run). The session entry is updated, with `seen_at = now`, only
-  when the payload is fresh; entries with `seen_at` older than 7 days are
-  dropped on write. A write happens only when a bucket, the context size, or
-  the sessions map changed, so an unchanged replay never rewrites the file.
-  A cache without `sessions` is valid (every session is fresh once).
-- Legacy rule, used only when the payload has no `session_id`. A live bucket
-  replaces a fresh cached bucket only when it is not provably stale. Per
-  bucket, when both have a finite `resets_at`:
-  - equal `resets_at` (same window) -> keep the bucket with the higher
-    `used_percentage`; usage never decreases inside one window.
-  - live `resets_at` has passed and cached `resets_at` has not -> keep the
-    cached bucket. A newer window can only start after the old one resets, so
-    this is exactly the "live is from an earlier window" case.
-  - Any other difference -> use the live bucket (a new window, even when its
-    percentage is lower). Two unexpired, unequal reset times are not treated
-    as evidence of age, so small `resets_at` jitter cannot freeze the cache.
-  - Either `resets_at` missing -> use the live bucket (no evidence of age).
-  The same rule picks the rendered value, so an idle session shows the newer
-  usage another session wrote to the cache instead of its own stale figure
-  (observed: an idle session rendered 5h 76% while an active one had 91%).
-  The render compares against the cache as read at the start of the run, and
-  a cached bucket overrides the live one only while its window is current
-  (`resets_at` in the future); a rolled-over cached window never replaces a
-  live value on screen.
-- Every cache read/write failure (missing, corrupt, unwritable, wrong version) is
-  swallowed: the line still renders and the exit code stays 0.
+## When it refreshes
+- `session.start` (interactive only): first render, then a 5-second
+  `$.clock.every` timer.
+- `session.measure`: pushed after each main-thread turn and when a window moves
+  a whole point.
+- `session.end`: cancels the timer. A hot reload drops timers itself and fires
+  `session.start` again.
+- The timer is required, not cosmetic: `session.measure` does not fire for
+  sub-point changes, countdowns, or another session's writes.
 
-## Implementation
-- Language: Node.js (no python3 on target machine).
-- File: `statusline.js`, single dependency-free script, shebang `#!/usr/bin/env node`.
-- Must run fast (invoked after every UI render) — no network calls, and the only
-  disk I/O is one small synchronous cache read plus one write when the cached
-  values changed. Both degrade silently on failure.
+## Shared store
+- `$.store` key `shared`: `{ savedAt, buckets: { five_hour?, seven_day? } }`,
+  each bucket `{ pct, resetsAt }` (epoch ms, `resetsAt` may be null). One JSON
+  file per plugin under `~/.claude/plugins/store/`, re-read on every `get`, so
+  every session sees the others' writes (verified by editing the file under a
+  running session).
+- Fresh for 7 days (`savedAt`, with 5 minutes of future slack for clock skew);
+  older or malformed values are ignored, both for rendering and as a base for
+  the next write.
+- A stored window whose `resetsAt` has passed renders `0.0%` with no countdown.
+  A stored window with no `resetsAt` renders its percentage without a countdown.
+- Written only when a bucket changed; a reading carrying one window keeps the
+  other from the store.
+
+## Freshness and precedence
+- `$.state` `usage-hud.lastLive` holds this session's own rate limits from its
+  last look. Rate limits change only on an API response, so a reading that
+  differs from it (or with nothing held) is *fresh*; an equal one is a
+  *replay*. `$.state` survives hot reloads, so a reload never turns a replay
+  into a fresh reading.
+- Per window, live `L`, stored `C`:
+  1. `C` absent -> `L`; `L` absent -> `C`.
+  2. `L.resetsAt` has passed and `C.resetsAt` is in the future -> `C`.
+  3. Fresh -> `L`, even when lower inside the same window (the account can
+     lower usage: observed weekly 35% -> 5% with an unchanged reset time).
+  4. Replay -> `C` while `C.resetsAt` is in the future; otherwise `L`.
+- The same rule picks what is shown and what is stored, so an idle session
+  shows the newer usage another session stored and never overwrites it.
+
+## Files
+- `.claude-plugin/plugin.json`: manifest, names the `$.state` contract.
+- `hooks/hooks.json`: `{ "modules": ["./register.ts"] }`.
+- `hooks/register.ts`: hooks and the refresh step (every `$` call).
+- `hooks/hud.ts`: pure logic (precedence, store parsing, formatting).
+- `types/index.d.ts`: `Bucket`/`Buckets` and the `PluginState` contract
+  (`lastLive`, `effort`).
+- `tests/usage-hud.test.ts`: `claude plugin test` suite.
+- `/.claude-plugin/marketplace.json` (repo root): lists this folder as
+  `usage-hud` in the `script-docs` marketplace.
 
 ## Install
-- `install.sh`: one-click installer, run via
-  `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/claudecode_usage_hub/install.sh | bash`
-- Downloads `statusline.js` to `~/.claude/usage_hub/statusline.js`.
-- Backs up any existing `~/.claude/settings.json` before writing, then merges in
-  `statusLine: { type: "command", command: "node ~/.claude/usage_hub/statusline.js", refreshInterval: 5 }`
-  without touching other settings keys.
-- `refreshInterval: 5` (seconds) is required, not cosmetic. Claude Code re-runs
-  the statusLine only on main-session events (new assistant message, `/compact`,
-  mode changes). While the main session waits on a subagent those events stop,
-  so without a timer the 5h/Wk percentages and countdowns freeze until the
-  main session receives its next response.
-- Requires `node` in PATH; exits with an error message if missing.
+- `claude plugin marketplace add CTJ425/script-docs`, then
+  `claude plugin install usage-hud@script-docs`; restart Claude Code.
+- An installed plugin's hooks module loads behind Claude Code's
+  `tengu_plugin_hooks_modules` rollout flag (seen in `--debug` output).
 
 ## Testing
-- `test-statusline.js`: spawns `statusline.js` as a child process for each case,
-  feeds JSON on stdin, points `USAGE_HUB_CACHE` at a temp dir, asserts on stdout.
-  Covers: full valid payload, no bar characters in output, missing `rate_limits`,
-  missing `context_window`, missing `model`, malformed JSON, empty stdin,
-  non-object JSON (array/string), extreme percentages (0, 70, 100, negative,
-  >100, NaN/Infinity-equivalent via string), long model name truncation,
-  ASCII-only output; plus cache behaviour: file written, cold start uses cache,
-  live wins over cache, expired window -> `0.0%` with no countdown, >7-day cache
-  ignored (and never re-stamped as fresh by a later write), corrupt cache,
-  unknown cache version, unwritable cache path, per-bucket merge, a cached
-  bucket without `resets_at`, no rewrite when unchanged, cache dir created,
-  a stale live bucket (same window with a lower percentage, or an earlier
-  window) never overwrites the cache, a newer window always does; a fresh session
-  payload lowers the cache inside one window, an unchanged replay never does,
-  a change in any bucket makes the whole payload fresh, and stale session
-  entries are pruned; plus the
-  installer writes `refreshInterval` and keeps unrelated settings keys.
+`claude plugin test AI/claudecode_usage_hub` runs `tests/usage-hud.test.ts`
+against the engine with a mocked clock, an in-memory store, and the test's own
+`session.usage` / `session.model` answers, reading the line from its
+`$.state` writes. Covers: the band drawing the line on terminal and desktop,
+the band passing during a survey and before the first look, full line,
+`–` with no reading, model truncation, clamping and unknown kinds,
+non-interactive sessions, a failing read, timer refresh, `session.measure`,
+`session.end` stopping the timer, cold start from the store, rolled-over window,
+7-day expiry, malformed store, store write, a fresh lower reading lowering the
+store, an idle replay deferring to another session's write, an ended live
+window, per-window merge, a replay right after a hot reload, effort from the
+main loop only and dropped for a model without it, the `!` mark on the
+rounded figure (89.4 -> `89%`, 89.6 -> `90%!`), no weekly reset time, and
+`1M` context windows.

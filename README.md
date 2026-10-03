@@ -1,6 +1,6 @@
 # ivan note
 
-> 最後更新：2026-10-02
+> 最後更新：2026-10-03
 
 個人資訊部落格：我寫過的 script、用過的工具，以及 GitHub 上的專案筆記。
 
@@ -38,7 +38,7 @@
 | 專案 | 說明 |
 | --- | --- |
 | [AGY Usage HUD](./AI/agy_usage_hud) | Antigravity CLI (`agy`) 狀態列：模型名稱、Context Window 用量、5h 與每週配額用量、重置倒數 |
-| [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code 狀態列：模型名稱、5h / 每週用量、context window，含冷啟動快取 |
+| [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code plugin（mod）狀態列：模型與 effort、5h 用量與重置倒數、每週用量、context window，各 session 共用最新用量 |
 | [Global CLAUDE.md](./AI/md) | 給 Claude Code 用的全域指令檔，套用在所有專案 |
 
 ### ☸️ [`container/`](./container) —— 容器與 Kubernetes
@@ -69,7 +69,7 @@
 | 用途 | 指令 |
 | --- | --- |
 | **AGY Usage HUD** | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/agy_usage_hud/setup.sh \| bash` |
-| **Claude Code Usage HUD** | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/claudecode_usage_hub/install.sh \| bash` |
+| **Claude Code Usage HUD** | `claude plugin marketplace add CTJ425/script-docs && claude plugin install usage-hud@script-docs` |
 | **RHEL/Rocky VM 封裝成範本**<br>清理機器識別碼並裝上開機設定精靈 | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/RHEL-Family-Temp/seal-rhel-template.sh \| sudo bash -s -- --yes --poweroff` |
 | **Supabase Self-Hosted 自動化部署** | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/deploy-supabase/deploy-supabase.sh -o deploy-supabase.sh \<br>  && chmod +x deploy-supabase.sh \<br>  && ./deploy-supabase.sh` |
 | **Kubernetes 節點前置環境**<br>關閉 swap、載入核心模組、設定 sysctl | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh \| sudo bash -s -- --yes` |

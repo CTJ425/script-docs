@@ -1,60 +1,68 @@
 # Claude Code Usage HUD
 
-> 最後更新：2026-09-23
+> 最後更新：2026-10-03
 
-A global Claude Code statusline showing model name, 5-hour / weekly rate-limit
-usage, and current session context-window usage.
+A Claude Code plugin that shows model and reasoning effort, 5-hour usage with
+its reset countdown, weekly usage, and current session context-window usage as
+one line above the prompt.
 
 ```
-Claude Sonnet 5 | 5h 45.0% (2h10m) | Wk 23.0% (3d04h) | Ctx 156K/200K
+Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
+
+It is a *mod*: a plugin of function hooks that runs inside Claude Code. It
+draws its own row in the band above the prompt rather than a plugin status
+line, which Claude Code would show as a notice under the prompt prefixed
+`⚠ usage-hud:`. The line is dim plain text: a window at 90% or more is marked
+with `!` (`5h 93%!`).
+
+- **Effort** appears after the session's first model request, since only a
+  request carries it; a model without an effort setting shows none.
+- A window with no figure yet shows `–`.
 
 ## Requirements
-- Node.js in `PATH`
-- Claude.ai Pro/Max login (rate-limit usage shows `N/A` for API-key accounts)
+- Claude Code with plugin function hooks (`hooks/hooks.json` → `modules`).
+  The API is early access and may change between releases.
+- Claude.ai Pro/Max login (rate-limit usage shows `–` for API-key accounts)
 
-Claude Code doesn't include rate-limit data until a session's first API response,
-so the last known values are cached in `~/.claude/usage_hub/cache.json` and shown
-meanwhile — a new session opens with real numbers instead of `N/A`. A cached
-window whose reset time has already passed shows `0.0%`; a cache older than 7
-days is ignored and is not carried forward into a newer one.
-
-The cache is shared by all your sessions. An idle session only knows the usage
-from its own last API response, so the newer figure wins — both in the cache and
-on screen. Within the same window the higher percentage is kept, and a window
-that has already reset never replaces a current one. An idle session therefore
-shows the usage your active session last saw, not its own stale number.
-
-Claude Code re-runs the statusline only on main-session events, so while the
-main session waits on a subagent the line would stop updating. The installer
-sets `refreshInterval: 5` to re-run it every 5 seconds instead.
-
-## One-click install
+## Install
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/AI/claudecode_usage_hub/install.sh | bash
+claude plugin marketplace add CTJ425/script-docs
+claude plugin install usage-hud@script-docs
 ```
-Restart Claude Code afterward. This writes `statusLine` (with `refreshInterval`) into `~/.claude/settings.json`
-(backing up any existing file first) and copies `statusline.js` to `~/.claude/usage_hub/`.
+Restart Claude Code afterward. Update later with
+`claude plugin update usage-hud@script-docs`.
 
-## Manual install
-1. Copy `statusline.js` anywhere, e.g. `~/.claude/usage_hub/statusline.js`.
-2. Add to `~/.claude/settings.json`:
-   ```json
-   {
-     "statusLine": {
-       "type": "command",
-       "command": "node ~/.claude/usage_hub/statusline.js",
-       "refreshInterval": 5
-     }
-   }
-   ```
-3. Restart Claude Code.
+### Upgrading from the statusline script (1.x)
+The old version was a `statusLine` command. Remove the `statusLine` key from
+`~/.claude/settings.json` and delete `~/.claude/usage_hub/`, or both lines show.
+
+## How it stays current
+- Claude Code pushes a `session.measure` event after each turn and whenever a
+  rate-limit window moves a whole point; a 5-second timer covers the rest
+  (decimals, countdowns, and usage while the session waits on a subagent).
+- Claude Code doesn't report rate limits until a session's first API response,
+  so the last known values are kept in the plugin's store and shown meanwhile —
+  a new session opens with real numbers instead of `–`. A stored window whose
+  reset time has already passed shows `0.0%`; values older than 7 days are
+  ignored.
+- The store is shared by all your sessions. An idle session only knows the
+  usage from its own last API response, so it shows what an active session
+  stored instead, and never overwrites it. A session's own new reading always
+  wins, even when it is lower inside the same window.
 
 ## Uninstall
-Remove the `statusLine` key from `~/.claude/settings.json` (or restore your
-`.bak` file created during install) and delete `~/.claude/usage_hub/`.
-
-## Testing
 ```bash
-node test-statusline.js
+claude plugin uninstall usage-hud@script-docs
+```
+
+## Development
+Load the folder for one session (it hot-reloads on save):
+```bash
+claude --plugin-dir ./AI/claudecode_usage_hub
+```
+Check and test it:
+```bash
+claude plugin validate AI/claudecode_usage_hub
+claude plugin test AI/claudecode_usage_hub
 ```
