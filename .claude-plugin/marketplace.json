@@ -6,7 +6,7 @@
     {
       "name": "usage-hud",
       "source": "./AI/claudecode_usage_hub",
-      "description": "Claude Code Usage HUD: model and effort, 5h / weekly rate-limit usage and context window as a line above the prompt"
+      "description": "Claude Code Usage HUD: model and effort, 5h / weekly rate-limit usage and context window as a line under the prompt"
     }
   ]
 }

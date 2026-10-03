@@ -4,20 +4,26 @@
 
 A Claude Code plugin that shows model and reasoning effort, 5-hour usage with
 its reset countdown, weekly usage, and current session context-window usage as
-one line above the prompt.
+one line directly under the prompt, on the same row as the mode pill.
 
 ```
-Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
+⏵⏵ auto mode on · Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
 
 It is a *mod*: a plugin of function hooks that runs inside Claude Code. It
-draws its own row in the band above the prompt rather than a plugin status
-line, which Claude Code would show as a notice under the prompt prefixed
-`⚠ usage-hud:`. The line is dim plain text: a window at 90% or more is marked
-with `!` (`5h 93%!`).
+takes the place of Claude Code's hint text (`(shift+tab to cycle)`, `?
+for shortcuts`) while idle; during a turn the hint (`esc to interrupt`) keeps
+that row and the HUD moves to the row under it. Claude Code draws the mode
+pill itself, ahead of any plugin, so no row can go between the pill and the
+prompt. It draws there rather than as a plugin status line, which Claude Code would show as a notice prefixed
+`⚠ usage-hud:`. Color separates what a segment is from its value: the labels
+(`5h`, `Wk`, `Ctx`) and separators are dim, the values are in the theme's
+accent color, and a window at 90% or more turns to the error color and is
+marked with `!` (`5h 93%!`).
 
-- **Effort** appears after the session's first model request, since only a
-  request carries it; a model without an effort setting shows none.
+- **Effort** comes from the session's model requests. Before the first one,
+  the settings' `effortLevel` for the model (`modelSettings.<model>`, else the
+  top level) stands in; a model without an effort setting shows none.
 - A window with no figure yet shows `–`.
 
 ## Requirements

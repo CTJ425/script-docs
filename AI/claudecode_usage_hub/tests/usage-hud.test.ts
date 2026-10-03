@@ -2,7 +2,8 @@ import type { On, SessionRateLimit, SessionUsage } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { MAX_AGE_MS } from '../hooks/hud'
+import { MAX_AGE_MS, lineText } from '../hooks/hud'
+import type { Span } from '../hooks/hud'
 
 const NOW = Date.UTC(2026, 9, 3, 12, 0, 0)
 const H = 3_600_000
@@ -15,6 +16,7 @@ type World = {
   model?: string
   store?: Record<string, unknown>
   interactive?: boolean
+  settings?: Record<string, unknown>
 }
 
 /** Stands up the engine beneath the plugin and returns what it observed. */
@@ -42,11 +44,14 @@ function world(on: On, w: World) {
     return { value }
   })
   on('session.model', () => ({ value: w.model ?? 'Claude Sonnet 5' }))
-  // The line the band draws, as the plugin writes it to $.state.
+  on('settings.read', () => ({ value: w.settings ?? {} }))
+  // The line drawn under the prompt, as the plugin writes it to $.state.
   on('state.set', ($, e, next) => {
-    if (e.key === 'line') state.statuses.push(e.value as string)
+    if (e.key === 'line') state.statuses.push(lineText(e.value as Span[]))
     return next(e)
   })
+  // The engine's hint line: one Text of the hint it was handed.
+  on('ui.render', ($, e) => h($.ui.resolve(e).Text, {}, (e.props as { hint: string }).hint) as never)
   on('session.start', () => ({ cwd: '/tmp' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('session.end', () => ({ sessionId: 's' }))
@@ -114,35 +119,52 @@ describe('rendering', () => {
   })
 })
 
-const BAND = {
+const HINT = {
   plugin: 'usage-hud',
-  component: 'AbovePrompt',
-  props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 },
+  component: 'PromptHint',
+  props: { isDraft: false, isWorking: false, hint: 'auto mode on (shift+tab to cycle)' },
 } as const
 
-describe('band', () => {
-  test('draws the line above the prompt, with no prefix, on every surface that has the band', async ($, on) => {
+describe('under the prompt', () => {
+  test('idle, draws the line in place of the engine hint text, on every surface that has it', async ($, on) => {
     world(on, { rateLimits: both(45, 23), tokens: 156_000 })
     await start($)
     for (const surface of ['terminal', 'desktop'] as const) {
-      const ui = await $.ui.mount({ ...BAND, surface } as never)
+      const ui = await $.ui.mount({ ...HINT, surface } as never)
       const text = await ui.find({ type: 'Text' })
       expect(text?.text).toBe('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
       await ui.unmount()
     }
   })
 
-  test('yields the band to a survey, and draws nothing before the first look', async ($, on) => {
-    world(on, { rateLimits: both(45, 23) })
-    // The engine draws nothing of its own in the band: an empty Box stands in.
-    on('ui.render', ($, e) => h($.ui.resolve(e).Box, {}) as never)
-    const before = await $.ui.mount({ ...BAND, surface: 'terminal' } as never)
-    expect(await before.find({ type: 'Text' })).toBeUndefined()
-    await before.unmount()
+  test('labels are dim, values colored, a warned value in the warning color', async ($, on) => {
+    world(on, { rateLimits: both(93, 23), tokens: 156_000 })
     await start($)
-    const survey = await $.ui.mount({ ...BAND, surface: 'terminal', props: { ...BAND.props, hasSurvey: true } } as never)
-    expect(await survey.find({ type: 'Text' })).toBeUndefined()
-    await survey.unmount()
+    const ui = await $.ui.mount({ ...HINT, surface: 'terminal' } as never)
+    const runs = await ui.findAll({ type: 'Text' })
+    const by = (t: string) => runs.find(r => r.text === t)?.props
+    expect(by('5h')).toMatchObject({ dimColor: true })
+    expect(by('23%')).toMatchObject({ color: 'suggestion' })
+    expect(by('93%!')).toMatchObject({ color: 'error' })
+    await ui.unmount()
+  })
+
+  test('the engine hint alone before the first look', async ($, on) => {
+    world(on, { rateLimits: both(45, 23) })
+    const ui = await $.ui.mount({ ...HINT, surface: 'terminal' } as never)
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).toEqual([HINT.props.hint])
+    await ui.unmount()
+  })
+
+  test('while a turn runs, the engine hint keeps its row and ours goes under it', async ($, on) => {
+    world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    const props = { ...HINT.props, isWorking: true, hint: 'esc to interrupt' }
+    const ui = await $.ui.mount({ ...HINT, props, surface: 'terminal' } as never)
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    expect(texts[0]).toBe('esc to interrupt')
+    expect(texts).toContain('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
+    await ui.unmount()
   })
 })
 
@@ -309,6 +331,29 @@ describe('model and effort', () => {
     await step($, undefined)
     await w.clock.settle()
     expect(w.last()?.startsWith('Haiku 4.5   5h')).toBe(true)
+  })
+})
+
+describe('effort before the first request', () => {
+  test("the settings' effortLevel for the model stands in", async ($, on) => {
+    const settings = { effortLevel: 'low', modelSettings: { 'claude-opus-5-5': { effortLevel: 'medium' } } }
+    const w = world(on, { rateLimits: both(45, 23), model: 'claude-opus-5-5', settings })
+    await start($)
+    expect(w.last()?.startsWith('claude-opus-5-5 · medium   5h')).toBe(true)
+  })
+
+  test('the top-level effortLevel when the model has none of its own', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), model: 'Opus 5.5', settings: { effortLevel: 'high' } })
+    await start($)
+    expect(w.last()?.startsWith('Opus 5.5 · high   5h')).toBe(true)
+  })
+
+  test('the first request replaces the guess, a model without effort included', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), model: 'Opus 5.5', settings: { effortLevel: 'high' } })
+    await start($)
+    await step($, undefined)
+    await w.clock.settle()
+    expect(w.last()?.startsWith('Opus 5.5   5h')).toBe(true)
   })
 })
 

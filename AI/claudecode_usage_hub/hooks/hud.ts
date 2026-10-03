@@ -1,6 +1,6 @@
 import type { SessionRateLimit, SessionContextUsage } from 'claude-code'
 
-import type { Bucket, Buckets } from '../types'
+import type { Bucket, Buckets, Span } from '../types'
 
 /**
  * Pure logic of the usage HUD: what to show and what to share between
@@ -115,6 +115,20 @@ export function nextShared(live: Buckets, prev: Shared | null, fresh: boolean, n
   return { savedAt: now, buckets }
 }
 
+/**
+ * The effort the settings give `model`: `modelSettings[model].effortLevel`,
+ * else the top-level `effortLevel`; null when neither names one. Only a guess
+ * until the first request says what was actually sent.
+ */
+export function settingsEffort(settings: Readonly<Record<string, unknown>>, model: string): string | null {
+  const per = settings.modelSettings
+  const own =
+    per && typeof per === 'object' ? (per as Record<string, unknown>)[model] : undefined
+  const level = own && typeof own === 'object' ? (own as Record<string, unknown>).effortLevel : undefined
+  if (typeof level === 'string' && level) return level
+  return typeof settings.effortLevel === 'string' && settings.effortLevel ? settings.effortLevel : null
+}
+
 export function countdown(resetsAt: number | null, now: number): string | null {
   if (resetsAt === null) return null
   const s = Math.max(0, Math.round((resetsAt - now) / 1000))
@@ -126,17 +140,31 @@ export function countdown(resetsAt: number | null, now: number): string | null {
   return `${m}m`
 }
 
-// At or past this, a window is marked with `!`: the status line has no
-// colors, so one threshold is all a text mark can say without misreading.
+// At or past this, a window is marked with `!` and drawn in the warning
+// color; the mark keeps the warning legible where color is not.
 export const WARN_PCT = 90
 
-function rateSegment(label: string, v: { pct: number | null; resetsAt: number | null }, now: number, withReset: boolean) {
-  if (v.pct === null) return `${label} –`
+/**
+ * What a run of text is for: `label` names a segment (`5h`, `Wk`, `Ctx`),
+ * `data` is a value, `warn` a value at or past WARN_PCT. No tone: the
+ * separators and `–`.
+ */
+export type { Span }
+export type Tone = NonNullable<Span['tone']>
+
+const SEP: Span = { text: '   ' }
+const BIND: Span = { text: ' · ' }
+const SPACE: Span = { text: ' ' }
+
+function rateSegment(label: string, v: { pct: number | null; resetsAt: number | null }, now: number, withReset: boolean): Span[] {
+  const head: Span[] = [{ text: label, tone: 'label' }, SPACE]
+  if (v.pct === null) return [...head, { text: '–' }]
   // The rounded figure decides the mark too, so "90%" is never shown unmarked.
   const pct = Math.round(v.pct)
-  const shown = `${label} ${pct}%${pct >= WARN_PCT ? '!' : ''}`
+  const warn = pct >= WARN_PCT
+  const shown: Span = { text: `${pct}%${warn ? '!' : ''}`, tone: warn ? 'warn' : 'data' }
   const cd = withReset ? countdown(v.resetsAt, now) : null
-  return cd ? `${shown} · ${cd}` : shown
+  return cd ? [...head, shown, BIND, { text: cd, tone: 'data' }] : [...head, shown]
 }
 
 function tokens(n: number) {
@@ -145,18 +173,19 @@ function tokens(n: number) {
   return String(Math.round(n))
 }
 
-function contextSegment(ctx: SessionContextUsage) {
-  if (!isNum(ctx.window) || ctx.window <= 0) return 'Ctx –'
+function contextSegment(ctx: SessionContextUsage): Span[] {
+  const head: Span[] = [{ text: 'Ctx', tone: 'label' }, SPACE]
+  if (!isNum(ctx.window) || ctx.window <= 0) return [...head, { text: '–' }]
   // tokens is absent until the live window's first response: nothing used yet.
   const used = isNum(ctx.tokens) ? ctx.tokens : 0
-  return `Ctx ${tokens(used)}/${tokens(ctx.window)}`
+  return [...head, { text: `${tokens(used)}/${tokens(ctx.window)}`, tone: 'data' }]
 }
 
 /**
- * `Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M`
+ * `Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M`, as tagged runs.
  * Segments are three spaces apart; `·` binds a value to its qualifier.
  */
-export function renderLine(
+export function renderSpans(
   model: string,
   effort: string | null,
   live: Buckets,
@@ -164,15 +193,20 @@ export function renderLine(
   fresh: boolean,
   ctx: SessionContextUsage,
   now: number,
-): string {
-  const parts: string[] = []
+): Span[] {
+  const segments: Span[][] = []
   const name = model.slice(0, 20)
-  if (name) parts.push(effort ? `${name} · ${effort}` : name)
-  parts.push(rateSegment('5h', resolve(live.five_hour, shared?.buckets.five_hour, fresh, now), now, true))
-  parts.push(rateSegment('Wk', resolve(live.seven_day, shared?.buckets.seven_day, fresh, now), now, false))
-  parts.push(contextSegment(ctx))
-  return parts.join('   ')
+  if (name) {
+    const m: Span = { text: name, tone: 'data' }
+    segments.push(effort ? [m, BIND, { text: effort, tone: 'data' }] : [m])
+  }
+  segments.push(rateSegment('5h', resolve(live.five_hour, shared?.buckets.five_hour, fresh, now), now, true))
+  segments.push(rateSegment('Wk', resolve(live.seven_day, shared?.buckets.seven_day, fresh, now), now, false))
+  segments.push(contextSegment(ctx))
+  return segments.flatMap((seg, i) => (i === 0 ? seg : [SEP, ...seg]))
 }
+
+export const lineText = (spans: readonly Span[]) => spans.map(s => s.text).join('')
 
 export function sameShared(a: Shared | null, b: Shared | null) {
   if (!a || !b) return a === b

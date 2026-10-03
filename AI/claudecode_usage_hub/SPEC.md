@@ -1,7 +1,7 @@
 # Claude Code Usage HUD — Spec
 
 ## Purpose
-A Claude Code plugin (function hooks) that shows, in one line above the prompt:
+A Claude Code plugin (function hooks) that shows, in one line under the prompt (on the mode pills' row):
 1. Current model name and reasoning effort
 2. 5-hour rolling rate-limit usage and its reset countdown
 3. Weekly rate-limit usage (no reset time)
@@ -12,30 +12,43 @@ A Claude Code plugin (function hooks) that shows, in one line above the prompt:
   No estimation from transcripts. Missing with nothing stored -> `–`.
 - Requires a Claude.ai Pro/Max login for rate limits to be populated.
 - No extra info beyond model + effort and the three usage items.
-- Dim plain text: the 1.x color thresholds are replaced by one text mark
-  (`!`, below).
+- Color tells a label from a value; one warning threshold (`!`, below), not
+  the 1.x two-step yellow/red.
 
 ## Output format
 ```
 <model> · <effort>   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
-Drawn by a `ui.render` hook on `AbovePrompt` as one `Text` (`dimColor`,
-`wrap="truncate-end"`), so it carries no prefix. Not `$.ui.status`: Claude Code
-shows that as a pinned notice under the prompt, prefixed `⚠ usage-hud: `, and
-the plugin cannot turn the prefix off.
-- The line is held in `$.state` `usage-hud.line` (`string | null`); each look
-  writes it, and the write redraws the band.
-- The band passes (`next(e)`) while a survey holds it (`hasSurvey`) and before
-  the first look. Claude Code raises `AbovePrompt` on the terminal and desktop
-  surfaces only.
+Drawn by a `ui.render` hook on `PromptHint` (the dim line under the prompt
+that carries the mode pills). The terminal draws the pills itself, ahead of
+whatever a hook returns, so nothing can sit between them and the prompt
+(checked against a live terminal: a `next(e)` placed after the HUD row in a
+column still draws above it). Idle, the hook returns the HUD row alone, which
+takes the place of the engine's hint text beside the pills; while
+`isWorking`, it returns a column of the engine's line (`next(e)`, `esc to
+interrupt`) and the HUD row beneath it. Not `$.ui.status`: Claude
+Code shows that as a pinned notice, prefixed `⚠ usage-hud: `, and the plugin
+cannot turn the prefix off.
+- The row is one `Text` (`wrap="truncate-end"`) of nested `Text` runs. Each run
+  carries a tone (`Span`, `types/index.d.ts`):
+  | Tone | What | Drawn |
+  | --- | --- | --- |
+  | `label` | `5h`, `Wk`, `Ctx` | `dimColor` |
+  | `data` | model, effort, percentages, countdown, tokens | theme key `suggestion` |
+  | `warn` | a percentage at or past `WARN_PCT` | theme key `error` |
+  | none | separators, `–` | `dimColor` |
+- The line is held in `$.state` `usage-hud.line` (`Span[] | null`); each look
+  writes it, and the write redraws the row.
+- Before the first look the hook returns the engine's line alone. Claude Code
+  raises `PromptHint` on the terminal and desktop surfaces only.
 - Segments are three spaces apart; ` · ` binds a value to its qualifier
   (model to effort, 5h usage to its countdown).
 - Model name (`$.session.model()`) truncated to 20 chars; ` · <effort>` follows
   it outside that limit, and is left out while no effort is known.
 - Percentage clamped to 0..100 and rounded to a whole number.
-- `!` follows a percentage when the rounded figure is >= 90 (`WARN_PCT`), so a
-  shown `90%` is always marked. One threshold only: a text mark cannot carry
-  the 1.x two-step yellow/red distinction without being misread.
+- `!` follows a percentage, and the `warn` tone colors it, when the rounded
+  figure is >= 90 (`WARN_PCT`), so a shown `90%` is always marked. The mark
+  stays so the warning reads where color does not.
 - 5h reset countdown: `XdYYh` if >=1 day, `XhYYm` if >=1 hour, else `Xm`.
   The weekly window shows no reset time.
 - Context tokens: `N` below 1000, `NK` below a million, `N.NM` above (`1M`,
@@ -59,7 +72,11 @@ the plugin cannot turn the prefix off.
   records the effort beside it, never ahead of it.
 - Held in `$.state` `usage-hud.effort` (`string | null`); a change redraws the
   line at once. `null` when the request carries no effort (a model without the
-  setting). Nothing is shown before the session's first request.
+  setting); unset before the session's first request.
+- While unset, the merged settings (`$.settings.read()`) stand in:
+  `modelSettings[<model id>].effortLevel`, else `effortLevel`. A guess, since
+  `/effort` or the environment can override them; the first request replaces
+  it, including with `null`.
 
 ## When it refreshes
 - `session.start` (interactive only): first render, then a 5-second
@@ -102,11 +119,11 @@ the plugin cannot turn the prefix off.
 
 ## Files
 - `.claude-plugin/plugin.json`: manifest, names the `$.state` contract.
-- `hooks/hooks.json`: `{ "modules": ["./register.ts"] }`.
-- `hooks/register.ts`: hooks and the refresh step (every `$` call).
+- `hooks/hooks.json`: `{ "modules": ["./register.tsx"] }`.
+- `hooks/register.tsx`: hooks and the refresh step (every `$` call).
 - `hooks/hud.ts`: pure logic (precedence, store parsing, formatting).
-- `types/index.d.ts`: `Bucket`/`Buckets` and the `PluginState` contract
-  (`lastLive`, `effort`).
+- `types/index.d.ts`: `Bucket`/`Buckets`/`Span` and the `PluginState`
+  contract (`lastLive`, `effort`, `line`).
 - `tests/usage-hud.test.ts`: `claude plugin test` suite.
 - `/.claude-plugin/marketplace.json` (repo root): lists this folder as
   `usage-hud` in the `script-docs` marketplace.
@@ -121,14 +138,16 @@ the plugin cannot turn the prefix off.
 `claude plugin test AI/claudecode_usage_hub` runs `tests/usage-hud.test.ts`
 against the engine with a mocked clock, an in-memory store, and the test's own
 `session.usage` / `session.model` answers, reading the line from its
-`$.state` writes. Covers: the band drawing the line on terminal and desktop,
-the band passing during a survey and before the first look, full line,
+`$.state` writes. Covers: the row drawn in place of the engine's hint text
+on terminal and desktop while idle, and under the engine's line mid-turn, the tones (dim label, `suggestion` value, `error` at
+the mark), the hint line alone before the first look, full line,
 `–` with no reading, model truncation, clamping and unknown kinds,
 non-interactive sessions, a failing read, timer refresh, `session.measure`,
 `session.end` stopping the timer, cold start from the store, rolled-over window,
 7-day expiry, malformed store, store write, a fresh lower reading lowering the
 store, an idle replay deferring to another session's write, an ended live
 window, per-window merge, a replay right after a hot reload, effort from the
-main loop only and dropped for a model without it, the `!` mark on the
+main loop only and dropped for a model without it, the settings' effort
+before the first request, the `!` mark on the
 rounded figure (89.4 -> `89%`, 89.6 -> `90%!`), no weekly reset time, and
 `1M` context windows.

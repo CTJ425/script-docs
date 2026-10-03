@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { liveBuckets, nextShared, parseShared, renderLine, sameBuckets, sameShared } from './hud'
+import { liveBuckets, nextShared, parseShared, renderSpans, sameBuckets, sameShared, settingsEffort } from './hud'
+import type { Tone } from './hud'
 import type { Buckets } from '../types'
 
 const STORE_KEY = 'shared'
@@ -15,13 +16,21 @@ const TICK_MS = 5000
 // $.state, not a module variable, so a hot reload doesn't mistake an idle
 // replay for a fresh reading.
 const LAST_LIVE = { plugin: 'usage-hud', key: 'lastLive' } as const
-// The effort the main loop's last model request carried. Only a request says
-// it, so a session shows none until its first one.
+// The effort the main loop's last model request carried; unset until the
+// first one, when the settings' effortLevel for the model stands in.
 const EFFORT = { plugin: 'usage-hud', key: 'effort' } as const
-// The line the band above the prompt draws; null until the first look. Drawn
-// there rather than with $.ui.status, which the engine shows as a pinned
-// notice under its own `⚠ usage-hud:` prefix.
+// The line drawn under the prompt, on the row of the engine's mode pills;
+// null until the first look. Drawn there rather than with $.ui.status, which the engine
+// shows as a pinned notice under its own `⚠ usage-hud:` prefix.
 const LINE = atom({ plugin: 'usage-hud', key: 'line' } as const, null)
+
+// Labels say what a segment is and stay dim; values carry the color, so the
+// eye lands on the figures. Theme keys, so both follow the person's theme.
+const TONE: Record<Tone, { color?: string; dimColor?: boolean }> = {
+  label: { dimColor: true },
+  data: { color: 'suggestion' },
+  warn: { color: 'error' },
+}
 
 let timer: Timer | null = null
 
@@ -40,8 +49,9 @@ async function refresh($: EngineInterface) {
     const fresh = lastLive === null || !sameBuckets(lastLive, live)
     if (fresh && Object.keys(live).length > 0) await $.state.set(LAST_LIVE, live)
 
+    const shown = effort.value !== undefined ? effort.value : settingsEffort(await $.settings.read(), model)
     const shared = parseShared(stored, now)
-    const line = renderLine(model, effort.value ?? null, live, shared, fresh, usage.context, now)
+    const line = renderSpans(model, shown, live, shared, fresh, usage.context, now)
     await update($, LINE, () => line)
 
     const next = nextShared(live, shared, fresh, now)
@@ -55,7 +65,8 @@ async function noteEffort($: EngineInterface, effort: string | number | undefine
   try {
     const value = effort === undefined ? null : String(effort)
     const held = await $.state.get(EFFORT)
-    if ((held.value ?? null) === value) return
+    // Unset and null differ: null is a model that takes none, which ends the guess.
+    if (held.value === value) return
     await $.state.set(EFFORT, value)
     await refresh($)
   } catch {
@@ -87,14 +98,29 @@ export const register: Register = on => {
     return yield* next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  // The terminal draws the mode pills (`⏵⏵ auto mode on`) itself, ahead of
+  // anything a hook returns, so no row can sit between them and the prompt.
+  // Idle, our line takes the place of the engine's hint text on the pills'
+  // row; while a turn runs, the engine's hint (`esc to interrupt`) keeps that
+  // row and ours goes under it.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const line = await read($, LINE)
-    if (e.props.hasSurvey || line === null) return next(e)
-    const { Text } = $.ui.resolve(e)
-    return (
-      <Text dimColor wrap="truncate-end">
-        {line}
+    if (line === null) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const hud = (
+      <Text wrap="truncate-end">
+        {line.map(s => (
+          <Text {...(s.tone ? TONE[s.tone] : { dimColor: true })}>{s.text}</Text>
+        ))}
       </Text>
+    )
+    if (!e.props.isWorking) return hud
+    const engine = await next(e)
+    return (
+      <Box flexDirection="column">
+        {engine}
+        {hud}
+      </Box>
     )
   })
 
