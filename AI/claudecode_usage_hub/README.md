@@ -32,12 +32,36 @@ marked with `!` (`5h 93%!`).
 - Claude.ai Pro/Max login (rate-limit usage shows `–` for API-key accounts)
 
 ## Install
+1. Add the marketplace. From GitHub:
+   ```bash
+   claude plugin marketplace add CTJ425/script-docs
+   ```
+   Or from a local clone, which installs exactly what is checked out
+   (unpushed commits included):
+   ```bash
+   git clone https://github.com/CTJ425/script-docs.git
+   claude plugin marketplace add ./script-docs
+   ```
+   Both register the marketplace as `script-docs`; add only one of them.
+2. Install the plugin:
+   ```bash
+   claude plugin install usage-hud@script-docs
+   ```
+3. Check it is installed and enabled:
+   ```bash
+   claude plugin list
+   ```
+   `usage-hud@script-docs` should show `Status: ✔ enabled`.
+4. Restart Claude Code. The line appears under the prompt; the usage figures
+   fill in after the first reply (or at once, from the store, if another
+   session already has them).
+
+### Update
 ```bash
-claude plugin marketplace add CTJ425/script-docs
-claude plugin install usage-hud@script-docs
+claude plugin marketplace update script-docs
+claude plugin update usage-hud@script-docs
 ```
-Restart Claude Code afterward. Update later with
-`claude plugin update usage-hud@script-docs`.
+Restart Claude Code afterward.
 
 ### Upgrading from the statusline script (1.x)
 The old version was a `statusLine` command. Remove the `statusLine` key from
@@ -60,6 +84,13 @@ The old version was a `statusLine` command. Remove the `statusLine` key from
 ## Uninstall
 ```bash
 claude plugin uninstall usage-hud@script-docs
+```
+To remove everything, also drop the marketplace, the stored usage and the
+cached copies (`uninstall` keeps every version it ever installed):
+```bash
+claude plugin marketplace remove script-docs
+rm -f ~/.claude/plugins/store/usage-hud_script-docs-*.json
+rm -rf ~/.claude/plugins/cache/script-docs/usage-hud
 ```
 
 ## Development
