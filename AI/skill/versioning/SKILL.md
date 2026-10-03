@@ -215,6 +215,23 @@ Such a workflow almost always creates only *missing* Releases and **skips existi
 ones**, which is why the changelog has to be final before the push. Once the Release
 exists, the only fix is by hand.
 
+**A CI-created tag is not in your clone.** The workflow creates it on the server, so your
+local repository never has it until you `git fetch --tags`. This bites during a history
+rewrite: `git push --force --tags` pushes the tags you hold and silently leaves the
+CI-created ones pointing at commits that no longer exist. After any rewrite, list the
+remote's tags and check each one resolves in the new history:
+
+```bash
+git ls-remote --tags origin | grep -v '\^{}' | while read sha ref; do
+  git cat-file -e "$sha^{commit}" 2>/dev/null || echo "STALE: ${ref#refs/tags/} $sha"
+done
+```
+
+Re-point a stale tag through the rewrite's own mapping —
+`grep "^<old-sha> " .git/filter-repo/commit-map` gives the new one — then force-push that
+single ref. Measured 2026-10-01: one of 179 tags was stale this way, and it was the newest
+one, the Release everybody would open first.
+
 ### Publish or update
 
 ```bash

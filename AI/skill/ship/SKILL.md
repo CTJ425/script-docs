@@ -115,6 +115,17 @@ environment name, or a flag. A wrong deploy target is not recoverable by editing
 Check the deployed result, not the build output. Use `verify.hookSkill` or `verify.cmd`.
 Report what you actually observed. If you could not verify, say so and say why.
 
+**Never compare a host's built asset names against your own `npm run build`.** A static
+host (Cloudflare Pages, Netlify, Vercel) builds in its own environment, so content hashes
+legitimately differ from yours and a mismatch proves nothing. Measured 2026-10-01: ~15
+minutes were spent waiting for a deploy that had already happened, because the live
+`index-*.js` did not match the local one. Verify by **content** instead — fetch the live
+asset and grep for a string only this release contains — or read a version marker the page
+itself exposes.
+
+A missing asset can also answer `200`: a single-page app rewrites unknown paths to
+`index.html`. Check that what came back is not HTML before concluding the file is there.
+
 ### 7. Finalize the changelog — before any release push
 
 Delete every "pending", "not deployed", or "to be confirmed" note from the entry.
@@ -145,6 +156,10 @@ Pushing `releaseBranch` moves code, not a running service. Whatever step 5 deplo
 the dev environment must be deployed to production **separately**, after the push, and
 verified there. Skipping this leaves production running the old code while the changelog
 claims otherwise.
+
+A static host that builds from `releaseBranch` is the one exception, and it is
+**asynchronous**: the push only queues a build. Confirm the new frontend is actually
+being served before reporting the release as done, using the content check in step 6.
 
 ### 11. Record
 
