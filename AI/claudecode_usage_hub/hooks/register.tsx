@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import { liveBuckets, nextShared, parseShared, renderSpans, sameBuckets, sameShared, settingsEffort } from './hud'
-import type { Tone } from './hud'
+import type { Icon, Span, Tone } from './hud'
 import type { Buckets } from '../types'
 
 const STORE_KEY = 'shared'
@@ -31,6 +31,28 @@ const TONE: Record<Tone, { color?: string; dimColor?: boolean }> = {
   data: { color: 'suggestion' },
   warn: { color: 'error' },
 }
+
+// The desktop draws each label as a 16-unit icon instead of the terminal's
+// glyph. An Svg is an isolated image that cannot read the theme, so the
+// stroke is a mid grey that holds up on light and dark alike, as dim as the
+// labels it stands for. `alt` says what the icon names.
+const STROKE = 'fill="none" stroke="#8a8a8a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">${body}</svg>`
+const ICON: Record<Icon, { source: string; alt: string }> = {
+  five_hour: {
+    source: svg(`<circle cx="8" cy="8" r="6.25" ${STROKE}/><path d="M8 4.5V8l2.5 1.5" ${STROKE}/>`),
+    alt: '5-hour usage',
+  },
+  seven_day: {
+    source: svg(`<rect x="2" y="3" width="12" height="11" rx="1.5" ${STROKE}/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" ${STROKE}/>`),
+    alt: 'weekly usage',
+  },
+  context: {
+    source: svg(`<rect x="2" y="2.5" width="12" height="11" rx="1.5" ${STROKE}/><rect x="4" y="4.5" width="4" height="7" rx=".5" fill="#8a8a8a"/>`),
+    alt: 'context window',
+  },
+}
+const ICON_PX = 12
 
 let timer: Timer | null = null
 
@@ -107,13 +129,32 @@ export const register: Register = on => {
     const line = await read($, LINE)
     if (line === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const hud = (
-      <Text wrap="truncate-end">
-        {line.map(s => (
-          <Text {...(s.tone ? TONE[s.tone] : { dimColor: true })}>{s.text}</Text>
-        ))}
-      </Text>
-    )
+    const tone = (s: Span) => (s.tone ? TONE[s.tone] : { dimColor: true })
+    let hud
+    if (e.surface === 'desktop') {
+      // Icons in place of the labels, each run between them a Text. The page
+      // collapses a run's edge spaces, so they go non-breaking.
+      const { Svg } = $.ui.resolve(e)
+      hud = (
+        <Box flexDirection="row" alignItems="center">
+          {line.map(s =>
+            s.icon ? (
+              <Svg {...ICON[s.icon]} width={ICON_PX} height={ICON_PX} />
+            ) : (
+              <Text {...tone(s)}>{s.text.replace(/ /g, '\u00a0')}</Text>
+            ),
+          )}
+        </Box>
+      )
+    } else {
+      hud = (
+        <Text wrap="truncate-end">
+          {line.map(s => (
+            <Text {...tone(s)}>{s.text}</Text>
+          ))}
+        </Text>
+      )
+    }
     if (!e.props.isWorking) return hud
     const engine = await next(e)
     return (

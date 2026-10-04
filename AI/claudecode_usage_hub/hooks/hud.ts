@@ -1,6 +1,6 @@
 import type { SessionRateLimit, SessionContextUsage } from 'claude-code'
 
-import type { Bucket, Buckets, Span } from '../types'
+import type { Bucket, Buckets, Icon, Span } from '../types'
 
 /**
  * Pure logic of the usage HUD: what to show and what to share between
@@ -145,19 +145,25 @@ export function countdown(resetsAt: number | null, now: number): string | null {
 export const WARN_PCT = 90
 
 /**
- * What a run of text is for: `label` names a segment (`5h`, `Wk`, `Ctx`),
+ * What a run of text is for: `label` names a segment (`◷`, `⊞`, `◧`),
  * `data` is a value, `warn` a value at or past WARN_PCT. No tone: the
  * separators and `–`.
  */
-export type { Span }
+export type { Icon, Span }
 export type Tone = NonNullable<Span['tone']>
+
+// The terminal's glyph for each label: one column wide (East Asian Width N,
+// not A), so a CJK locale doesn't draw it double and shift the truncation.
+// Other surfaces draw an icon of their own in its place.
+export const GLYPH: Record<Icon, string> = { five_hour: '◷', seven_day: '⊞', context: '◧' }
+const label = (icon: Icon): Span => ({ text: GLYPH[icon], tone: 'label', icon })
 
 const SEP: Span = { text: '   ' }
 const BIND: Span = { text: ' · ' }
 const SPACE: Span = { text: ' ' }
 
-function rateSegment(label: string, v: { pct: number | null; resetsAt: number | null }, now: number, withReset: boolean): Span[] {
-  const head: Span[] = [{ text: label, tone: 'label' }, SPACE]
+function rateSegment(icon: Icon, v: { pct: number | null; resetsAt: number | null }, now: number, withReset: boolean): Span[] {
+  const head: Span[] = [label(icon), SPACE]
   if (v.pct === null) return [...head, { text: '–' }]
   // The rounded figure decides the mark too, so "90%" is never shown unmarked.
   const pct = Math.round(v.pct)
@@ -174,7 +180,7 @@ function tokens(n: number) {
 }
 
 function contextSegment(ctx: SessionContextUsage): Span[] {
-  const head: Span[] = [{ text: 'Ctx', tone: 'label' }, SPACE]
+  const head: Span[] = [label('context'), SPACE]
   if (!isNum(ctx.window) || ctx.window <= 0) return [...head, { text: '–' }]
   // tokens is absent until the live window's first response: nothing used yet.
   const used = isNum(ctx.tokens) ? ctx.tokens : 0
@@ -182,7 +188,7 @@ function contextSegment(ctx: SessionContextUsage): Span[] {
 }
 
 /**
- * `Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M`, as tagged runs.
+ * `Opus 5.5 · high   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/1M`, as tagged runs.
  * Segments are three spaces apart; `·` binds a value to its qualifier.
  */
 export function renderSpans(
@@ -200,8 +206,8 @@ export function renderSpans(
     const m: Span = { text: name, tone: 'data' }
     segments.push(effort ? [m, BIND, { text: effort, tone: 'data' }] : [m])
   }
-  segments.push(rateSegment('5h', resolve(live.five_hour, shared?.buckets.five_hour, fresh, now), now, true))
-  segments.push(rateSegment('Wk', resolve(live.seven_day, shared?.buckets.seven_day, fresh, now), now, false))
+  segments.push(rateSegment('five_hour', resolve(live.five_hour, shared?.buckets.five_hour, fresh, now), now, true))
+  segments.push(rateSegment('seven_day', resolve(live.seven_day, shared?.buckets.seven_day, fresh, now), now, false))
   segments.push(contextSegment(ctx))
   return segments.flatMap((seg, i) => (i === 0 ? seg : [SEP, ...seg]))
 }
