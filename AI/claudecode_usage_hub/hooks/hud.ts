@@ -145,18 +145,20 @@ export function countdown(resetsAt: number | null, now: number): string | null {
 export const WARN_PCT = 90
 
 /**
- * What a run of text is for: `label` names a segment (`◷`, `⊞`, `◧`),
+ * What a run of text is for: `label` names a segment (`5h`, `Wk`, `Ctx`),
  * `data` is a value, `warn` a value at or past WARN_PCT. No tone: the
  * separators and `–`.
  */
 export type { Icon, Span }
 export type Tone = NonNullable<Span['tone']>
 
-// The terminal's glyph for each label: one column wide (East Asian Width N,
-// not A), so a CJK locale doesn't draw it double and shift the truncation.
-// Other surfaces draw an icon of their own in its place.
-export const GLYPH: Record<Icon, string> = { five_hour: '◷', seven_day: '⊞', context: '◧' }
-const label = (icon: Icon): Span => ({ text: GLYPH[icon], tone: 'label', icon })
+// The text a label shows on the terminal. Plain ASCII on purpose: a symbol
+// such as ◷ falls back to a font that draws it wider than its cell, and a
+// multiplexer that places every non-ASCII cell by cursor address (herdr)
+// then paints the next cell over half of it. Other surfaces draw an icon of
+// their own in its place.
+export const LABEL: Record<Icon, string> = { five_hour: '5h', seven_day: 'Wk', context: 'Ctx' }
+const label = (icon: Icon): Span => ({ text: LABEL[icon], tone: 'label', icon })
 
 const SEP: Span = { text: '   ' }
 const BIND: Span = { text: ' · ' }
@@ -188,7 +190,7 @@ function contextSegment(ctx: SessionContextUsage): Span[] {
 }
 
 /**
- * `Opus 5.5 · high   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/1M`, as tagged runs.
+ * `Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M`, as tagged runs.
  * Segments are three spaces apart; `·` binds a value to its qualifier.
  */
 export function renderSpans(

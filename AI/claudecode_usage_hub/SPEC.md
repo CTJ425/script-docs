@@ -17,7 +17,7 @@ A Claude Code plugin (function hooks) that shows, in one line under the prompt (
 
 ## Output format
 ```
-<model> · <effort>   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/1M
+<model> · <effort>   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
 Drawn by a `ui.render` hook on `PromptHint` (the dim line under the prompt
 that carries the mode pills). The terminal draws the pills itself, ahead of
@@ -29,10 +29,13 @@ takes the place of the engine's hint text beside the pills; while
 interrupt`) and the HUD row beneath it. Not `$.ui.status`: Claude
 Code shows that as a pinned notice, prefixed `⚠ usage-hud: `, and the plugin
 cannot turn the prefix off.
-- Labels are icons. A label run carries `icon` (`five_hour`, `seven_day`,
-  `context`) and, as its text, the terminal's glyph (`GLYPH`: `◷`, `⊞`, `◧`),
-  chosen one column wide (East Asian Width `N`, not `A`) so a CJK locale does
-  not draw it double.
+- Labels are icons on the desktop and text on the terminal. A label run
+  carries `icon` (`five_hour`, `seven_day`, `context`) and, as its text, the
+  terminal's label (`LABEL`: `5h`, `Wk`, `Ctx`). The terminal keeps ASCII:
+  symbols such as `◷ ⊞ ◧` fall back to a font that draws them wider than a
+  cell, and herdr, which places every non-ASCII cell by cursor address, then
+  paints the next cell over half of the glyph (seen 2026-10-04; fine outside
+  herdr).
 - On the terminal the row is one `Text` (`wrap="truncate-end"`) of nested
   `Text` runs. On the desktop it is a `Box` row: each label an `Svg` (12px,
   mid-grey stroke, as the image cannot read the theme; `alt` names the
@@ -40,7 +43,7 @@ cannot turn the prefix off.
   page would collapse them. Each run carries a tone (`Span`, `types/index.d.ts`):
   | Tone | What | Drawn |
   | --- | --- | --- |
-  | `label` | `◷`, `⊞`, `◧` (icons on the desktop) | `dimColor` |
+  | `label` | `5h`, `Wk`, `Ctx` (icons on the desktop) | `dimColor` |
   | `data` | model, effort, percentages, countdown, tokens | theme key `suggestion` |
   | `warn` | a percentage at or past `WARN_PCT` | theme key `error` |
   | none | separators, `–` | `dimColor` |
@@ -146,7 +149,7 @@ cannot turn the prefix off.
 against the engine with a mocked clock, an in-memory store, and the test's own
 `session.usage` / `session.model` answers, reading the line from its
 `$.state` writes. Covers: the row drawn in place of the engine's hint text
-on terminal and desktop while idle (glyphs on the terminal, `Svg` icons with
+on terminal and desktop while idle (text labels on the terminal, `Svg` icons with
 non-breaking runs on the desktop), and under the engine's line mid-turn on both, the tones (dim label, `suggestion` value, `error` at
 the mark), the hint line alone before the first look, full line,
 `–` with no reading, model truncation, clamping and unknown kinds,

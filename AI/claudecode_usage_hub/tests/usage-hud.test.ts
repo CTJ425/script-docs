@@ -76,19 +76,19 @@ describe('rendering', () => {
   test('full payload renders every segment', async ($, on) => {
     const w = world(on, { rateLimits: both(45, 23), tokens: 156_000 })
     await start($)
-    expect(w.last()).toBe('Claude Sonnet 5   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/200K')
+    expect(w.last()).toBe('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
   })
 
   test('no reading and no store renders N/A, context still known', async ($, on) => {
     const w = world(on, {})
     await start($)
-    expect(w.last()).toBe('Claude Sonnet 5   ◷ –   ⊞ –   ◧ 0/200K')
+    expect(w.last()).toBe('Claude Sonnet 5   5h –   Wk –   Ctx 0/200K')
   })
 
   test('long model name is cut to 20 characters', async ($, on) => {
     const w = world(on, { model: 'An Extremely Long Model Name Indeed' })
     await start($)
-    expect(w.last()?.startsWith('An Extremely Long Mo   ◷')).toBe(true)
+    expect(w.last()?.startsWith('An Extremely Long Mo   5h')).toBe(true)
   })
 
   test('percentages outside 0..100 are clamped; other kinds are ignored', async ($, on) => {
@@ -100,7 +100,7 @@ describe('rendering', () => {
       ],
     })
     await start($)
-    expect(w.last()).toContain('◷ 100%! · 1h00m   ⊞ 0%   ◧')
+    expect(w.last()).toContain('5h 100%! · 1h00m   Wk 0%   Ctx')
   })
 
   test('non-interactive session draws nothing', async ($, on) => {
@@ -131,7 +131,7 @@ describe('under the prompt', () => {
     await start($)
     const ui = await $.ui.mount({ ...HINT, surface: 'terminal' } as never)
     const text = await ui.find({ type: 'Text' })
-    expect(text?.text).toBe('Claude Sonnet 5   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/200K')
+    expect(text?.text).toBe('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
     await ui.unmount()
     // The desktop draws the labels as icons, in the same places, and every value.
     const desk = await $.ui.mount({ ...HINT, surface: 'desktop' } as never)
@@ -142,12 +142,12 @@ describe('under the prompt', () => {
     await desk.unmount()
   })
 
-  test('the desktop keeps the glyphs off its line and its spaces non-breaking', async ($, on) => {
+  test('the desktop keeps the text labels off its line and its spaces non-breaking', async ($, on) => {
     world(on, { rateLimits: both(45, 23), tokens: 156_000 })
     await start($)
     const ui = await $.ui.mount({ ...HINT, surface: 'desktop' } as never)
     const runs = (await ui.findAll({ type: 'Text' })).map(t => t.text ?? '')
-    expect(runs.some(t => /[◷⊞◧]/.test(t))).toBe(false)
+    expect(runs.some(t => /^(5h|Wk|Ctx)$/.test(t))).toBe(false)
     expect(runs.some(t => t.includes(' '))).toBe(false)
     await ui.unmount()
   })
@@ -168,7 +168,7 @@ describe('under the prompt', () => {
     const ui = await $.ui.mount({ ...HINT, surface: 'terminal' } as never)
     const runs = await ui.findAll({ type: 'Text' })
     const by = (t: string) => runs.find(r => r.text === t)?.props
-    expect(by('◷')).toMatchObject({ dimColor: true })
+    expect(by('5h')).toMatchObject({ dimColor: true })
     expect(by('23%')).toMatchObject({ color: 'suggestion' })
     expect(by('93%!')).toMatchObject({ color: 'error' })
     await ui.unmount()
@@ -188,7 +188,7 @@ describe('under the prompt', () => {
     const ui = await $.ui.mount({ ...HINT, props, surface: 'terminal' } as never)
     const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
     expect(texts[0]).toBe('esc to interrupt')
-    expect(texts).toContain('Claude Sonnet 5   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/200K')
+    expect(texts).toContain('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
     await ui.unmount()
   })
 })
@@ -199,7 +199,7 @@ describe('refresh', () => {
     await start($)
     w.state.rateLimits = both(46.5, 23)
     await w.clock.advance(60_000)
-    expect(w.last()).toContain('◷ 47% · 2h09m')
+    expect(w.last()).toContain('5h 47% · 2h09m')
   })
 
   test('session.measure refreshes at once', async ($, on) => {
@@ -207,7 +207,7 @@ describe('refresh', () => {
     await start($)
     w.state.tokens = 50_000
     await $.session.measure({ context: { window: 200_000, tokens: 50_000 }, rateLimits: [], changed: ['context'] })
-    expect(w.last()).toContain('◧ 50K/200K')
+    expect(w.last()).toContain('Ctx 50K/200K')
   })
 
   test('session.end stops the timer', async ($, on) => {
@@ -231,25 +231,25 @@ describe('shared store', () => {
   test('cold start shows the stored figures', async ($, on) => {
     const w = world(on, { store: shared(61, 30) })
     await start($)
-    expect(w.last()).toContain('◷ 61% · 2h00m   ⊞ 30%   ◧')
+    expect(w.last()).toContain('5h 61% · 2h00m   Wk 30%   Ctx')
   })
 
   test('a stored window that already reset shows 0.0% without a countdown', async ($, on) => {
     const w = world(on, { store: shared(61, 30, NOW, NOW - 60_000) })
     await start($)
-    expect(w.last()).toContain('◷ 0%   ⊞ 30%')
+    expect(w.last()).toContain('5h 0%   Wk 30%')
   })
 
   test('a store older than 7 days is ignored', async ($, on) => {
     const w = world(on, { store: shared(61, 30, NOW - MAX_AGE_MS - 1) })
     await start($)
-    expect(w.last()).toContain('◷ –   ⊞ –')
+    expect(w.last()).toContain('5h –   Wk –')
   })
 
   test('a malformed store is ignored', async ($, on) => {
     const w = world(on, { store: { shared: [1, 2, 3] } })
     await start($)
-    expect(w.last()).toContain('◷ –   ⊞ –')
+    expect(w.last()).toContain('5h –   Wk –')
   })
 
   test('a fresh reading is stored', async ($, on) => {
@@ -261,7 +261,7 @@ describe('shared store', () => {
   test('a fresh lower reading in the same window lowers the store', async ($, on) => {
     const w = world(on, { rateLimits: both(5, 23, NOW + 2 * H), store: shared(35, 23) })
     await start($)
-    expect(w.last()).toContain('◷ 5% · ')
+    expect(w.last()).toContain('5h 5% · ')
     expect(w.stored('five_hour')).toBe(5)
   })
 
@@ -271,14 +271,14 @@ describe('shared store', () => {
     // Another session got a newer response and wrote it.
     w.store.set('shared', shared(91, 24).shared)
     await w.clock.advance(5000)
-    expect(w.last()).toContain('◷ 91%!')
+    expect(w.last()).toContain('5h 91%!')
     expect(w.stored('five_hour')).toBe(91)
   })
 
   test('a live window that has ended never replaces a current stored one', async ($, on) => {
     const w = world(on, { rateLimits: both(80, 23, NOW - 60_000), store: shared(12, 23, NOW, NOW + 4 * H) })
     await start($)
-    expect(w.last()).toContain('◷ 12% · 4h00m')
+    expect(w.last()).toContain('5h 12% · 4h00m')
   })
 
   test('a reading carrying one window keeps the other from the store', async ($, on) => {
@@ -287,7 +287,7 @@ describe('shared store', () => {
       store: shared(30, 55),
     })
     await start($)
-    expect(w.last()).toContain('◷ 40% · 1h00m   ⊞ 55%')
+    expect(w.last()).toContain('5h 40% · 1h00m   Wk 55%')
     expect(w.stored('seven_day')).toBe(55)
   })
 })
@@ -317,7 +317,7 @@ describe('hot reload', () => {
       return { value: { value, version: 1 } }
     })
     await start($)
-    expect(w.last()).toContain('◷ 91%!')
+    expect(w.last()).toContain('5h 91%!')
     expect(w.stored('five_hour')).toBe(91)
   })
 })
@@ -334,10 +334,10 @@ describe('model and effort', () => {
   test('effort shows once the main loop sends a request', async ($, on) => {
     const w = world(on, { rateLimits: both(45, 23), model: 'Opus 5.5' })
     await start($)
-    expect(w.last()?.startsWith('Opus 5.5   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Opus 5.5   5h')).toBe(true)
     await step($, 'high')
     await w.clock.settle()
-    expect(w.last()?.startsWith('Opus 5.5 · high   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Opus 5.5 · high   5h')).toBe(true)
   })
 
   test("a subagent's effort is not the session's", async ($, on) => {
@@ -346,7 +346,7 @@ describe('model and effort', () => {
     await step($, 'high')
     await step($, 'low', 'agent-1')
     await w.clock.settle()
-    expect(w.last()?.startsWith('Opus 5.5 · high   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Opus 5.5 · high   5h')).toBe(true)
   })
 
   test('a model without effort drops it again', async ($, on) => {
@@ -355,7 +355,7 @@ describe('model and effort', () => {
     await step($, 'high')
     await step($, undefined)
     await w.clock.settle()
-    expect(w.last()?.startsWith('Haiku 4.5   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Haiku 4.5   5h')).toBe(true)
   })
 })
 
@@ -364,13 +364,13 @@ describe('effort before the first request', () => {
     const settings = { effortLevel: 'low', modelSettings: { 'claude-opus-5-5': { effortLevel: 'medium' } } }
     const w = world(on, { rateLimits: both(45, 23), model: 'claude-opus-5-5', settings })
     await start($)
-    expect(w.last()?.startsWith('claude-opus-5-5 · medium   ◷')).toBe(true)
+    expect(w.last()?.startsWith('claude-opus-5-5 · medium   5h')).toBe(true)
   })
 
   test('the top-level effortLevel when the model has none of its own', async ($, on) => {
     const w = world(on, { rateLimits: both(45, 23), model: 'Opus 5.5', settings: { effortLevel: 'high' } })
     await start($)
-    expect(w.last()?.startsWith('Opus 5.5 · high   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Opus 5.5 · high   5h')).toBe(true)
   })
 
   test('the first request replaces the guess, a model without effort included', async ($, on) => {
@@ -378,7 +378,7 @@ describe('effort before the first request', () => {
     await start($)
     await step($, undefined)
     await w.clock.settle()
-    expect(w.last()?.startsWith('Opus 5.5   ◷')).toBe(true)
+    expect(w.last()?.startsWith('Opus 5.5   5h')).toBe(true)
   })
 })
 
@@ -386,7 +386,7 @@ describe('marks and units', () => {
   test('the ! mark follows the rounded figure: 89.4 is 89%, 89.6 is 90%!', async ($, on) => {
     const w = world(on, { rateLimits: both(89.4, 89.6) })
     await start($)
-    expect(w.last()).toContain('◷ 89% · 2h10m   ⊞ 90%!   ◧')
+    expect(w.last()).toContain('5h 89% · 2h10m   Wk 90%!   Ctx')
   })
 
   test('the weekly window shows no reset time', async ($, on) => {
@@ -398,6 +398,6 @@ describe('marks and units', () => {
   test('a 1M window reads 1M, not 1000K', async ($, on) => {
     const w = world(on, { rateLimits: both(45, 23), tokens: 156_000, window: 1_000_000 })
     await start($)
-    expect(w.last()).toContain('◧ 156K/1M')
+    expect(w.last()).toContain('Ctx 156K/1M')
   })
 })

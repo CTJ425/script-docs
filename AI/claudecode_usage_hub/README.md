@@ -7,7 +7,7 @@ its reset countdown, weekly usage, and current session context-window usage as
 one line directly under the prompt, on the same row as the mode pill.
 
 ```
-⏵⏵ auto mode on · Opus 5.5 · high   ◷ 45% · 2h10m   ⊞ 23%   ◧ 156K/1M
+⏵⏵ auto mode on · Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
 ```
 
 It is a *mod*: a plugin of function hooks that runs inside Claude Code. It
@@ -17,12 +17,12 @@ that row and the HUD moves to the row under it. Claude Code draws the mode
 pill itself, ahead of any plugin, so no row can go between the pill and the
 prompt. It draws there rather than as a plugin status line, which Claude Code would show as a notice prefixed
 `⚠ usage-hud:`. Each segment is
-labelled by an icon: `◷` the 5-hour window, `⊞` the week, `◧` the context
-window. The terminal draws them as these one-column characters; Claude Desktop
-draws the same line with small vector icons in their place. Color separates
-what a segment is from its value: the icons and separators are dim, the values
-are in the theme's accent color, and a window at 90% or more turns to the
-error color and is marked with `!` (`◷ 93%!`).
+labelled: `5h` the 5-hour window, `Wk` the week, `Ctx` the context window.
+In the terminal the labels stay plain text, which every font and multiplexer
+draws one column wide; Claude Desktop draws small vector icons in their place.
+Color separates what a segment is from its value: the labels and separators
+are dim, the values are in the theme's accent color, and a window at 90% or
+more turns to the error color and is marked with `!` (`5h 93%!`).
 
 - **Effort** comes from the session's model requests. Before the first one,
   the settings' `effortLevel` for the model (`modelSettings.<model>`, else the

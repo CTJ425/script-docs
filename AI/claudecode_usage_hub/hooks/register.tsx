@@ -33,7 +33,7 @@ const TONE: Record<Tone, { color?: string; dimColor?: boolean }> = {
 }
 
 // The desktop draws each label as a 16-unit icon instead of the terminal's
-// glyph. An Svg is an isolated image that cannot read the theme, so the
+// text. An Svg is an isolated image that cannot read the theme, so the
 // stroke is a mid grey that holds up on light and dark alike, as dim as the
 // labels it stands for. `alt` says what the icon names.
 const STROKE = 'fill="none" stroke="#8a8a8a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'

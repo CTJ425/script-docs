@@ -5,7 +5,7 @@ export type Buckets = { five_hour?: Bucket; seven_day?: Bucket }
 export type Icon = 'five_hour' | 'seven_day' | 'context'
 /**
  * One run of the HUD line; `tone` says whether it names a segment or is a value.
- * A label carries `icon`, and its `text` is the terminal's glyph for it.
+ * A label carries `icon`, and its `text` is what the terminal shows for it.
  */
 export type Span = { text: string; tone?: 'label' | 'data' | 'warn'; icon?: Icon }
 
