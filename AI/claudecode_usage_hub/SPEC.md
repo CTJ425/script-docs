@@ -36,6 +36,11 @@ cannot turn the prefix off.
   cell, and herdr, which places every non-ASCII cell by cursor address, then
   paints the next cell over half of the glyph (seen 2026-10-04; fine outside
   herdr).
+- Option `desktopLabels` (`userConfig`, `icons` | `text`, default `icons`):
+  with `text` the desktop draws each label as a dim `Text` of its terminal
+  label instead of an `Svg`; everything else on its row stays as below. The
+  terminal ignores it. A change in `/config` reloads the module with the new
+  value.
 - On the terminal the row is one `Text` (`wrap="truncate-end"`) of nested
   `Text` runs. On the desktop it is a `Box` row: each label an `Svg` (12px,
   mid-grey stroke, as the image cannot read the theme; `alt` names the
@@ -128,7 +133,8 @@ cannot turn the prefix off.
   shows the newer usage another session stored and never overwrites it.
 
 ## Files
-- `.claude-plugin/plugin.json`: manifest, names the `$.state` contract.
+- `.claude-plugin/plugin.json`: manifest, names the `$.state` contract and
+  declares the `desktopLabels` option.
 - `hooks/hooks.json`: `{ "modules": ["./register.tsx"] }`.
 - `hooks/register.tsx`: hooks and the refresh step (every `$` call).
 - `hooks/hud.ts`: pure logic (precedence, store parsing, formatting).
@@ -150,7 +156,8 @@ against the engine with a mocked clock, an in-memory store, and the test's own
 `session.usage` / `session.model` answers, reading the line from its
 `$.state` writes. Covers: the row drawn in place of the engine's hint text
 on terminal and desktop while idle (text labels on the terminal, `Svg` icons with
-non-breaking runs on the desktop), and under the engine's line mid-turn on both, the tones (dim label, `suggestion` value, `error` at
+non-breaking runs on the desktop), `desktopLabels: text` drawing text labels
+on the desktop with the terminal unchanged, and under the engine's line mid-turn on both, the tones (dim label, `suggestion` value, `error` at
 the mark), the hint line alone before the first look, full line,
 `–` with no reading, model truncation, clamping and unknown kinds,
 non-interactive sessions, a failing read, timer refresh, `session.measure`,

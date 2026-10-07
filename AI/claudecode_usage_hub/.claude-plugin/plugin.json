@@ -3,5 +3,14 @@
   "version": "3.3.1",
   "description": "Claude Code Usage HUD: model and effort, 5h / weekly rate-limit usage and context window as a line under the prompt",
   "author": { "name": "CTJ425" },
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "desktopLabels": {
+      "type": "string",
+      "title": "Desktop labels",
+      "description": "How Claude Desktop labels the 5h / Wk / Ctx segments: icons, or text as in the terminal. The terminal always shows text.",
+      "options": ["icons", "text"],
+      "default": "icons"
+    }
+  }
 }

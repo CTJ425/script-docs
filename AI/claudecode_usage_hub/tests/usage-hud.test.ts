@@ -162,6 +162,24 @@ describe('under the prompt', () => {
     await ui.unmount()
   })
 
+  test('desktopLabels text: the desktop draws the terminal\'s labels, the terminal unchanged', { options: { desktopLabels: 'text' } }, async ($, on) => {
+    world(on, { rateLimits: both(93, 23), tokens: 156_000 })
+    await start($)
+    const desk = await $.ui.mount({ ...HINT, surface: 'desktop' } as never)
+    expect(await desk.findAll({ type: 'Svg' })).toHaveLength(0)
+    const runs = await desk.findAll({ type: 'Text' })
+    expect(runs.map(t => t.text?.replace(/\u00a0/g, ' ')).join('')).toBe('Claude Sonnet 5   5h 93%! · 2h10m   Wk 23%   Ctx 156K/200K')
+    expect(runs.some(t => t.text?.includes(' '))).toBe(false)
+    const by = (t: string) => runs.find(r => r.text === t)?.props
+    expect(by('5h')).toMatchObject({ dimColor: true })
+    expect(by('23%')).toMatchObject({ color: 'suggestion' })
+    expect(by('93%!')).toMatchObject({ color: 'error' })
+    await desk.unmount()
+    const term = await $.ui.mount({ ...HINT, surface: 'terminal' } as never)
+    expect((await term.find({ type: 'Text' }))?.text).toBe('Claude Sonnet 5   5h 93%! · 2h10m   Wk 23%   Ctx 156K/200K')
+    await term.unmount()
+  })
+
   test('labels are dim, values colored, a warned value in the warning color', async ($, on) => {
     world(on, { rateLimits: both(93, 23), tokens: 156_000 })
     await start($)
