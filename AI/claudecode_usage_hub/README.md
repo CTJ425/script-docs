@@ -1,6 +1,6 @@
 # Claude Code Usage HUD
 
-> 最後更新：2026-10-04
+> 最後更新：2026-10-07
 
 A Claude Code plugin that shows model and reasoning effort, 5-hour usage with
 its reset countdown, weekly usage, and current session context-window usage as
@@ -19,7 +19,8 @@ prompt. It draws there rather than as a plugin status line, which Claude Code wo
 `⚠ usage-hud:`. Each segment is
 labelled: `5h` the 5-hour window, `Wk` the week, `Ctx` the context window.
 In the terminal the labels stay plain text, which every font and multiplexer
-draws one column wide; Claude Desktop draws small vector icons in their place.
+draws one column wide; Claude Desktop draws small vector icons in their place,
+or the terminal's text if you choose it (see [Options](#options)).
 Color separates what a segment is from its value: the labels and separators
 are dim, the values are in the theme's accent color, and a window at 90% or
 more turns to the error color and is marked with `!` (`5h 93%!`).
@@ -58,6 +59,17 @@ more turns to the error color and is marked with `!` (`5h 93%!`).
 4. Restart Claude Code. The line appears under the prompt; the usage figures
    fill in after the first reply (or at once, from the store, if another
    session already has them).
+
+### Options
+| Option | Values | Default |
+| --- | --- | --- |
+| `desktopLabels` | `icons`: Claude Desktop labels the segments with icons. `text`: it shows `5h` / `Wk` / `Ctx` as text, the same line as the terminal. | `icons` |
+
+The terminal always shows text, whichever you choose. Set it on the options
+screen `claude plugin install` shows, or later in a terminal session under
+`/config` (the *Desktop labels* row). It is saved in your user settings,
+which the Desktop's Code tab reads too. If a session already open does not
+switch, restart it.
 
 ### Update
 ```bash

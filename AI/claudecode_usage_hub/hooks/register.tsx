@@ -96,8 +96,11 @@ async function noteEffort($: EngineInterface, effort: string | number | undefine
   }
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   timer = null
+  // The person's choice for the desktop's labels (userConfig `desktopLabels`):
+  // its icons, or the terminal's text. The terminal always draws text.
+  const desktopIcons = options.desktopLabels !== 'text'
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -132,13 +135,14 @@ export const register: Register = on => {
     const tone = (s: Span) => (s.tone ? TONE[s.tone] : { dimColor: true })
     let hud
     if (e.surface === 'desktop') {
-      // Icons in place of the labels, each run between them a Text. The page
-      // collapses a run's edge spaces, so they go non-breaking.
+      // Icons in place of the labels unless the person chose the terminal's
+      // text; each other run a Text. The page collapses a run's edge spaces,
+      // so they go non-breaking.
       const { Svg } = $.ui.resolve(e)
       hud = (
         <Box flexDirection="row" alignItems="center">
           {line.map(s =>
-            s.icon ? (
+            s.icon && desktopIcons ? (
               <Svg {...ICON[s.icon]} width={ICON_PX} height={ICON_PX} />
             ) : (
               <Text {...tone(s)}>{s.text.replace(/ /g, '\u00a0')}</Text>
