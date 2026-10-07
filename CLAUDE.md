@@ -143,8 +143,8 @@ The site is static (`site/dist`). Where it is served from comes from the environ
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `SITE_URL` | public origin, e.g. `https://note.example.com` | `https://<owner>.github.io` on GitHub Actions; `CF_PAGES_URL` on Cloudflare Pages |
-| `BASE_PATH` | path prefix, `/` at a domain root | `/<repo>` on GitHub Actions, `/` elsewhere |
+| `SITE_URL` | public origin, e.g. `https://note.example.com` | `CF_PAGES_URL` on Cloudflare Pages; `http://localhost:4321` elsewhere |
+| `BASE_PATH` | path prefix, `/` at a domain root | `/` |
 
 Cloudflare Pages: root directory `site`, build command `npm ci && npm run build`,
 output directory `dist`, `NODE_VERSION=22`, and `SITE_URL` set to the production domain.

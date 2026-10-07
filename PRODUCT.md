@@ -106,11 +106,11 @@ What this does *not* claim: that a script works on the reader's machine. That is
   date, category) is derived state and may sit beside it; invented intros, claims,
   counts, badges and testimonials may not.
 - **Real URLs.** Every page is `…/index.html` under a trailing-slash path, so it works
-  unchanged on GitHub Pages and Cloudflare Pages, is indexable, and has its own
+  unchanged on any static host, is indexable, and has its own
   `<title>`, description, canonical and Open Graph tags.
 - **Deploy-agnostic.** Origin and base path come from `SITE_URL` / `BASE_PATH`; the
-  site is moving from GitHub Pages (`/script-docs/`) to Cloudflare Pages (a domain root)
-  and that is a setting, not an edit.
+  site is served by Cloudflare Pages at a domain root, and where it is hosted is a
+  setting, not an edit.
 - **Static build only.** No server, no database. `npm run verify` is the gate.
 - **Copy reads the `<pre>`'s own text**, which holds the command and nothing else.
 - **Must keep:** light and dark themes, with the stored choice applied before first
@@ -126,8 +126,7 @@ What this does *not* claim: that a script works on the reader's machine. That is
   `<title>` and the feed read it from there, and `verify-dist` asserts it.
 - Tagline: the root README's first paragraph (個人資訊部落格：我寫過的 script、用過的工具，
   以及 GitHub 上的專案筆記。).
-- Published URL: today <https://ctj425.github.io/script-docs/>; moving to Cloudflare
-  Pages. License: MIT.
+- Published on Cloudflare Pages. License: MIT.
 - No logo, wordmark or illustration exists. The favicon is the binder: a tan square
   with two punched holes.
 - The earlier name, **Script Docs**, now names only the repository.
@@ -137,7 +136,7 @@ What this does *not* claim: that a script works on the reader's machine. That is
 - Ten published scripts with complete READMEs, plus their real shell / Python /
   compose sources in the repo.
 - Eight CI-verified one-liner commands, listed in the root README.
-- Real CI workflows: `.github/workflows/ci.yml`, `.github/workflows/pages.yml`.
+- A real CI workflow: `.github/workflows/ci.yml`.
 - A real `CHANGELOG.md`.
 - **Seed entries.** The two posts and four tool cards on the site at launch are
   drafted from what the repository itself shows (what was written, which tool each

@@ -1,10 +1,8 @@
 # ivan note
 
-> 最後更新：2026-10-03
+> 最後更新：2026-10-07
 
 個人資訊部落格：我寫過的 script、用過的工具，以及 GitHub 上的專案筆記。
-
-📖 **線上網站：<https://ctj425.github.io/script-docs/>**（之後會搬到 Cloudflare Pages）
 
 ---
 

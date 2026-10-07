@@ -1,6 +1,6 @@
 # 網站原始碼 (site/)
 
-> 最後更新：2026-10-02
+> 最後更新：2026-10-07
 
 [ivan note](../README.md) 的網站：Astro 靜態站，把這個 repo 裡的文章、工具與腳本 README 產生成一個個人資訊部落格。設計決策記在 [`DESIGN.md`](./DESIGN.md)，產品定位記在 [`../PRODUCT.md`](../PRODUCT.md)。
 
@@ -40,19 +40,17 @@ npm run verify      # 以上全部，依序；CI 跑的同一道關卡
 
 | 變數 | 意思 | 預設 |
 | --- | --- | --- |
-| `SITE_URL` | 對外網址的 origin，例如 `https://note.example.com` | GitHub Actions 上是 `https://<owner>.github.io`；Cloudflare Pages 上是 `CF_PAGES_URL` |
-| `BASE_PATH` | 路徑前綴；網域根目錄就是 `/` | GitHub Actions 上是 `/<repo>`；其他地方是 `/` |
+| `SITE_URL` | 對外網址的 origin，例如 `https://note.example.com` | Cloudflare Pages 上是 `CF_PAGES_URL`；其他地方是 `http://localhost:4321` |
+| `BASE_PATH` | 路徑前綴；網域根目錄就是 `/` | `/` |
 
-**GitHub Pages**（目前）：`.github/workflows/pages.yml` 在 push 到 `main` 且動到內容或 `site/` 時重新部署。
-
-**Cloudflare Pages**（之後）：
+**Cloudflare Pages**：由它自己從 repo 建置，push 到 `main` 就重新部署，repo 裡沒有部署用的 workflow。設定如下：
 
 - Root directory：`site`
 - Build command：`npm ci && npm run build`
 - Build output directory：`dist`
 - 環境變數：`NODE_VERSION=22`，並把 `SITE_URL` 設成正式網域
 
-`public/_headers` 讓 `/_astro/*`（檔名帶雜湊）可以永久快取。搬家之後可以把 `pages.yml` 刪掉。
+`public/_headers` 讓 `/_astro/*`（檔名帶雜湊）可以永久快取。
 
 ## 架構
 

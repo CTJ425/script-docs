@@ -1,4 +1,4 @@
-# Cloudflare Pages / Netlify. Ignored by GitHub Pages.
+# Cloudflare Pages / Netlify.
 # Everything under /_astro/ has a content hash in its name, so it never changes.
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable

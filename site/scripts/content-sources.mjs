@@ -283,21 +283,16 @@ export function repoInfo() {
 /**
  * Where the site is served from.
  *
- * Nothing here is hardcoded to GitHub Pages, because the site is moving to
- * Cloudflare Pages: set SITE_URL (and BASE_PATH if it is not at the root) and
- * the build follows. On GitHub Actions the Pages defaults apply; anywhere else
- * the base is `/`.
+ * Nothing here is tied to one host: set SITE_URL (and BASE_PATH if it is not at
+ * the root) and the build follows. Cloudflare Pages supplies CF_PAGES_URL; with
+ * neither, the origin is the local dev server and the base is `/`.
  */
 export function deployment() {
   const repo = repoInfo();
-  const onGitHub = Boolean(process.env.GITHUB_ACTIONS && repo.slug);
 
-  const site =
-    process.env.SITE_URL ??
-    process.env.CF_PAGES_URL ??
-    (onGitHub ? `https://${repo.owner.toLowerCase()}.github.io` : 'http://localhost:4321');
+  const site = process.env.SITE_URL ?? process.env.CF_PAGES_URL ?? 'http://localhost:4321';
 
-  let base = process.env.BASE_PATH ?? (onGitHub ? `/${repo.name}` : '/');
+  let base = process.env.BASE_PATH ?? '/';
   if (!base.startsWith('/')) base = `/${base}`;
   base = base.replace(/\/+$/, '') || '/';
 

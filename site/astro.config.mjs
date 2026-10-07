@@ -4,17 +4,16 @@ import { REPO_ROOT, deployment, siteIdentity } from './scripts/content-sources.m
 
 /**
  * Where the site is served from is decided by the environment, not by this
- * file: SITE_URL / BASE_PATH win, GitHub Actions gets the Pages defaults, and
- * everywhere else (Cloudflare Pages, local) the site sits at the root. Moving
- * hosts is therefore a setting, not an edit.
+ * file: SITE_URL / BASE_PATH win, and without them (Cloudflare Pages, local) the
+ * site sits at the root. Moving hosts is therefore a setting, not an edit.
  */
 const { site, base, repo } = deployment();
 
 export default defineConfig({
   site,
   base,
-  // Every page is a directory with an index.html: it works unchanged on GitHub
-  // Pages and Cloudflare Pages, and a trailing slash is the canonical form.
+  // Every page is a directory with an index.html: it works unchanged on any static
+  // host, and a trailing slash is the canonical form.
   trailingSlash: 'always',
   build: { format: 'directory' },
   integrations: [sitemap({ filter: (page) => !/\/(404|search)\/?$/.test(page) })],
