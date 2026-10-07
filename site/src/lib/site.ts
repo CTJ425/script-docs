@@ -15,7 +15,7 @@ declare const __SITE__: {
   name: string;
   tagline: string;
   url: string;
-  /** Deploy base with no trailing slash: '' at the root, '/script-docs' under Pages. */
+  /** Deploy base with no trailing slash: '' at the root, '/note' under a subpath. */
   base: string;
   repo: { url: string | null; branch: string; slug: string | null; owner: string | null; name: string | null };
   repoRoot: string;
