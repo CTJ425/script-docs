@@ -1,11 +1,10 @@
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+This project has a knowledge graph. Explore the codebase with the
+code-review-graph MCP tools before Grep/Glob/Read: the graph is faster,
+cheaper (fewer tokens), and gives structural context (callers,
+dependents, test coverage) that file scanning cannot.
 
 ### When to use graph tools FIRST
 
