@@ -140,6 +140,21 @@ export function countdown(resetsAt: number | null, now: number): string | null {
   return `${m}m`
 }
 
+// The engine's idle hint when it has nothing to report: the mode pill's text
+// (`auto mode on`), `(shift+tab to cycle)`, `← for agents` and `? for
+// shortcuts`. Anything
+// else on the line is state (background agents and `↓ to manage`, PR
+// status, drafts), which the HUD must not cover.
+export function isStockHint(hint: string): boolean {
+  const rest = hint
+    .replace(/\([^()]* to cycle\)/g, '')
+    .replace(/\? for shortcuts/g, '')
+    .replace(/\S+ for agents/g, '')
+    .replace(/[\s·]+/g, ' ')
+    .trim()
+  return rest === '' || /^[a-z ]+ on$/.test(rest)
+}
+
 // At or past this, a window is marked with `!` and drawn in the warning
 // color; the mark keeps the warning legible where color is not.
 export const WARN_PCT = 90

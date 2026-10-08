@@ -1,6 +1,6 @@
 # Claude Code Usage HUD
 
-> 最後更新：2026-10-07
+> 最後更新：2026-10-08
 
 A Claude Code plugin that shows model and reasoning effort, 5-hour usage with
 its reset countdown, weekly usage, and current session context-window usage as
@@ -13,7 +13,8 @@ one line directly under the prompt, on the same row as the mode pill.
 It is a *mod*: a plugin of function hooks that runs inside Claude Code. It
 takes the place of Claude Code's hint text (`(shift+tab to cycle)`, `?
 for shortcuts`) while idle; during a turn the hint (`esc to interrupt`) keeps
-that row and the HUD moves to the row under it. Claude Code draws the mode
+that row and the HUD moves to the row under it, as it does while idle whenever
+the hint carries state of its own (`↓ to manage` while background agents run, PR status). Claude Code draws the mode
 pill itself, ahead of any plugin, so no row can go between the pill and the
 prompt. It draws there rather than as a plugin status line, which Claude Code would show as a notice prefixed
 `⚠ usage-hud:`. Each segment is

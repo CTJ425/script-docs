@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { liveBuckets, nextShared, parseShared, renderSpans, sameBuckets, sameShared, settingsEffort } from './hud'
+import { isStockHint, liveBuckets, nextShared, parseShared, renderSpans, sameBuckets, sameShared, settingsEffort } from './hud'
 import type { Icon, Span, Tone } from './hud'
 import type { Buckets } from '../types'
 
@@ -127,7 +127,8 @@ export const register: Register = (on, options) => {
   // anything a hook returns, so no row can sit between them and the prompt.
   // Idle, our line takes the place of the engine's hint text on the pills'
   // row; while a turn runs, the engine's hint (`esc to interrupt`) keeps that
-  // row and ours goes under it.
+  // row and ours goes under it. Idle too, a line carrying more than its stock
+  // hint (`1 local agent · ↓ to manage`) keeps its row.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const line = await read($, LINE)
     if (line === null) return next(e)
@@ -159,7 +160,7 @@ export const register: Register = (on, options) => {
         </Text>
       )
     }
-    if (!e.props.isWorking) return hud
+    if (!e.props.isWorking && isStockHint(e.props.hint)) return hud
     const engine = await next(e)
     return (
       <Box flexDirection="column">

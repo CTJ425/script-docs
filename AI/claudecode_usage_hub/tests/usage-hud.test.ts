@@ -199,6 +199,27 @@ describe('under the prompt', () => {
     await ui.unmount()
   })
 
+  test('idle with background agents, the engine hint keeps its row and ours goes under it', async ($, on) => {
+    world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    const props = { ...HINT.props, hint: '(shift+tab to cycle) · ← for agents · ↓ to manage' }
+    const ui = await $.ui.mount({ ...HINT, props, surface: 'terminal' } as never)
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    expect(texts[0]).toBe('(shift+tab to cycle) · ← for agents · ↓ to manage')
+    expect(texts).toContain('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
+    await ui.unmount()
+  })
+
+  test('idle, only the stock hint gives way to the line', async ($, on) => {
+    world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    for (const hint of ['? for shortcuts', '(shift+tab to cycle)', 'accept edits on (shift+tab to cycle)', '(shift+tab to cycle) · ← for agents', '']) {
+      const ui = await $.ui.mount({ ...HINT, props: { ...HINT.props, hint }, surface: 'terminal' } as never)
+      expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).not.toContain(hint || '?')
+      await ui.unmount()
+    }
+  })
+
   test('while a turn runs, the engine hint keeps its row and ours goes under it', async ($, on) => {
     world(on, { rateLimits: both(45, 23), tokens: 156_000 })
     await start($)

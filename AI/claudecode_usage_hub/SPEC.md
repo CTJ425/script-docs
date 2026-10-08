@@ -26,7 +26,11 @@ whatever a hook returns, so nothing can sit between them and the prompt
 column still draws above it). Idle, the hook returns the HUD row alone, which
 takes the place of the engine's hint text beside the pills; while
 `isWorking`, it returns a column of the engine's line (`next(e)`, `esc to
-interrupt`) and the HUD row beneath it. Not `$.ui.status`: Claude
+interrupt`) and the HUD row beneath it. Idle, it does the same whenever the
+engine's `hint` is more than its stock text (the mode pill's `<mode> on`,
+`(<key> to cycle)`, `<key> for agents`, `? for shortcuts`; `isStockHint` in `hud.ts`): the rest
+is state the engine reports on that row (`↓ to manage`, `1 shell`, PR
+status, drafts) and the HUD must not hide it. Not `$.ui.status`: Claude
 Code shows that as a pinned notice, prefixed `⚠ usage-hud: `, and the plugin
 cannot turn the prefix off.
 - Labels are icons on the desktop and text on the terminal. A label run
@@ -157,7 +161,7 @@ against the engine with a mocked clock, an in-memory store, and the test's own
 `$.state` writes. Covers: the row drawn in place of the engine's hint text
 on terminal and desktop while idle (text labels on the terminal, `Svg` icons with
 non-breaking runs on the desktop), `desktopLabels: text` drawing text labels
-on the desktop with the terminal unchanged, and under the engine's line mid-turn on both, the tones (dim label, `suggestion` value, `error` at
+on the desktop with the terminal unchanged, and under the engine's line mid-turn on both and while idle with background agents, the tones (dim label, `suggestion` value, `error` at
 the mark), the hint line alone before the first look, full line,
 `–` with no reading, model truncation, clamping and unknown kinds,
 non-interactive sessions, a failing read, timer refresh, `session.measure`,
