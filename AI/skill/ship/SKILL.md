@@ -48,7 +48,7 @@ This skill only reads these four. Edit them in one place: the `repo` section.
 | `releaseBranch` | The branch step 8 pushes to. `null` is not allowed |
 | `devBranch` | The branch step 4 pushes to. `null` means a single-branch repo — see § Single branch |
 | `appDir` | Default working directory for every gate |
-| `changelogLang` | Language of the changelog entry and of the final report |
+| `changelogLang` | Language of the changelog entry (and so of the Release body) |
 
 ### `ship` — owned by this skill
 
@@ -117,9 +117,8 @@ Report what you actually observed. If you could not verify, say so and say why.
 
 **Never compare a host's built asset names against your own `npm run build`.** A static
 host (Cloudflare Pages, Netlify, Vercel) builds in its own environment, so content hashes
-legitimately differ from yours and a mismatch proves nothing. Measured 2026-10-01: ~15
-minutes were spent waiting for a deploy that had already happened, because the live
-`index-*.js` did not match the local one. Verify by **content** instead — fetch the live
+legitimately differ from yours and a mismatch proves nothing; waiting for the hashes to
+match can stall on a deploy that already happened. Verify by **content** instead — fetch the live
 asset and grep for a string only this release contains — or read a version marker the page
 itself exposes.
 
@@ -167,8 +166,8 @@ If `record.hookSkill` is set, load it and update the project's tracking document
 
 ### 12. Report
 
-One short summary in `changelogLang`: gates, version, what deployed where, what you
-verified, and anything still unverified.
+One short summary, in the language the user's own instructions ask replies to be in:
+gates, version, what deployed where, what you verified, and anything still unverified.
 
 ---
 

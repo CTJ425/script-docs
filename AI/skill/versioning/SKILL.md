@@ -229,8 +229,8 @@ done
 
 Re-point a stale tag through the rewrite's own mapping —
 `grep "^<old-sha> " .git/filter-repo/commit-map` gives the new one — then force-push that
-single ref. Measured 2026-10-01: one of 179 tags was stale this way, and it was the newest
-one, the Release everybody would open first.
+single ref. Check the newest tag first: it is the one most likely to be stale, and its
+Release is the one people open.
 
 ### Publish or update
 
