@@ -1,7 +1,9 @@
 <#
 .SYNOPSIS
   Installs or upgrades Oh My Posh, PowerShell 7, Coreutils and a Nerd Font, then
-  wires them into the PowerShell profiles and Windows Terminal. Safe to re-run.
+  wires them into the PowerShell profiles and applies windows-terminal.json
+  (default profile, font, colour scheme, key bindings) to Windows Terminal.
+  Safe to re-run.
 .NOTES
   Run from Windows PowerShell (not pwsh, so PowerShell 7 can be upgraded in place):
     powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-windows-terminal.ps1
@@ -118,10 +120,22 @@ Step 'Setting CurrentUser execution policy to RemoteSigned'
 try { Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force } catch { Write-Warning $_.Exception.Message }
 
 # --- 5. Windows Terminal ---------------------------------------------------
-Step 'Configuring Windows Terminal (default profile + font)'
-$pwshProfileGuid = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'   # PowerShell 7
-$fontFace = 'MesloLGS Nerd Font'
-$manualHint = "set `"defaultProfile`": `"$pwshProfileGuid`" and `"profiles.defaults.font.face`": `"$fontFace`" by hand"
+Step 'Configuring Windows Terminal (windows-terminal.json)'
+# The settings to apply live in windows-terminal.json next to this script, so
+# they are written down once. Read it from a clone, else download it.
+$RawBase = 'https://raw.githubusercontent.com/CTJ425/script-docs/main/script/setup-windows-terminal'
+$wanted = $null
+$localWanted = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'windows-terminal.json' }
+try {
+    if ($localWanted -and (Test-Path $localWanted)) {
+        $wanted = [IO.File]::ReadAllText($localWanted) | ConvertFrom-Json
+    } else {
+        $wanted = Invoke-RestMethod "$RawBase/windows-terminal.json"
+    }
+} catch {
+    Write-Warning "Could not load windows-terminal.json ($($_.Exception.Message)); Windows Terminal skipped."
+}
+$manualHint = "merge $RawBase/windows-terminal.json into it by hand"
 
 # Store, Store Preview, and the unpackaged (winget / zip) build.
 $wtSettingsFiles = @(
@@ -130,9 +144,13 @@ $wtSettingsFiles = @(
     'Microsoft\Windows Terminal\settings.json'
 ) | ForEach-Object { Join-Path $env:LOCALAPPDATA $_ } | Where-Object { Test-Path $_ }
 
-if (-not $wtSettingsFiles) {
+if ($wanted -and -not $wtSettingsFiles) {
     Write-Warning 'Windows Terminal settings.json not found (launch Windows Terminal once first); skipped.'
 }
+
+# Windows PowerShell 5.1 serialises some arrays as {"value": [...], "Count": n}
+# because of an extra type definition on System.Array; drop it for this run.
+if ($PSVersionTable.PSVersion.Major -lt 6) { Remove-TypeData System.Array -ErrorAction SilentlyContinue }
 
 # Assigns in place when the key exists, so the file keeps its key order.
 function Set-JsonProperty($Object, $Name, $Value) {
@@ -140,7 +158,41 @@ function Set-JsonProperty($Object, $Name, $Value) {
     else { $Object | Add-Member $Name $Value }
 }
 
-foreach ($wtSettings in $wtSettingsFiles) {
+# Copies every key of $From onto $To, descending into nested objects so that
+# keys $From does not mention (a font size, say) are kept.
+function Merge-JsonObject($To, $From) {
+    foreach ($p in $From.PSObject.Properties) {
+        $here = $To.PSObject.Properties[$p.Name]
+        if ($here -and $here.Value -is [pscustomobject] -and $p.Value -is [pscustomobject]) {
+            Merge-JsonObject $here.Value $p.Value
+        } else {
+            Set-JsonProperty $To $p.Name $p.Value
+        }
+    }
+}
+
+# Merges two lists of objects matched by $KeyOf: an existing item whose key one
+# of $Wanted's has is replaced in place (later duplicates are dropped), the
+# rest of $Existing is kept in order, and wanted items not yet placed go last.
+# Replacing in place keeps a second run from reordering an unchanged file.
+function Merge-JsonList($Existing, $Wanted, $KeyOf) {
+    $byKey = @{}
+    foreach ($w in @($Wanted)) { $byKey[(& $KeyOf $w)] = $w }
+    $placed = @{}
+    $out = foreach ($item in @($Existing)) {
+        if ($null -eq $item) { continue }
+        $k = & $KeyOf $item
+        if ($null -ne $k -and $byKey.ContainsKey($k)) {
+            if (-not $placed[$k]) { $placed[$k] = $true; $byKey[$k] }
+        } else { $item }
+    }
+    $rest = foreach ($w in @($Wanted)) { if (-not $placed[(& $KeyOf $w)]) { $w } }
+    @($out) + @($rest)
+}
+
+$keyOf = { param($a) if ($a.keys) { ([string]$a.keys).ToLowerInvariant() -replace '\s', '' } }
+
+foreach ($wtSettings in $(if ($wanted) { $wtSettingsFiles })) {
     Write-Host "    $wtSettings"
     $raw = [IO.File]::ReadAllText($wtSettings)
 
@@ -159,20 +211,36 @@ foreach ($wtSettings in $wtSettingsFiles) {
         Write-Warning "settings.json uses the legacy profiles list; left untouched. Please $manualHint."
         continue
     }
+    $before = $json | ConvertTo-Json -Depth 32 -Compress
 
+    # Top-level settings, and profiles.defaults key by key. The profile list
+    # is generated per machine, so it is never touched.
+    foreach ($p in $wanted.PSObject.Properties) {
+        if ($p.Name -in '$schema', 'profiles', 'schemes', 'actions') { continue }
+        Set-JsonProperty $json $p.Name $p.Value
+    }
     if (-not $json.profiles.defaults) { Set-JsonProperty $json.profiles defaults ([pscustomobject]@{}) }
-    $defaults = $json.profiles.defaults
-    if ($json.defaultProfile -eq $pwshProfileGuid -and $defaults.font.face -eq $fontFace) {
+    Merge-JsonObject $json.profiles.defaults $wanted.profiles.defaults
+
+    # Colour schemes: replace one with the same name where it stands, else add it.
+    Set-JsonProperty $json schemes @(Merge-JsonList $json.schemes $wanted.schemes { param($x) $x.name })
+
+    # Key bindings: whatever is bound to the same keys gives way to ours, in the
+    # legacy "actions" form and in the newer "keybindings" list.
+    Set-JsonProperty $json actions @(Merge-JsonList $json.actions $wanted.actions $keyOf)
+    if ($json.PSObject.Properties['keybindings']) {
+        $ourKeys = @($wanted.actions | ForEach-Object { & $keyOf $_ })
+        $json.keybindings = @($json.keybindings | Where-Object { $_ -and (& $keyOf $_) -notin $ourKeys })
+    }
+
+    $after = $json | ConvertTo-Json -Depth 32 -Compress
+    if ($after -eq $before) {
         Write-Host '    already configured'
         continue
     }
 
     # Keep the first backup: a later run must not overwrite the original.
     if (-not (Test-Path "$wtSettings.bak")) { Copy-Item $wtSettings "$wtSettings.bak" }
-
-    Set-JsonProperty $json defaultProfile $pwshProfileGuid
-    if ($defaults.font) { Set-JsonProperty $defaults.font face $fontFace }
-    else { Set-JsonProperty $defaults font ([pscustomobject]@{ face = $fontFace }) }
     # UTF-8 without BOM, same as Windows Terminal writes it.
     [IO.File]::WriteAllText($wtSettings, ($json | ConvertTo-Json -Depth 32), [Text.UTF8Encoding]::new($false))
 }

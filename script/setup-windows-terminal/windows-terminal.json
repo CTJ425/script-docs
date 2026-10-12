@@ -1,0 +1,69 @@
+{
+    "$schema": "https://aka.ms/terminal-profiles-schema",
+    "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+    "copyFormatting": "none",
+    "copyOnSelect": false,
+    "newTabMenu": [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
+    "actions": [
+        {
+            "command": {
+                "action": "copy",
+                "singleLine": false
+            },
+            "keys": "ctrl+c"
+        },
+        {
+            "command": "paste",
+            "keys": "ctrl+v"
+        },
+        {
+            "command": {
+                "action": "splitPane",
+                "split": "auto",
+                "splitMode": "duplicate"
+            },
+            "keys": "alt+shift+d"
+        },
+        {
+            "command": "find",
+            "keys": "ctrl+shift+f"
+        }
+    ],
+    "profiles": {
+        "defaults": {
+            "colorScheme": "Graphite Mono",
+            "font": {
+                "face": "MesloLGS Nerd Font"
+            }
+        }
+    },
+    "schemes": [
+        {
+            "name": "Graphite Mono",
+            "background": "#101010",
+            "foreground": "#BDBDBD",
+            "cursorColor": "#9AB8C8",
+            "selectionBackground": "#303030",
+            "black": "#1A1A1A",
+            "red": "#BF7B7B",
+            "green": "#8FAE8F",
+            "yellow": "#BFAE7B",
+            "blue": "#7B9BBF",
+            "purple": "#A08CB0",
+            "cyan": "#7BAEB0",
+            "white": "#BDBDBD",
+            "brightBlack": "#555555",
+            "brightRed": "#D49292",
+            "brightGreen": "#A5C4A5",
+            "brightYellow": "#D4C492",
+            "brightBlue": "#92B2D4",
+            "brightPurple": "#B6A2C6",
+            "brightCyan": "#92C4C6",
+            "brightWhite": "#DCDCDC"
+        }
+    ]
+}

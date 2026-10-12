@@ -1,0 +1,62 @@
+name: Sync release notes
+
+# Rewrites the body of existing GitHub Releases from CHANGELOG.md, which is
+# the source of truth for every Release body. Run it by hand after editing a
+# released section (a correction, a translation); it never creates a Release.
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Space-separated tags (e.g. "v1.2.0 v1.2.1"). Empty means every Release.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rewrite release bodies from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -euo pipefail
+          prefix=$(python3 -c "import json;print(json.load(open('.claude/release.config.json'))['repo']['tagPrefix'])")
+          if [ -z "$TAGS" ]; then
+            TAGS=$(gh release list --limit 100 --json tagName --jq '.[].tagName')
+          fi
+          fail=0
+          for tag in $TAGS; do
+            version="${tag#"$prefix"}"
+            notes=$(mktemp)
+            # Same extractor as AI/skill/versioning/SKILL.md § GitHub Release.
+            python3 - CHANGELOG.md "$version" > "$notes" <<'PY'
+          import re, sys
+          path, ver = sys.argv[1], sys.argv[2]
+          head = re.compile(r'^#+ +\[?' + re.escape(ver) + r'\]?([^0-9.]|$)')
+          nxt  = re.compile(r'^#+ +\[?[0-9]+\.')
+          out, on = [], False
+          for line in open(path, encoding='utf-8'):
+              if on and nxt.match(line):
+                  break
+              if on:
+                  out.append(line)
+              elif head.match(line):
+                  on = True
+          text = re.sub(r'\n*-{3,}\s*$', '', ''.join(out).strip()).strip()
+          sys.stdout.write(text + '\n')
+          PY
+            if [ ! -s "$notes" ] || [ "$(tr -d '[:space:]' < "$notes")" = "" ]; then
+              echo "::error::no CHANGELOG section for $tag (heading '## $version')"
+              fail=1
+              continue
+            fi
+            gh release edit "$tag" --notes-file "$notes"
+            echo "updated $tag"
+          done
+          exit $fail
