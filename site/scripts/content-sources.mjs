@@ -242,7 +242,18 @@ export function siteIdentity(root = REPO_ROOT) {
   const markdown = readFileSync(join(root, 'README.md'), 'utf8');
   const name = titleOf(markdown, 'site');
   const tagline = leadOf(markdown, 200);
-  return { name, tagline };
+  return { name, tagline, version: siteVersion(root) };
+}
+
+/**
+ * The release the site is built from: CHANGELOG.md's first `## X.Y.Z` heading,
+ * the same file every GitHub Release body is taken from. Null without one.
+ */
+export function siteVersion(root = REPO_ROOT) {
+  const file = join(root, 'CHANGELOG.md');
+  if (!existsSync(file)) return null;
+  const m = readFileSync(file, 'utf8').match(/^##\s+(\d+\.\d+\.\d+)\b/m);
+  return m ? m[1] : null;
 }
 
 /** owner/repo + default branch, so GitHub links needn't hardcode the URL. */

@@ -14,6 +14,8 @@
 declare const __SITE__: {
   name: string;
   tagline: string;
+  /** CHANGELOG.md's newest version, e.g. `1.3.0`; null when there is none. */
+  version: string | null;
   url: string;
   /** Deploy base with no trailing slash: '' at the root, '/note' under a subpath. */
   base: string;
