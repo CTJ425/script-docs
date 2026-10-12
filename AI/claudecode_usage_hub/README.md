@@ -1,6 +1,6 @@
 # Claude Code Usage HUD
 
-> 最後更新：2026-10-08
+> 最後更新：2026-10-12
 
 A Claude Code plugin that shows model and reasoning effort, 5-hour usage with
 its reset countdown, weekly usage, and current session context-window usage as
@@ -30,6 +30,15 @@ more turns to the error color and is marked with `!` (`5h 93%!`).
   the settings' `effortLevel` for the model (`modelSettings.<model>`, else the
   top level) stands in; a model without an effort setting shows none.
 - A window with no figure yet shows `–`.
+- **Other mods can join the line.** A mod that hooks the same row
+  (`ui.render` on `PromptHint`) and adds its text as the `tail` prop, e.g.
+  `next({ ...e, props: { ...e.props, tail } })`, has it drawn dim at the end of
+  the HUD, three spaces after `Ctx`, on the terminal and on Claude Desktop:
+  ```
+  ⏵⏵ auto mode on · Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M   agents 1 0:12
+  ```
+  Several mods share it by appending to `e.props.tail` rather than replacing
+  it. The row is one line, cut at its end when the terminal is too narrow.
 
 ## Requirements
 - Claude Code with plugin function hooks (`hooks/hooks.json` → `modules`).

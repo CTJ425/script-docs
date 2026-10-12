@@ -129,9 +129,14 @@ export const register: Register = (on, options) => {
   // row; while a turn runs, the engine's hint (`esc to interrupt`) keeps that
   // row and ours goes under it. Idle too, a line carrying more than its stock
   // hint (`1 local agent · ↓ to manage`) keeps its row.
+  // Other mods put their segment on this row through the `tail` prop. Ours
+  // draws it at its own end, three spaces after `Ctx`, and hands the engine
+  // its line without it, so the tail shows once, on every surface we draw.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const line = await read($, LINE)
-    if (line === null) return next(e)
+    const stored = await read($, LINE)
+    if (stored === null) return next(e)
+    const { tail, ...props } = e.props
+    const line: Span[] = tail ? [...stored, { text: '   ' }, { text: tail }] : stored
     const { Box, Text } = $.ui.resolve(e)
     const tone = (s: Span) => (s.tone ? TONE[s.tone] : { dimColor: true })
     let hud
@@ -161,7 +166,7 @@ export const register: Register = (on, options) => {
       )
     }
     if (!e.props.isWorking && isStockHint(e.props.hint)) return hud
-    const engine = await next(e)
+    const engine = await next({ ...e, props })
     return (
       <Box flexDirection="column">
         {engine}

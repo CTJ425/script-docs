@@ -50,8 +50,11 @@ function world(on: On, w: World) {
     if (e.key === 'line') state.statuses.push(lineText(e.value as Span[]))
     return next(e)
   })
-  // The engine's hint line: one Text of the hint it was handed.
-  on('ui.render', ($, e) => h($.ui.resolve(e).Text, {}, (e.props as { hint: string }).hint) as never)
+  // The engine's hint line: one Text of the hint it was handed, its tail after it.
+  on('ui.render', ($, e) => {
+    const { hint, tail } = e.props as { hint: string; tail?: string }
+    return h($.ui.resolve(e).Text, {}, tail ? `${hint} ${tail}` : hint) as never
+  })
   on('session.start', () => ({ cwd: '/tmp' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('session.end', () => ({ sessionId: 's' }))
@@ -228,6 +231,43 @@ describe('under the prompt', () => {
     const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
     expect(texts[0]).toBe('esc to interrupt')
     expect(texts).toContain('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
+    await ui.unmount()
+  })
+})
+
+describe("other mods' tail", () => {
+  const LINE = 'Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K'
+  const TAIL = 'agents 1 0:12 · backup ok'
+
+  test('idle, the tail ends our line, dim', async ($, on) => {
+    world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    const ui = await $.ui.mount({ ...HINT, props: { ...HINT.props, tail: TAIL }, surface: 'terminal' } as never)
+    expect((await ui.find({ type: 'Text' }))?.text).toBe(`${LINE}   ${TAIL}`)
+    expect((await ui.findAll({ type: 'Text' })).find(t => t.text === TAIL)?.props).toMatchObject({ dimColor: true })
+    await ui.unmount()
+    const desk = await $.ui.mount({ ...HINT, props: { ...HINT.props, tail: TAIL }, surface: 'desktop' } as never)
+    const runs = (await desk.findAll({ type: 'Text' })).map(t => t.text ?? '')
+    expect(runs.at(-1)).toBe(TAIL.replace(/ /g, '\u00a0'))
+    await desk.unmount()
+  })
+
+  test('while a turn runs, the tail rides our row, not the engine line', async ($, on) => {
+    world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    const props = { ...HINT.props, isWorking: true, hint: 'esc to interrupt', tail: TAIL }
+    const ui = await $.ui.mount({ ...HINT, props, surface: 'terminal' } as never)
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    expect(texts[0]).toBe('esc to interrupt')
+    expect(texts).toContain(`${LINE}   ${TAIL}`)
+    expect(texts.filter(t => t?.startsWith('esc to interrupt'))).toEqual(['esc to interrupt'])
+    await ui.unmount()
+  })
+
+  test('before the first look, the engine draws the tail itself', async ($, on) => {
+    world(on, { rateLimits: both(45, 23) })
+    const ui = await $.ui.mount({ ...HINT, props: { ...HINT.props, tail: TAIL }, surface: 'terminal' } as never)
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).toEqual([`${HINT.props.hint} ${TAIL}`])
     await ui.unmount()
   })
 })

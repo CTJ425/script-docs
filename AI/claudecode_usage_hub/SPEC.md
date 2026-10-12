@@ -56,6 +56,14 @@ cannot turn the prefix off.
   | `data` | model, effort, percentages, countdown, tokens | theme key `suggestion` |
   | `warn` | a percentage at or past `WARN_PCT` | theme key `error` |
   | none | separators, `–` | `dimColor` |
+- Other mods' segments: `PromptHint` carries `tail`, text a hook adds after
+  the line. Wherever the HUD row is drawn, the hook appends `tail` to it as
+  one dim run three spaces after the last segment (non-breaking on the
+  desktop, like every run), and hands the engine its props without `tail`,
+  so the text is drawn once: the engine draws `tail` on the terminal only,
+  and the HUD row reaches the desktop too. Before the first look the hook
+  passes `e` on untouched and the engine draws `tail` itself. Mods share the
+  tail by appending to it (`a · b`); the order is their hooks' order.
 - The line is held in `$.state` `usage-hud.line` (`Span[] | null`); each look
   writes it, and the write redraws the row.
 - Before the first look the hook returns the engine's line alone. Claude Code
@@ -162,7 +170,9 @@ against the engine with a mocked clock, an in-memory store, and the test's own
 on terminal and desktop while idle (text labels on the terminal, `Svg` icons with
 non-breaking runs on the desktop), `desktopLabels: text` drawing text labels
 on the desktop with the terminal unchanged, and under the engine's line mid-turn on both and while idle with background agents, the tones (dim label, `suggestion` value, `error` at
-the mark), the hint line alone before the first look, full line,
+the mark), the hint line alone before the first look, another mod's `tail`
+at the end of the HUD row idle and mid-turn (and not on the engine's line),
+and drawn by the engine before the first look, full line,
 `–` with no reading, model truncation, clamping and unknown kinds,
 non-interactive sessions, a failing read, timer refresh, `session.measure`,
 `session.end` stopping the timer, cold start from the store, rolled-over window,
