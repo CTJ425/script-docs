@@ -1,6 +1,6 @@
 # Proxmox VE ISO 軟連結同步
 
-> 最後更新：2026-09-10
+> 最後更新：2026-10-12
 
 把放在 NAS / NFS / SMB 分享區裡的 ISO，用 symbolic link 掛進 Proxmox VE 的 ISO 目錄，
 這樣 PVE 網頁介面看得到它們，但檔案不需要複製一份。
@@ -48,6 +48,16 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_
 ---
 
 ## Crontab 自動同步
+
+先把腳本存到固定位置（下面的 cron 設定用的就是這個路徑）：
+
+```bash
+sudo mkdir -p /root/pve_link_iso
+sudo curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh -o /root/pve_link_iso/pve_link_iso.sh
+sudo chmod +x /root/pve_link_iso/pve_link_iso.sh
+```
+
+再編輯 root 的 crontab：
 
 ```bash
 sudo crontab -e

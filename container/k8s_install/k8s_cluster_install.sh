@@ -16,9 +16,9 @@ SCRIPT_NAME="$(basename "${0#-}")"
 
 ROLE=""
 K8S_MINOR="v1.36"
-K8S_PATCH="v1.36.2"
+K8S_PATCH="v1.36.5"
 CRIO_VERSION=""
-CALICO_VERSION="v3.32.1"
+CALICO_VERSION="v3.32.2"
 POD_CIDR="10.244.0.0/16"
 ADVERTISE_ADDR=""
 JOIN_CMD=""
@@ -41,10 +41,10 @@ Required:
 
 Options:
   --k8s-version v1.36         Package repo minor version. (default: ${K8S_MINOR})
-  --k8s-patch v1.36.2         Exact version pinned by kubeadm init. (default: ${K8S_PATCH})
+  --k8s-patch v1.36.5         Exact version pinned by kubeadm init. (default: ${K8S_PATCH})
   --crio-version v1.36        CRI-O version, must match the k8s minor.
                               (default: same as --k8s-version)
-  --calico-version v3.32.1    Calico release to install. (default: ${CALICO_VERSION})
+  --calico-version v3.32.2    Calico release to install. (default: ${CALICO_VERSION})
   --pod-cidr CIDR             Pod network CIDR. (default: ${POD_CIDR})
   --apiserver-advertise-address IP
                               Control plane API address. (default: primary IP)

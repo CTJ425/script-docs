@@ -41,10 +41,11 @@ services:
     restart: unless-stopped
     image: ghcr.io/open-webui/open-webui:v0.10.2
     depends_on:
-      # Without this the WebUI starts first and its initial model list is
-      # empty until a manual refresh.
+      # Wait for the healthcheck, not just the container start: otherwise the
+      # WebUI comes up before Ollama answers and its first model list is empty
+      # until a manual refresh.
       ollama:
-        condition: service_started
+        condition: service_healthy
     ports:
       - 8080:8080
     volumes:

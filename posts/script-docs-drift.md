@@ -1,6 +1,7 @@
 ---
 title: 文件與腳本為什麼會各自漂移
 date: 2026-10-02
+updated: 2026-10-12
 summary: README 與腳本各走各的，是自動化腳本最常見的死法。我用單一來源、可預演、CI 守門三個約束擋住它。
 tags: [ci, shell, docs]
 scripts: [pve-link-iso]
@@ -16,7 +17,7 @@ scripts: [pve-link-iso]
 
 ## 可預演
 
-會動到主機狀態的腳本一律支援 `--help` 與 `--dry-run`。先看它要做什麼，再決定要不要真的做。
+會動到主機狀態的腳本盡量支援 `--help` 與 `--dry-run`。先看它要做什麼，再決定要不要真的做；還不支援的，README 會寫明它會動到哪些東西。
 
 例如 [Proxmox VE ISO 軟連結同步](../script/pve_link_iso)，第一次跑之前先預演：
 

@@ -1,6 +1,6 @@
 # Kubernetes 節點前置環境初始化
 
-> 最後更新：2026-07-30
+> 最後更新：2026-10-12
 
 自動判斷作業系統家族，套用 Kubernetes 節點的前置需求，最後逐項驗證並顯示結果。
 
@@ -23,6 +23,8 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k
 | `-y`, `--yes` | 結束後直接重開機，不詢問。 |
 | `--no-reboot` | 完全不重開機也不詢問，適合自動化流程。 |
 | `--keep-firewall` | 保留 firewalld / ufw 不關閉，改由你自己開通埠號。 |
+| `--keep-selinux` | 保留 SELinux 不關閉（RHEL 家族）。CRI-O 與 kubelet 支援 enforcing 模式，但可能需要安裝 `container-selinux`，hostPath volume 也要有正確的標籤。 |
+| `-n`, `--dry-run` | 只印出每一項會做的變更，不實際修改，也不重開機。 |
 | `-h`, `--help` | 顯示說明。 |
 
 ---
@@ -32,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k
 | # | 項目 | 動作 |
 | :-- | :--- | :--- |
 | 1 | 防火牆 | 停用並關閉開機啟動（RHEL 為 `firewalld`，Debian 為 `ufw`）。加 `--keep-firewall` 可跳過。 |
-| 2 | SELinux | RHEL 家族用 `grubby` 加入 `selinux=0` 核心參數，**需重開機生效**。Debian 家族跳過（AppArmor 為 Kubernetes 原生支援，不需關閉）。 |
+| 2 | SELinux | RHEL 家族用 `grubby` 加入 `selinux=0` 核心參數，**需重開機生效**。加 `--keep-selinux` 可跳過。Debian 家族跳過（AppArmor 為 Kubernetes 原生支援，不需關閉）。 |
 | 3 | Swap | `swapoff -a`，並在 `/etc/fstab` 註解掉 swap 那行（冪等，重跑不會疊出 `###`）。原始檔備份到 `/etc/fstab.orig`。 |
 | 4 | 核心模組 | 寫入 `/etc/modules-load.d/crio.conf` 並立即載入 `overlay`、`br_netfilter`。 |
 | 5 | Sysctl | 寫入 `/etc/sysctl.d/99-kubernetes-cri.conf`：`bridge-nf-call-iptables`、`bridge-nf-call-ip6tables`、`ip_forward` 全設為 1。 |

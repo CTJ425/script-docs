@@ -158,7 +158,7 @@ jobs:
             # base always 404s on its own — probe the README that lives in it,
             # which still proves the path exists at this commit.
             case "$u" in
-              *.sh|*.py|*.js|*.mjs|*.md|*.yml|*.yaml|*.json) target="$u" ;;
+              *.sh|*.ps1|*.py|*.js|*.mjs|*.md|*.yml|*.yaml|*.json) target="$u" ;;
               *) target="$u/README.md" ;;
             esac
             code=$(curl -s -o /dev/null -w '%{http_code}' "$target")

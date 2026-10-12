@@ -124,7 +124,7 @@ cannot turn the prefix off.
 - Fresh for 7 days (`savedAt`, with 5 minutes of future slack for clock skew);
   older or malformed values are ignored, both for rendering and as a base for
   the next write.
-- A stored window whose `resetsAt` has passed renders `0.0%` with no countdown.
+- A stored window whose `resetsAt` has passed renders `0%` with no countdown.
   A stored window with no `resetsAt` renders its percentage without a countdown.
 - Written only when a bucket changed; a reading carrying one window keeps the
   other from the store.

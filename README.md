@@ -1,6 +1,6 @@
 # ivan note
 
-> 最後更新：2026-10-07
+> 最後更新：2026-10-12
 
 個人資訊部落格：我寫過的 script、用過的工具，以及 GitHub 上的專案筆記。
 
@@ -20,7 +20,7 @@
 腳本頁是特別的一種：它是該資料夾 `README.md` 的**逐位元組渲染**，網站上看到的和 GitHub 上看到的是同一份。這也是這個專案的核心約束 —— 自動化腳本最常見的死法不是寫錯邏輯，而是文件與腳本各自漂移，所以：
 
 - **單一來源**：腳本頁就是 README，不另外維護一份文案。
-- **可預演**：會動到主機狀態的腳本一律支援 `--help` 與 `--dry-run`。
+- **可預演**：會動到主機狀態的腳本盡量支援 `--help` 與 `--dry-run`；不支援的，README 會寫明它會動到哪些東西。
 - **CI 守門**：shell 語法與 ShellCheck、Docker Compose 設定，以及文件裡每一條 `raw.githubusercontent.com` 指令是否仍能解析，都在 CI 逐條驗證。
 
 ---
@@ -31,13 +31,14 @@
 
 ### 🤖 [`AI/`](./AI) —— AI CLI 與 agent
 
-把用量配額顯示在提示列上，以及給 Claude Code 用的全域設定。純 ASCII、無背景服務、無網路請求，解析失敗一律降級而不崩潰。
+把用量配額顯示在 AI CLI 的提示列旁，以及給 Claude Code 用的全域設定與發布流程 skill。用量列解析失敗一律降級顯示，不會崩潰。
 
 | 專案 | 說明 |
 | --- | --- |
 | [AGY Usage HUD](./AI/agy_usage_hud) | Antigravity CLI (`agy`) 狀態列：模型名稱、Context Window 用量、5h 與每週配額用量、重置倒數 |
-| [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code plugin（mod）狀態列：模型與 effort、5h 用量與重置倒數、每週用量、context window，各 session 共用最新用量 |
+| [Claude Code Usage HUD](./AI/claudecode_usage_hub) | Claude Code plugin（mod），在輸入框下方顯示一行：模型與 effort、5h 用量與重置倒數、每週用量、context window，各 session 共用最新用量 |
 | [Global CLAUDE.md](./AI/md) | 給 Claude Code 用的全域指令檔，套用在所有專案 |
+| [Release Skills](./AI/skill) | 給 Claude Code 用的版號（`versioning`）與發布管線（`ship`）skill，路徑寫在各專案的設定檔裡（不在網站上顯示，只在 GitHub） |
 
 ### ☸️ [`container/`](./container) —— 容器與 Kubernetes
 
@@ -59,10 +60,11 @@
 | [deploy-supabase](./script/deploy-supabase) | Supabase Self-Hosted 自動化部署，支援多專案同機部署、Port 智慧偏移與擴充模組 |
 | [pve_link_iso](./script/pve_link_iso) | 用 symbolic link 把 NAS 上的 ISO 掛進 Proxmox VE 的 ISO 目錄，PVE 看得到但不必複製檔案 |
 | [setup-en-cli-zh-tw-desktop](./script/setup-en-cli-zh-tw-desktop) | 終端機輸出英文訊息、桌面環境維持繁體中文 |
+| [setup-windows-terminal](./script/setup-windows-terminal) | Windows 11 終端機一鍵設定：安裝或升級 Oh My Posh、PowerShell 7、Coreutils 與 Nerd Font，並設定 Windows Terminal |
 
 ---
 
-## 一行指令執行 (One-liners)
+## 一行指令執行
 
 | 用途 | 指令 |
 | --- | --- |
@@ -73,12 +75,13 @@
 | **Kubernetes 節點前置環境**<br>關閉 swap、載入核心模組、設定 sysctl | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh \| sudo bash -s -- --yes` |
 | **建立 Kubernetes Control Plane**<br>CRI-O + kubeadm + Calico | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_install/k8s_cluster_install.sh \| sudo bash -s -- --role cp --yes` |
 | **Proxmox VE ISO 軟連結同步** | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh \| sudo bash -s -- -s /mnt/pve/ISO -t /mnt/pve/ISO/template/iso` |
+| **Windows 11 終端機設定**<br>在 Windows PowerShell 執行 | `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/CTJ425/script-docs/main/script/setup-windows-terminal/setup-windows-terminal.ps1 \| iex"` |
 | **Ollama + Open WebUI** | `git clone https://github.com/CTJ425/script-docs.git && cd script-docs/container/ollama && docker compose up -d` |
 
 > [!TIP]
-> 第一次在一台機器上使用時，先跑 `--dry-run` 看它會做什麼，確認無誤再拿掉：
+> 第一次在一台機器上使用時，先跑 `--dry-run` 看它會做什麼，確認無誤再拿掉（支援的有 RHEL 範本封裝、Kubernetes 兩支與 PVE ISO 同步）：
 > ```bash
-> curl -fsSL <上面任一網址> | sudo bash -s -- --dry-run
+> curl -fsSL <上面的網址> | sudo bash -s -- --dry-run
 > ```
 
 ---

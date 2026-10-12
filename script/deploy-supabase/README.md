@@ -1,6 +1,6 @@
 # Supabase Self-Hosted 自動化部署與配置腳本
 
-> 最後更新：2026-08-27
+> 最後更新：2026-10-12
 
 在 Linux 伺服器／VM 上快速自動化部署與配置 Supabase Self-Hosted (v0.8.0+) 環境的 Shell 腳本。
 
@@ -52,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/depl
 
 3. **同機多專案 Port 智慧偏移與隔離**：
    - **連號次序偏移**：輸入專案號次 $N$（例如第 2 個專案輸入 $1$），全體對外 Port 自動 $+N$。若誤輸入 Port（如 8001），腳本會智慧算回偏移量。
-   - **API Gateway HTTP 基準 Port 偏移**：指定 Gateway HTTP 基準 Port（如 8001），其他 Port 按比例自動對齊推算。
+   - **API Gateway HTTP 基準 Port 偏移**：指定 Gateway HTTP 基準 Port（如 8001），其他 Port 依同樣的差值（此例為 +1）一起偏移。
    - **手動個別 Port 輸入**：針對特殊網路架構逐一指定個別服務 Port。
 
 4. **Port 衝突預先檢測**：
@@ -63,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/depl
    - 自動將 Compose `name` 修訂為自訂專案名稱，徹底避免同機多 Supabase 實例時 Docker Compose 的命名衝突。
 
 6. **擴充模組整合 (Docker Compose Overrides)**：
-   - 支援官方與社群常用擴充模組：`kong` (Kong API Gateway)、`pg15` (Postgres 15 引擎，預設為 PG 17)、`caddy` / `nginx` (HTTPS 反向代理)、`s3` (MinIO S3 儲存)、`rustfs` (高效能儲存)、`logs` (Logflare 日誌增強)。
+   - 支援官方與社群常用擴充模組：`kong` (Kong API Gateway，取代預設的 Envoy)、`pg15` (Postgres 15 引擎，預設為 PG 17)、`caddy` / `nginx` (HTTPS 反向代理)、`s3` (MinIO S3 儲存)、`rustfs` (高效能儲存)、`logs` (Logflare 日誌增強)。
 
 ---
 

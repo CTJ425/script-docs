@@ -1,6 +1,6 @@
 # Ollama + Open WebUI
 
-> 最後更新：2026-07-30
+> 最後更新：2026-10-12
 
 用 Docker Compose 跑本地大型語言模型。預設走 NVIDIA GPU 加速，另附 CPU-only override。
 
@@ -19,7 +19,7 @@ docker compose up -d
 docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ```
 
-開啟 <http://localhost:8080>，第一個註冊的帳號自動成為管理員。
+Open WebUI 會等 Ollama 的 healthcheck 通過才啟動，第一次大約要等 30 秒。之後開啟 <http://localhost:8080>，第一個註冊的帳號自動成為管理員。
 
 ```bash
 docker compose ps        # 兩個容器都要是 Up
@@ -45,8 +45,8 @@ docker compose logs -f   # 看啟動過程
 或用指令：
 
 ```bash
-docker exec -it ollama ollama pull llama3:8b
-docker exec -it ollama ollama pull qwen2.5:7b
+docker exec -it ollama ollama pull qwen3:8b
+docker exec -it ollama ollama pull gemma3:4b
 docker exec -it ollama ollama list
 ```
 
@@ -127,6 +127,6 @@ Volume 實際名稱前綴視專案目錄而定，用 `docker volume ls` 確認�
 | 症狀 | 排查方向 |
 | :--- | :--- |
 | `could not select device driver "nvidia"` | Container Toolkit 沒裝好或沒 `nvidia-ctk runtime configure`；沒有 GPU 請改用 CPU override。 |
-| WebUI 模型清單是空的 | 還沒拉模型；或 ollama 容器尚未就緒，等 healthcheck 通過後重新整理。 |
+| WebUI 模型清單是空的 | 還沒拉模型。用 `docker exec -it ollama ollama list` 確認 Ollama 裡有哪些模型。 |
 | `!reset` 語法錯誤 | Docker Compose 版本低於 v2.24，請升級。 |
 | 8080 埠被占用 | 改成 `- 8081:8080`。 |

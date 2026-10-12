@@ -210,7 +210,7 @@ KONG_HTTPS_PORT=8443
 POSTGRES_PORT=5432
 POOLER_PORT=6543
 
-if [ -n "$CLI_GATEWAY_PORT" ] || [ -n "$CLI_PORT_OFFSET" ] || [ -n "$CLI_DB_PORT" ] || [ -n "$CLI_POOLER_PORT" ]; then
+if [ -n "$CLI_GATEWAY_PORT" ] || [ -n "$CLI_PORT_OFFSET" ] || [ -n "$CLI_KONG_HTTPS_PORT" ] || [ -n "$CLI_DB_PORT" ] || [ -n "$CLI_POOLER_PORT" ]; then
   if [ -n "$CLI_PORT_OFFSET" ]; then
     OFFSET="$CLI_PORT_OFFSET"
     validate_port "$OFFSET" "專案次序 N"

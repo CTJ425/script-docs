@@ -20,6 +20,8 @@ declare -A dir_map=(
   ["影片"]="Videos"
   ["音樂"]="Music"
   ["公共"]="Public"
+  # 範本 is the zh_TW name, 模板 the zh_CN one; handle both.
+  ["範本"]="Templates"
   ["模板"]="Templates"
 )
 

@@ -1,6 +1,6 @@
 # AGY Usage HUD
 
-> 最後更新：2026-09-04
+> 最後更新：2026-10-12
 
 專為 **Antigravity CLI (`agy`)** TUI 設計的純 ASCII 狀態列，監控 **Context Window (會話上下文)**、**5 小時滾動視窗** 與 **每週** 的 AI 配額使用率與重置倒數。
 
@@ -14,7 +14,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 
 ## 特點
 
-- **100% 純 ASCII**（不含 ANSI 色碼）：相容所有終端字型與編碼，不會有寬度錯位或亂碼。
+- **100% 純 ASCII**：輸出只有 ASCII 字元（顏色用 ANSI 色碼，本身也是 ASCII），相容所有終端字型與編碼，不會有寬度錯位或亂碼。
 - **Session 累積用量**：`Ctx` 顯示本次 session 至今累計消耗的 Token（如 `Ctx 1.4M`），壓縮上下文不會讓它倒退。數字旁的顏色仍然反映**當前視窗佔用率**，所以快撐爆視窗時照樣會轉黃轉紅。
 - **渲染永不阻塞**：狀態列本身只讀本地快取 (cache) 就輸出；配額 (quota) 由一個常駐的背景 daemon 每 5 秒向 API 拉取一次，網路慢或不通都不會拖住提示字元。
 - **配額更新不依賴 TUI 重繪**：daemon 啟動後自行輪詢，不需要狀態列被重畫才會去拉資料。連續 120 秒沒有任何一次渲染時它會自動結束，不會在背景留下一個永遠在打 API 的行程。
@@ -28,7 +28,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k | 5h 0.1% (3h11m) | Wk 15.1% (4d23h)
 
 ## 需求
 
-- Python 3.6+（僅用標準庫，不需 `pip install`）
+- Python 3.7+（僅用標準庫，不需 `pip install`；時間解析用到 3.7 才有的 `datetime.fromisoformat`）
 - Antigravity CLI (`agy`)，支援 `/statusline` 或 `settings.json` 的 `statusLine`
 - 終端支援 ANSI 色彩（建議 `TERM=xterm-256color`）
 
@@ -156,7 +156,7 @@ Gemini 3.6 Flash (High) | Ctx 19.9k | 5h ~73.1% (59m) | Wk ~27.5% (2d07h)
 ## 驗證
 
 ```bash
-# 1. 完整邊界測試套件（131 案例，Tier 0-13）
+# 1. 完整邊界測試套件（138 案例，Tier 0-13）
 python3 ./test_statusline.py
 
 # 2. 管道模擬 agy 實際送出的載荷（欄位取自 agy 1.1.8 實測）
@@ -171,7 +171,7 @@ echo '{"context_window":{"context_window_size":1048576},"quota":{"gemini-5h":{"r
 python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/settings.json'); print('Config valid:', json.load(open(p)).get('statusLine'))"
 ```
 
-測試套件預期輸出 `Total: 131 | Passed: 131 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
+測試套件預期輸出 `Total: 138 | Passed: 138 | Failed: 0` 並回傳 exit code 0。套件不依賴可連線的 API 或有效 token，也不會寫入你真正的快取檔。
 
 ---
 
@@ -180,7 +180,7 @@ python3 -c "import json,os; p=os.path.expanduser('~/.gemini/antigravity-cli/sett
 | 檔案 | 用途 |
 |---|---|
 | [statusline_hud.py](./statusline_hud.py) | 狀態列主腳本 |
-| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-13，131 案例，含 agy 1.1.8 實測 payload）|
+| [test_statusline.py](./test_statusline.py) | 邊界測試套件（Tier 0-13，138 案例，含 agy 1.1.8 實測 payload）|
 | [setup.sh](./setup.sh) | 一鍵安裝（下載 + 合併寫入 `settings.json`）|
 | [SPEC.md](./SPEC.md) | 設計決策與資料契約 |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | 疑難排解 |

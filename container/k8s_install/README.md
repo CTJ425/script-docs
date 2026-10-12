@@ -1,6 +1,6 @@
 # Kubernetes 1.36 叢集部署（CRI-O + Calico / Rocky Linux 9）
 
-> 最後更新：2026-07-30
+> 最後更新：2026-10-12
 
 在 RHEL 家族主機上建立 Kubernetes 叢集，容器執行環境用 CRI-O，CNI 用 Calico。
 另附 MetalLB、KubeVirt、Gateway API、TrueNAS CSI 的安裝步驟。
@@ -32,9 +32,9 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k
 | `--role cp\|worker` | （必填） | 這台節點的角色。 |
 | `--join "<cmd>"` | — | Worker 必填，CP 執行 `kubeadm token create --print-join-command` 取得。缺少 `--cri-socket` 會自動補上。 |
 | `--k8s-version` | `v1.36` | 套件庫的 minor 版本。 |
-| `--k8s-patch` | `v1.36.2` | `kubeadm init` 鎖定的確切版本。 |
+| `--k8s-patch` | `v1.36.5` | `kubeadm init` 鎖定的確切版本。 |
 | `--crio-version` | 同 `--k8s-version` | CRI-O 版本，必須對齊 K8s minor。 |
-| `--calico-version` | `v3.32.1` | Calico 版本。 |
+| `--calico-version` | `v3.32.2` | Calico 版本。 |
 | `--pod-cidr` | `10.244.0.0/16` | Pod 網段，會自動同步到 Calico 設定。 |
 | `--apiserver-advertise-address` | 主要網卡 IP | API Server 對外位址。 |
 | `--skip-calico` | — | CP 不安裝 CNI（想自己裝別的 CNI 時用）。 |
@@ -62,9 +62,9 @@ kubectl get tigerastatus
 | 項目 | 版本 |
 | :--- | :--- |
 | OS | Rocky Linux 9.8（RHEL / AlmaLinux 同適用） |
-| Kubernetes | v1.36.2（EOL 2027-06-28） |
+| Kubernetes | v1.36.5（EOL 2027-06-28） |
 | 容器執行環境 | CRI-O v1.36 |
-| CNI | Calico v3.32.1（Tigera Operator） |
+| CNI | Calico v3.32.2（Tigera Operator） |
 | Pod CIDR | `10.244.0.0/16` |
 
 主機規劃範例：
@@ -206,7 +206,7 @@ sudo kubeadm init \
   --pod-network-cidr=10.244.0.0/16 \
   --apiserver-advertise-address=10.0.1.10 \
   --cri-socket=unix:///var/run/crio/crio.sock \
-  --kubernetes-version=v1.36.2
+  --kubernetes-version=v1.36.5
 
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -235,7 +235,7 @@ sudo kubeadm join 10.0.1.10:6443 \
 用官方推薦的 Tigera Operator 安裝（而非舊式單一 manifest），Operator 會處理 Typha 擴展與升級。
 
 ```bash
-CALICO_VERSION=v3.32.1
+CALICO_VERSION=v3.32.2
 
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/v1_crd_projectcalico_org.yaml
 kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml
@@ -671,7 +671,7 @@ sudo kubeadm init \
   --control-plane-endpoint="10.0.1.100:6443" \
   --upload-certs \
   --cri-socket=unix:///var/run/crio/crio.sock \
-  --kubernetes-version=v1.36.2
+  --kubernetes-version=v1.36.5
 ```
 
 輸出會給兩種 join 指令。CP 用的那個含 `--certificate-key`（預設 2 小時有效）：
@@ -740,9 +740,9 @@ sudo ETCDCTL_API=3 etcdctl snapshot save /root/etcd-backup-$(date +%Y%m%d%H%M).d
 
 | 元件 | 版本 | 備註 |
 | :--- | :--- | :--- |
-| Kubernetes | v1.36.2 | 2026-06-09 釋出，EOL 2027-06-28 |
+| Kubernetes | v1.36.5 | 1.36 系列 2026-09 的 patch，EOL 2027-06-28；v1.37 已於 2026-08-26 釋出，本文仍以 1.36 為準 |
 | CRI-O | v1.36 | 需對齊 K8s minor 版本 |
-| Calico | v3.32.1 | Tigera Operator；K8s 1.36 的 `MutatingAdmissionPolicy` 已 GA，不需另開 feature gate |
+| Calico | v3.32.2 | Tigera Operator；K8s 1.36 的 `MutatingAdmissionPolicy` 已 GA，不需另開 feature gate |
 | MetalLB | v0.16.1 | manifest 安裝，Layer2 模式 |
 | KubeVirt | v1.8.4 | 官方對齊 K8s v1.35，v1.36 超出正式驗證範圍 |
 | Gateway API | v1.6.0 | Standard channel + Calico Ingress Gateway |

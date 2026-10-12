@@ -51,7 +51,7 @@ skill 由描述自動觸發，直接用自然語言講即可：
 
 ### 本 repo 的實際設定
 
-本 repo 沒有任何檔案寫著版號，版號只存在於 git tag，因此 `syncFiles` 是 `[]`、`tagPrefix` 是 `v`、`devBranch` 是 `null`。內容見 [`.claude/release.config.json`](../../../.claude/release.config.json)。
+repo 本身的版號沒有寫在任何檔案裡，只存在於 git tag（`AI/claudecode_usage_hub/.claude-plugin/plugin.json` 的 `version` 是那個 plugin 自己的版號，另外管理），因此 `syncFiles` 是 `[]`、`tagPrefix` 是 `v`、`devBranch` 是 `null`。內容見 [`.claude/release.config.json`](../../../.claude/release.config.json)。
 
 ### 抽 CHANGELOG 段落
 
