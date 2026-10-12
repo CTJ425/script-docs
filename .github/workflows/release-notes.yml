@@ -3,8 +3,7 @@ name: Sync release notes
 # Rewrites the body of GitHub Releases from CHANGELOG.md, which is the source
 # of truth for every Release body. Run it by hand after editing a released
 # section (a correction, a translation). With "create", a tag that has no
-# Release yet gets one; "target" names the commit to tag when the tag itself
-# has not been pushed (GitHub then creates the tag with the Release).
+# Release yet gets one; the tag itself must already be pushed.
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +15,6 @@ on:
         description: 'Create the Release when a listed tag has none (needs explicit tags).'
         type: boolean
         default: false
-      target:
-        description: 'With create: commit SHA to tag when the tag does not exist yet.'
-        required: false
-        default: ''
 
 permissions:
   contents: write
@@ -35,7 +30,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAGS: ${{ inputs.tags }}
           CREATE: ${{ inputs.create }}
-          TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
           prefix=$(python3 -c "import json;print(json.load(open('.claude/release.config.json'))['repo']['tagPrefix'])")
@@ -72,12 +66,7 @@ jobs:
               gh release edit "$tag" --notes-file "$notes"
               echo "updated $tag"
             elif [ "$CREATE" = "true" ]; then
-              if [ -n "$TARGET" ]; then
-                where=(--target "$TARGET")
-              else
-                where=(--verify-tag)
-              fi
-              gh release create "$tag" "${where[@]}" --title "$tag" --notes-file "$notes"
+              gh release create "$tag" --verify-tag --title "$tag" --notes-file "$notes"
               echo "created $tag"
             else
               echo "::error::$tag has no Release; re-run with create to make one"
