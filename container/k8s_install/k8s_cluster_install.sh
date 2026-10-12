@@ -127,6 +127,13 @@ done
 
 CRIO_VERSION="${CRIO_VERSION:-$K8S_MINOR}"
 
+# The packages are pinned to K8S_PATCH below, so it has to sit in the minor
+# whose repository gets configured.
+case "$K8S_PATCH" in
+  "$K8S_MINOR".*) ;;
+  *) die "--k8s-patch $K8S_PATCH is not a release of --k8s-version $K8S_MINOR." ;;
+esac
+
 case "$ROLE" in
   cp|worker) ;;
   "") die "--role is required (cp or worker). See --help." ;;
@@ -260,7 +267,11 @@ gpgcheck=1
 gpgkey=${base}/repodata/repomd.xml.key
 exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni"
 
-  run dnf install -y --disableexcludes=kubernetes kubelet kubeadm kubectl
+  # Pin the packages to the version kubeadm init deploys. Unpinned, dnf takes
+  # the newest patch in the minor, and a kubelet newer than the control plane
+  # fails kubeadm's KubeletVersion preflight check.
+  local ver="${K8S_PATCH#v}"
+  run dnf install -y --disableexcludes=kubernetes "kubelet-${ver}" "kubeadm-${ver}" "kubectl-${ver}"
   run systemctl enable --now kubelet
 }
 

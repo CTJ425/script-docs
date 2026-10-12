@@ -1679,6 +1679,8 @@ def build_unit_checks() -> list:
              and hud.format_token_count(19477) == "19.5k"
              and hud.format_token_count(20000) == "20k"
              and hud.format_token_count(200000) == "200k"
+             and hud.format_token_count(999499) == "999k"
+             and hud.format_token_count(999600) == "1M"
              and hud.format_token_count(1000000) == "1M"
              and hud.format_token_count(1048576) == "1M"
              and hud.format_token_count(1500000) == "1.5M"

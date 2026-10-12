@@ -226,7 +226,8 @@ def format_token_count(tokens: Optional[int]) -> str:
     num = int(val)
     if num < 1000:
         return str(num)
-    if num >= 1_000_000 or num >= 1048576:
+    # From 999,500 up, the k branch would round to "1000k".
+    if num >= 999_500:
         # Check standard binary 1M / 2M (1048576 / 2097152) or decimal 1M
         if abs(num - 1048576) < 50000 or abs(num - 1_000_000) < 50000:
             return "1M"

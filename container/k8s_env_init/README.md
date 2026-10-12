@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k
 | :-- | :--- | :--- |
 | 1 | 防火牆 | 停用並關閉開機啟動（RHEL 為 `firewalld`，Debian 為 `ufw`）。加 `--keep-firewall` 可跳過。 |
 | 2 | SELinux | RHEL 家族用 `grubby` 加入 `selinux=0` 核心參數，**需重開機生效**。加 `--keep-selinux` 可跳過。Debian 家族跳過（AppArmor 為 Kubernetes 原生支援，不需關閉）。 |
-| 3 | Swap | `swapoff -a`，並在 `/etc/fstab` 註解掉 swap 那行（冪等，重跑不會疊出 `###`）。原始檔備份到 `/etc/fstab.orig`。 |
+| 3 | Swap | `swapoff -a`，並在 `/etc/fstab` 註解掉 swap 那行（冪等，重跑不會疊出 `###`）。原始檔備份到 `/etc/fstab.orig`。Fedora 預設的 zram swap 不在 fstab 裡，會另外寫一個空的 `/etc/systemd/zram-generator.conf` 把它停用。 |
 | 4 | 核心模組 | 寫入 `/etc/modules-load.d/crio.conf` 並立即載入 `overlay`、`br_netfilter`。 |
 | 5 | Sysctl | 寫入 `/etc/sysctl.d/99-kubernetes-cri.conf`：`bridge-nf-call-iptables`、`bridge-nf-call-ip6tables`、`ip_forward` 全設為 1。 |
 

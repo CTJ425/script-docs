@@ -58,6 +58,9 @@ fi
 
 PYTHON_BIN="$(command -v python3 || command -v python || true)"
 [ -n "$PYTHON_BIN" ] || die "python3 is required but was not found in PATH."
+# 'python' may be Python 2, and statusline_hud.py needs 3.7 (fromisoformat).
+"$PYTHON_BIN" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' 2>/dev/null ||
+  die "$PYTHON_BIN is older than Python 3.7, which statusline_hud.py needs."
 
 mkdir -p "$INSTALL_DIR"
 
@@ -116,7 +119,7 @@ if os.path.exists(settings_path):
 
 settings["statusLine"] = {
     "type": "command",
-    "command": f'{python_bin} "{script_path}"',
+    "command": f'"{python_bin}" "{script_path}"',
 }
 
 with open(settings_path, "w", encoding="utf-8") as fh:

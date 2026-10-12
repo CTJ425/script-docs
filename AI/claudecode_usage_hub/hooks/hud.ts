@@ -191,7 +191,8 @@ function rateSegment(icon: Icon, v: { pct: number | null; resetsAt: number | nul
 }
 
 function tokens(n: number) {
-  if (n >= 1_000_000) return `${Number((n / 1_000_000).toFixed(1))}M`
+  // From 999,500 up, the K branch would round to "1000K".
+  if (n >= 999_500) return `${Number((n / 1_000_000).toFixed(1))}M`
   if (n >= 1000) return `${Math.round(n / 1000)}K`
   return String(Math.round(n))
 }

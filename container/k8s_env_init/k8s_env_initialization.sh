@@ -214,6 +214,15 @@ disable_swap() {
     # the script never stacks up "###".
     run sed -r -i '/\s+swap\s+/s/^#*/#/' /etc/fstab
 
+    # Fedora ships swap on zram through zram-generator, not /etc/fstab, so
+    # swapoff alone lasts only until the reboot this script ends with. An
+    # empty file under /etc overrides the vendor config and turns it off.
+    if [ -f /usr/lib/systemd/zram-generator.conf ] && [ ! -f /etc/systemd/zram-generator.conf ]; then
+        run mkdir -p /etc/systemd
+        write_file /etc/systemd/zram-generator.conf '# Disabled for Kubernetes (kubelet refuses to run with swap on).'
+        echo "Disabled zram swap via /etc/systemd/zram-generator.conf."
+    fi
+
     echo "Swap has been disabled and commented out in /etc/fstab."
     echo ""
 }

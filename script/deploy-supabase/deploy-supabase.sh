@@ -190,7 +190,11 @@ if [ -n "$CLI_PROTOCOL" ]; then
 else
   INPUT_PROTOCOL=$(read_p_def "請選擇通訊協定 (http/https)" "http")
 fi
-PROTOCOL=${INPUT_PROTOCOL}
+PROTOCOL=$(echo "${INPUT_PROTOCOL}" | tr '[:upper:]' '[:lower:]')
+case "$PROTOCOL" in
+  http|https) ;;
+  *) die "通訊協定只能是 http 或 https (您輸入的數值: '${INPUT_PROTOCOL}')" ;;
+esac
 
 if [ -n "$CLI_REVERSE_PROXY" ]; then
   USE_REVERSE_PROXY="$CLI_REVERSE_PROXY"
@@ -203,6 +207,12 @@ else
     USE_REVERSE_PROXY=${USE_REVERSE_PROXY:-N}
   fi
 fi
+# 後面一律用 ^[Yy]$ 判斷，所以先把 yes / no 收斂成 y / n，其他值直接拒絕。
+case "$USE_REVERSE_PROXY" in
+  [Yy]|[Yy][Ee][Ss]) USE_REVERSE_PROXY="y" ;;
+  [Nn]|[Nn][Oo]) USE_REVERSE_PROXY="n" ;;
+  *) die "反向代理設定只能是 y 或 n (您輸入的數值: '${USE_REVERSE_PROXY}')" ;;
+esac
 
 # Port 基礎預設值 (Envoy Gateway 8000, Supavisor 5432 & 6543)
 API_GW_HTTP_PORT=8000
@@ -435,7 +445,11 @@ set_env_var() {
   local env_file=".env"
 
   if grep -q "^${key}=" "$env_file" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+    # 自訂密碼可能含 & | \ 這些 sed 取代字串的特殊字元：& 會被代換成整行
+    # 比對結果、| 會提早結束指令，所以先跳脫再寫入。
+    local escaped
+    escaped=$(printf '%s' "$value" | sed -e 's/[\\&|]/\\&/g')
+    sed -i "s|^${key}=.*|${key}=${escaped}|" "$env_file"
   else
     echo "${key}=${value}" >> "$env_file"
   fi
@@ -493,6 +507,8 @@ apply_override_module() {
       set_env_var "COMPOSE_FILE" "${current_compose}"
       echo "   [+] 已將 ${override_file} 加入 .env 的 COMPOSE_FILE"
       SELECTED_OVERRIDES_LIST="${SELECTED_OVERRIDES_LIST} ${mod}"
+    elif [ ! -f "$override_file" ]; then
+      warn "找不到 ${override_file}，略過模組 ${mod}。"
     fi
   fi
 }

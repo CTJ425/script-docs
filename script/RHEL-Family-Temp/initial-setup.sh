@@ -248,11 +248,12 @@ while true; do
     if [ -z "$netmask_input" ]; then
         netmask_input="$ch_netmask"
     fi
-    if cidr=$(mask_to_cidr "$netmask_input"); then
+    # A /0 prefix (or mask 0.0.0.0) is a valid mask but not a usable address.
+    if cidr=$(mask_to_cidr "$netmask_input") && [ "$cidr" -ge 1 ]; then
         netmask="$cidr"
         break
     else
-        echo "Error: Invalid netmask format. Please enter CIDR prefix (0-32) or a valid subnet mask (e.g. 255.255.255.0)."
+        echo "Error: Invalid netmask format. Please enter CIDR prefix (1-32) or a valid subnet mask (e.g. 255.255.255.0)."
     fi
 done
 

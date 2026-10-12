@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k
 | `--role cp\|worker` | （必填） | 這台節點的角色。 |
 | `--join "<cmd>"` | — | Worker 必填，CP 執行 `kubeadm token create --print-join-command` 取得。缺少 `--cri-socket` 會自動補上。 |
 | `--k8s-version` | `v1.36` | 套件庫的 minor 版本。 |
-| `--k8s-patch` | `v1.36.5` | `kubeadm init` 鎖定的確切版本。 |
+| `--k8s-patch` | `v1.36.5` | `kubeadm init` 鎖定的確切版本，kubelet / kubeadm / kubectl 套件也裝這個版本。必須屬於 `--k8s-version` 那個 minor。 |
 | `--crio-version` | 同 `--k8s-version` | CRI-O 版本，必須對齊 K8s minor。 |
 | `--calico-version` | `v3.32.2` | Calico 版本。 |
 | `--pod-cidr` | `10.244.0.0/16` | Pod 網段，會自動同步到 Calico 設定。 |
@@ -185,11 +185,14 @@ gpgkey=https://pkgs.k8s.io/core:/stable:/$KUBERNETES_VERSION/rpm/repodata/repomd
 exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
 
-sudo dnf install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+# 鎖定和下面 kubeadm init 相同的 patch 版本
+sudo dnf install -y kubelet-1.36.5 kubeadm-1.36.5 kubectl-1.36.5 --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
 ```
 
 `exclude=` 可避免 `dnf update` 意外跳到下一個 minor 版本；要升級時才加 `--disableexcludes=kubernetes`。
+
+套件版本要和 `kubeadm init --kubernetes-version` 一致：不指定版本時 dnf 會裝這個 minor 最新的 patch，kubelet 比 control plane 新會讓 kubeadm 的 preflight 檢查（`KubeletVersion`）失敗。
 
 確認版本（CRI-O 是獨立套件，要另外查）：
 
