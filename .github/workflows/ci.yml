@@ -44,6 +44,7 @@ jobs:
                    container/k8s_env_init/k8s_env_initialization.sh \
                    container/k8s_install/k8s_cluster_install.sh \
                    script/pve_link_iso/pve_link_iso.sh \
+                   script/pve-antivm/pve_antivm_create.sh \
                    script/deploy-supabase/deploy-supabase.sh \
                    AI/skill/install.sh; do
             [ -x "$f" ] || { echo "::error file=$f::not executable (chmod +x)"; fail=1; }
@@ -158,7 +159,7 @@ jobs:
             # base always 404s on its own — probe the README that lives in it,
             # which still proves the path exists at this commit.
             case "$u" in
-              *.sh|*.ps1|*.py|*.js|*.mjs|*.cs|*.md|*.yml|*.yaml|*.json) target="$u" ;;
+              *.sh|*.ps1|*.py|*.js|*.mjs|*.cs|*.conf|*.bat|*.md|*.yml|*.yaml|*.json) target="$u" ;;
               *) target="$u/README.md" ;;
             esac
             code=$(curl -s -o /dev/null -w '%{http_code}' "$target")
