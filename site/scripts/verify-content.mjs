@@ -10,7 +10,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ageOf } from '../src/lib/design.mjs';
-import { REPO_ROOT, REVISION_LINE, loadScriptSources, siteIdentity } from './content-sources.mjs';
+import { POST_FILE, REPO_ROOT, REVISION_LINE, loadScriptSources, postSlug, siteIdentity } from './content-sources.mjs';
 
 let failures = 0;
 const check = (label, pass, detail = '') => {
@@ -64,6 +64,7 @@ console.log('\n=== posts, tools, pages: the file is the entry');
 {
   const frontmatter = (src) => src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
 
+  const postSlugs = new Map();
   for (const [dir, h1Rule] of [['posts', true], ['tools', true], ['pages', true]]) {
     if (!existsSync(join(REPO_ROOT, dir))) continue;
     for (const file of readdirSync(join(REPO_ROOT, dir)).filter((f) => f.endsWith('.md')).sort()) {
@@ -73,7 +74,15 @@ console.log('\n=== posts, tools, pages: the file is the entry');
       check(`${rel}: has frontmatter`, Boolean(m));
       if (!m) continue;
 
-      if (dir !== 'pages') {
+      if (dir === 'posts') {
+        const named = file.match(POST_FILE);
+        check(`${rel}: the filename is YYYY-MM-DD-<slug>.md (the slug becomes the URL)`, Boolean(named));
+        const date = m[1].match(/^date:\s*['"]?(\d{4}-\d{2}-\d{2})/m)?.[1];
+        if (named) check(`${rel}: the filename's date is the frontmatter date`, named[1] === date, `date: ${date ?? '(none)'}`);
+        const slug = postSlug(file);
+        check(`${rel}: no other post has the slug "${slug}"`, !postSlugs.has(slug), postSlugs.get(slug) ?? '');
+        postSlugs.set(slug, rel);
+      } else if (dir === 'tools') {
         check(`${rel}: the filename is a slug (it becomes the URL)`, /^[a-z0-9][a-z0-9-]*\.md$/.test(file));
       }
       // The title comes from the frontmatter and the page template prints it as

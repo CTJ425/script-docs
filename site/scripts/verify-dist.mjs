@@ -11,7 +11,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
-import { REPO_ROOT, SITE_ROOT, deployment, loadScriptSources, siteIdentity } from './content-sources.mjs';
+import { REPO_ROOT, SITE_ROOT, deployment, loadScriptSources, postSlug, siteIdentity } from './content-sources.mjs';
 
 const DIST = join(SITE_ROOT, 'dist');
 const { site, base } = deployment();
@@ -102,7 +102,7 @@ const listed = (dir) =>
   existsSync(join(REPO_ROOT, dir))
     ? readdirSync(join(REPO_ROOT, dir))
         .filter((f) => f.endsWith('.md'))
-        .map((f) => ({ slug: f.replace(/\.md$/, ''), fm: frontmatter(read(`${dir}/${f}`)) }))
+        .map((f) => ({ slug: dir === 'posts' ? postSlug(f) : f.replace(/\.md$/, ''), fm: frontmatter(read(`${dir}/${f}`)) }))
         .filter((e) => e.fm.draft !== 'true')
     : [];
 const posts = listed('posts');
@@ -196,6 +196,21 @@ console.log('\n=== links go somewhere');
     }
   }
   check(`${count} internal links all resolve (incl. anchors), under base "${prefix || '/'}"`, dead.length === 0, dead.slice(0, 6).join('; '));
+
+  // An image written relative to a post must have been copied to /media/.
+  const missing = [];
+  let images = 0;
+  for (const [route, html] of pages) {
+    for (const m of html.matchAll(/<img\s[^>]*?src="([^"]+)"/g)) {
+      const src = decode(m[1]);
+      if (/^(https?:|data:|\/\/)/.test(src)) continue;
+      images++;
+      if (!src.startsWith(`${prefix}/`) || !existsSync(join(DIST, decodeURI(src.slice(prefix.length))))) {
+        missing.push(`${route} -> ${src}`);
+      }
+    }
+  }
+  check(`${images} internal images all exist in dist`, missing.length === 0, missing.slice(0, 6).join('; '));
 }
 
 console.log('\n=== scripts: the page is the README');

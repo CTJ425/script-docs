@@ -1,7 +1,8 @@
-import type { On, SessionRateLimit, SessionUsage } from 'claude-code'
+import type { AgentInfo, On, SessionRateLimit, SessionUsage, UiPane } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { activity, bgSpans, clock, dismissEnded, mergeAgents, parseNotification, prune } from '../hooks/activity'
 import { MAX_AGE_MS, lineText } from '../hooks/hud'
 import type { Span } from '../hooks/hud'
 
@@ -33,6 +34,12 @@ function world(on: On, w: World) {
     tokens: w.tokens as number | undefined,
     usageFails: false,
     statuses: [] as (string | undefined)[],
+    agents: [] as AgentInfo[],
+    panes: [] as UiPane[],
+    opened: [] as string[],
+    spawned: 0,
+    // An open AskUserQuestion waits on this; the test answers it.
+    answer: null as Promise<void> | null,
   }
   on('session.usage', () => {
     if (state.usageFails) throw new Error('usage unavailable')
@@ -45,6 +52,20 @@ function world(on: On, w: World) {
   })
   on('session.model', () => ({ value: w.model ?? 'Claude Sonnet 5' }))
   on('settings.read', () => ({ value: w.settings ?? {} }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('agent.list', () => ({ value: state.agents }))
+  on('ui.panes', () => ({ value: state.panes }))
+  // The terminal places a pane opened unasked only where it is wide enough;
+  // here it always is.
+  on('ui.open', ($, e) => {
+    state.opened.push(e.id)
+    if (!state.panes.some(p => p.id === e.id)) state.panes.push({ id: e.id, title: e.title ?? e.id, isShown: true, isFocused: false, isPlaced: true })
+    return { value: { isPlaced: true as const } }
+  })
+  on('ui.close', ($, e) => {
+    state.panes = state.panes.filter(p => p.id !== e.id)
+    return { value: undefined }
+  })
   // The line drawn under the prompt, as the plugin writes it to $.state.
   on('state.set', ($, e, next) => {
     if (e.key === 'line') state.statuses.push(lineText(e.value as Span[]))
@@ -58,6 +79,17 @@ function world(on: On, w: World) {
   on('session.start', () => ({ cwd: '/tmp' }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('session.end', () => ({ sessionId: 's' }))
+  // The engine beneath the background-work hooks.
+  on('agent.spawn', () => ({ model: 'm', agentId: `a${++state.spawned}` }))
+  on('tool.call', async ($, e) => {
+    if (e.tool === 'AskUserQuestion') {
+      await state.answer
+      return { result: { questions: [], answers: {} } as never }
+    }
+    return { result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: (e as { bg?: string }).bg } as never }
+  })
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('command.run', () => ({}))
   on('turn.step', async function* (_$, e) {
     return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], stopReason: 'end_turn' as const, usage: null }
   })
@@ -478,5 +510,156 @@ describe('marks and units', () => {
     const w = world(on, { rateLimits: both(45, 23), tokens: 156_000, window: 1_000_000 })
     await start($)
     expect(w.last()).toContain('Ctx 156K/1M')
+  })
+})
+
+const agent = (id: string, status: AgentInfo['status'], description = 'scan hooks', type = 'Explore'): AgentInfo => ({ id, status, description, type })
+const NOTE = (id: string, status: string, summary: string) =>
+  `<task-notification>\n<task-id>${id}</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>${status}</status>\n<summary>${summary}</summary>\n</task-notification>`
+
+describe('activity: what it reads', () => {
+  test('a task notification gives the id, the outcome and the exit code', async () => {
+    expect(parseNotification(NOTE('b1', 'completed', 'Background command "npm test" completed (exit code 0)'))).toEqual({ id: 'b1', status: 'done', exit: 0 })
+    expect(parseNotification(NOTE('b2', 'failed', 'Background command "x" failed with exit code 144'))).toEqual({ id: 'b2', status: 'failed', exit: 144 })
+    expect(parseNotification(NOTE('b3', 'killed', 'Background command "x" was stopped'))).toEqual({ id: 'b3', status: 'killed', exit: null })
+    expect(parseNotification('hello')).toBeNull()
+  })
+
+  test('elapsed time reads m:ss, then h:mm:ss', async () => {
+    expect([clock(38_000), clock(252_000), clock(3_909_000)]).toEqual(['0:38', '4:12', '1:05:09'])
+  })
+
+  test('an agent first seen already ended is hidden; a new one is timed from now', async () => {
+    const jobs = mergeAgents({}, [agent('a1', 'completed'), agent('a2', 'running')], NOW)
+    expect(jobs.a1?.hidden).toBe(true)
+    expect(jobs.a2).toMatchObject({ startedAt: NOW, status: 'running', hidden: false })
+  })
+
+  test('a finished row lingers 30 s; a failed one stays until dismissed', async () => {
+    let jobs = mergeAgents({}, [agent('a1', 'running'), agent('a2', 'running')], NOW)
+    jobs = mergeAgents(jobs, [agent('a1', 'completed'), agent('a2', 'failed')], NOW + 10_000)
+    expect(prune(jobs, NOW + 39_000).a1?.hidden).toBe(false)
+    const later = prune(jobs, NOW + 40_000)
+    expect([later.a1?.hidden, later.a2?.hidden]).toEqual([true, false])
+    expect(dismissEnded(later).a2?.hidden).toBe(true)
+  })
+
+  test('rows put running first, oldest first; the head counts and times them', async () => {
+    let jobs = mergeAgents({}, [agent('a1', 'running', 'older')], NOW)
+    jobs = mergeAgents(jobs, [agent('a1', 'running', 'older'), agent('a2', 'waiting', 'newer', 'Plan')], NOW + 60_000)
+    const a = activity(jobs, 0, NOW + 252_000)
+    expect(a.agents.map(r => `${r.mark} ${r.name} ${r.word} ${r.time}`)).toEqual(['> Explore  older running 4:12', '> Plan  newer waiting 3:12'])
+    expect([a.running, a.longestMs]).toEqual([2, 252_000])
+  })
+
+  test('the Bg segment: count and longest time, ?N while asked, nothing when idle', async () => {
+    const jobs = mergeAgents({}, [agent('a1', 'running')], NOW)
+    expect(lineText(bgSpans(activity(jobs, 1, NOW + 252_000)))).toBe('Bg 1 · 4:12 ?1')
+    expect(bgSpans(activity({}, 0, NOW))).toEqual([])
+  })
+})
+
+const PANE_PROPS = { title: 'Background', isFocused: false, placement: 'dock', scroll: { bodyRows: 20, top: 0 }, view: {}, bodyColumns: 40 }
+const paneTexts = async ($: Engine) => {
+  const ui = await $.ui.mount({ plugin: 'usage-hud', surface: 'terminal', component: 'Pane', requestId: 'activity', props: PANE_PROPS } as never)
+  const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text ?? '')
+  await ui.unmount()
+  return texts
+}
+const hudLine = async ($: Engine, isFullscreen: boolean) => {
+  const ui = await $.ui.mount({ ...HINT, surface: 'terminal', viewport: { columns: 160, rows: 40, isFullscreen } } as never)
+  const text = (await ui.find({ type: 'Text' }))?.text
+  await ui.unmount()
+  return text
+}
+const spawn = ($: Engine, description: string) =>
+  $.agent.spawn({ tool_use_id: 't', prompt: 'p', description, subagentType: 'Explore', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'm', background: true } as never)
+
+describe('activity: the pane and the Bg segment', () => {
+  test('in a fullscreen terminal the first agent opens the pane, which counts and times it', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    await hudLine($, true)
+    w.state.agents = [agent('a1', 'running')]
+    await spawn($, 'scan hooks')
+    expect(w.state.opened).toEqual(['activity'])
+    await w.clock.advance(252_000)
+    const texts = await paneTexts($)
+    expect(texts.slice(0, 2)).toEqual(['1 running', 'longest 4:12'])
+    expect(texts).toContain('Explore  scan hooks')
+    // The pane is on screen, so the HUD leaves Bg out.
+    expect(await hudLine($, true)).toMatch(/Ctx 156K\/200K$/)
+  })
+
+  test('outside fullscreen no pane opens unasked, and the HUD carries Bg instead', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    await hudLine($, false)
+    await $.tool.call({ tool: 'Bash', command: 'npm test\necho done', run_in_background: true, bg: 'b1' } as never)
+    expect(w.state.opened).toEqual([])
+    await w.clock.advance(38_000)
+    expect(await hudLine($, false)).toMatch(/Ctx 156K\/200K   Bg 1 · 0:38$/)
+  })
+
+  test('a shell ends on its notification, with its exit code; the next prompt clears the failure', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23) })
+    await start($)
+    await $.tool.call({ tool: 'Bash', command: 'npm test', run_in_background: true, bg: 'b1' } as never)
+    await $.tool.call({ tool: 'Bash', command: 'ls', bg: undefined } as never)
+    await $.command.run({ command: 'hud', args: '', origin: { kind: 'composer' } } as never)
+    await w.clock.advance(9_000)
+    await $.prompt.submit({ text: NOTE('b1', 'failed', 'Background command "npm test" failed with exit code 1'), wait: false, origin: { kind: 'task-notification' } } as never)
+    let texts = await paneTexts($)
+    expect(texts.slice(0, 1)).toEqual(['0 running'])
+    expect(texts).toEqual(expect.arrayContaining(['x', 'npm test', 'exit 1', ' 0:09']))
+    expect(texts).not.toContain('ls')
+    await $.prompt.submit({ text: 'next', wait: false, origin: { kind: 'composer' } } as never)
+    texts = await paneTexts($)
+    expect(texts).not.toContain('npm test')
+    expect(texts).toContain('nothing in the background')
+  })
+
+  test('an open question shows as ?1 and on the pane until it is answered', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    let answer: () => void = () => {}
+    w.state.answer = new Promise(r => { answer = r })
+    await start($)
+    await hudLine($, false)
+    const asked = $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+    await w.clock.advance(1000)
+    expect(await hudLine($, false)).toBe('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K   Bg 0 ?1')
+    answer()
+    await asked
+    await w.clock.advance(1000)
+    expect(await hudLine($, false)).toBe('Claude Sonnet 5   5h 45% · 2h10m   Wk 23%   Ctx 156K/200K')
+  })
+
+  test('/hud toggles the pane; once hidden, it is not opened unasked again', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23) })
+    await start($)
+    await hudLine($, true)
+    const hud = () => $.command.run({ command: 'hud', args: '', origin: { kind: 'composer' } } as never)
+    await hud()
+    expect(w.state.panes.map(p => p.id)).toEqual(['activity'])
+    await hud()
+    expect(w.state.panes).toEqual([])
+    w.state.agents = [agent('a1', 'running')]
+    await spawn($, 'scan hooks')
+    expect(w.state.opened).toEqual(['activity'])
+    await hud()
+    expect(w.state.opened).toEqual(['activity', 'activity'])
+  })
+
+  test('the clock ticks every second only while something runs', async ($, on) => {
+    const w = world(on, { rateLimits: both(45, 23), tokens: 156_000 })
+    await start($)
+    await hudLine($, false)
+    w.state.agents = [agent('a1', 'running')]
+    await spawn($, 'scan hooks')
+    await w.clock.advance(1000)
+    expect(await hudLine($, false)).toContain('Bg 1 · 0:01')
+    w.state.agents = [agent('a1', 'completed')]
+    await w.clock.advance(1000)
+    expect(await hudLine($, false)).not.toContain('Bg')
   })
 })

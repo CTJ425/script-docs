@@ -38,11 +38,13 @@ MODEL_MAX_LEN = 24
 # is the canonical name; the rest are tolerated aliases.
 FIVE_H_NAMES = ("5h", "rolling_5h", "rolling5h", "five_hour", "5_hour")
 WEEKLY_NAMES = ("weekly", "week", "7d", "seven_days")
+ALL_WINDOW_NAMES = FIVE_H_NAMES + WEEKLY_NAMES
 
-# Antigravity meters Gemini models and third-party models against separate
-# quota pools, exposed side by side as "gemini-5h" and "3p-5h". Only the pool
-# the active model draws from is worth showing.
+# Antigravity meters Gemini models, Gemini 4 Argon (on Pro plans), and
+# third-party models against separate quota pools. Only the pool the active
+# model draws from is worth showing.
 GEMINI_FAMILY = "gemini"
+GEMINI_ARGON_FAMILY = "gemini-argon"
 THIRD_PARTY_FAMILY = "3p"
 
 # Cache settings
@@ -65,6 +67,7 @@ MAX_TRACKED_SESSIONS = 8
 DEFAULT_TOKEN_FILE = os.path.expanduser("~/.gemini/antigravity-cli/antigravity-oauth-token")
 DEFAULT_QUOTA_API_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 QUOTA_API_URL = DEFAULT_QUOTA_API_URL
+QUOTA_API_USER_AGENT = "antigravity/cli/1.4.10 (os_type=linux; arch=amd64)"
 API_REFRESH_INTERVAL = 5.0  # seconds between background API polls
 
 # A cached figure older than this is rendered with STALE_SEGMENT_PREFIX.
@@ -247,6 +250,46 @@ def format_token_count(tokens: Optional[int]) -> str:
     return f"{rounded_1d:.1f}k"
 
 
+def read_transcript_cache_read_tokens(transcript_path) -> Optional[int]:
+    """Reads cache_read_tokens from the latest PLANNER_RESPONSE in transcript.jsonl.
+
+    Antigravity CLI 1.4.2 omits cache_read_tokens from StatusLineCurrentUsage
+    and reports only uncached input_tokens in current_usage.input_tokens, while
+    still recording cache_read_tokens on each PLANNER_RESPONSE line in the
+    session's transcript.jsonl. Reading the tail of transcript.jsonl recovers
+    the cached prompt tokens so prompt-cache hits do not look like compactions.
+    """
+    if not isinstance(transcript_path, str) or not transcript_path.strip():
+        return None
+    try:
+        if not os.path.isfile(transcript_path):
+            return None
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size <= 0:
+                return None
+            chunk_size = min(size, 65536)
+            f.seek(size - chunk_size)
+            lines = f.read().splitlines()
+        for raw_line in reversed(lines):
+            if b"PLANNER_RESPONSE" not in raw_line:
+                continue
+            try:
+                entry = json.loads(raw_line.decode("utf-8", errors="replace"))
+            except Exception:
+                continue
+            if not isinstance(entry, dict) or entry.get("type") != "PLANNER_RESPONSE":
+                continue
+            val = safe_float(entry.get("cache_read_tokens"))
+            if val is not None and val >= 0:
+                return int(val)
+            return 0
+    except Exception:
+        pass
+    return None
+
+
 def parse_context_window(data: dict) -> Optional[ContextResult]:
     """Parses context_window from payload, returning ContextResult or None."""
     if not isinstance(data, dict):
@@ -261,12 +304,21 @@ def parse_context_window(data: dict) -> Optional[ContextResult]:
     total_tokens = int(size_raw)
 
     used_tokens = None
+    recovered_from_transcript = False
     cur_usage = cw.get("current_usage")
     if isinstance(cur_usage, dict):
         inp = safe_float(cur_usage.get("input_tokens"))
         out = safe_float(cur_usage.get("output_tokens"))
-        if inp is not None or out is not None:
-            used_tokens = int((inp or 0.0) + (out or 0.0))
+        cache_read = safe_float(cur_usage.get("cache_read_input_tokens"))
+        if cache_read is None:
+            cache_read = safe_float(cur_usage.get("cache_read_tokens"))
+        if cache_read is None:
+            transcript_cache_read = read_transcript_cache_read_tokens(data.get("transcript_path"))
+            if transcript_cache_read is not None:
+                cache_read = float(transcript_cache_read)
+                recovered_from_transcript = True
+        if inp is not None or out is not None or cache_read is not None:
+            used_tokens = int((inp or 0.0) + (out or 0.0) + (cache_read or 0.0))
 
     if used_tokens is None:
         tot_inp = safe_float(cw.get("total_input_tokens"))
@@ -283,11 +335,15 @@ def parse_context_window(data: dict) -> Optional[ContextResult]:
         return None
 
     used_tokens = max(0, used_tokens)
+    derived_pct = (used_tokens / total_tokens) * 100.0 if total_tokens > 0 else 0.0
     if used_pct_raw is not None:
-        used_percent = round(max(0.0, min(100.0, used_pct_raw)), 1)
+        # When current_usage omits cache_read_tokens and we recovered them from
+        # transcript.jsonl, agy's used_percentage reflects only uncached tokens;
+        # otherwise honour explicit used_percentage verbatim (UC-46).
+        chosen_pct = max(used_pct_raw, derived_pct) if recovered_from_transcript else used_pct_raw
+        used_percent = round(max(0.0, min(100.0, chosen_pct)), 1)
     else:
-        pct = (used_tokens / total_tokens) * 100.0 if total_tokens > 0 else 0.0
-        used_percent = round(max(0.0, min(100.0, pct)), 1)
+        used_percent = round(max(0.0, min(100.0, derived_pct)), 1)
 
     return ContextResult(
         used_tokens=used_tokens,
@@ -439,17 +495,41 @@ def extract_model_name(data: dict) -> str:
     return ""
 
 
+_WINDOW_ALT = "|".join(re.escape(w) for w in ALL_WINDOW_NAMES)
+_ARGON_BUCKET_RE = re.compile(rf"^gemini-argon-[a-z0-9]+-({_WINDOW_ALT})$")
+
+
+def normalize_bucket_id(bucket_id: str) -> str:
+    """Normalizes API/payload bucket IDs (e.g. gemini-argon-wtu-weekly -> gemini-argon-weekly)."""
+    key = bucket_id.strip().lower()
+    if key.startswith("gemini-argon-wtu-"):
+        return "gemini-argon-" + key[len("gemini-argon-wtu-"):]
+    return _ARGON_BUCKET_RE.sub(r"gemini-argon-\1", key)
+
+
 def model_family(model_name: str) -> str:
     """Maps a model name to the quota pool it draws from."""
-    return GEMINI_FAMILY if "gemini" in model_name.lower() else THIRD_PARTY_FAMILY
+    lower = model_name.lower()
+    if "argon" in lower:
+        return GEMINI_ARGON_FAMILY
+    return GEMINI_FAMILY if "gemini" in lower else THIRD_PARTY_FAMILY
 
 
-def select_bucket(quota: dict, names, family: str):
+def select_bucket(quota: dict, names, family: str, allow_other_family: bool = True):
     """Finds the quota bucket for one window, preferring the active model's pool.
 
     Buckets are keyed "<family>-<window>", e.g. "gemini-5h". Resolution order:
-    the active model's family, then an unprefixed key, then any other family
-    (sorted, so the choice is deterministic rather than dict-order luck).
+    1. Exact "<family>-<window>" match.
+    2. Unprefixed "<window>" match.
+    3. If `allow_other_family` is False, stop and return None.
+    4. For `gemini-argon` when no Argon bucket exists for this window (e.g.
+       5h on Pro plans or both windows on Ultra plans), fall back to
+       `gemini-<window>`.
+    5. If `quota` already contains another window for `family` (or `gemini`
+       when `family` is `gemini-argon`), stop rather than stealing a
+       third-party bucket.
+    6. Otherwise fall back to any other family (sorted, deterministic) when the
+       active family is completely absent from `quota`.
     """
     if not isinstance(quota, dict):
         return None
@@ -458,6 +538,7 @@ def select_bucket(quota: dict, names, family: str):
     for key, val in quota.items():
         if isinstance(key, str) and isinstance(val, dict):
             lowered[key.lower()] = val
+            lowered[normalize_bucket_id(key)] = val
 
     for name in names:
         item = lowered.get(f"{family}-{name}")
@@ -469,8 +550,22 @@ def select_bucket(quota: dict, names, family: str):
         if item is not None:
             return item
 
+    if not allow_other_family:
+        return None
+
+    if family == GEMINI_ARGON_FAMILY:
+        for name in names:
+            item = lowered.get(f"{GEMINI_FAMILY}-{name}")
+            if item is not None:
+                return item
+        if _has_any_family_bucket(quota, GEMINI_ARGON_FAMILY) or _has_any_family_bucket(quota, GEMINI_FAMILY):
+            return None
+
+    if _has_any_family_bucket(quota, family):
+        return None
+
     name_set = set(names)
-    for key in sorted(lowered):
+    for key in sorted(lowered, key=lambda k: (k.startswith(f"{GEMINI_ARGON_FAMILY}-"), k)):
         if "-" in key and key.rsplit("-", 1)[1] in name_set:
             return lowered[key]
     return None
@@ -630,7 +725,99 @@ def cache_is_fresh(cache: dict, now: float) -> bool:
     return -CACHE_FUTURE_SLACK_SECONDS <= age <= CACHE_MAX_AGE_SECONDS
 
 
-def cached_bucket(cache: dict, family: str, canonical_name: str, names: tuple = None) -> Optional[dict]:
+def _has_exact_family_bucket(quota, names, family: str) -> bool:
+    """True when quota explicitly carries a bucket belonging to `family` for `names`."""
+    if not isinstance(quota, dict):
+        return False
+    lowered = set()
+    for key, val in quota.items():
+        if isinstance(key, str) and isinstance(val, dict):
+            lowered.add(key.lower())
+            lowered.add(normalize_bucket_id(key))
+    for name in names:
+        if f"{family}-{name}" in lowered:
+            return True
+    return False
+
+
+def _has_any_family_bucket(quota, family: str) -> bool:
+    """True when quota explicitly carries any known window bucket belonging to `family`."""
+    return _has_exact_family_bucket(quota, ALL_WINDOW_NAMES, family)
+
+
+def _data_has_family_window(data: dict, family: str, names: tuple) -> bool:
+    """True when live payload `data` explicitly carries a bucket for `family` and `names`."""
+    if not isinstance(data, dict):
+        return False
+    return (_has_exact_family_bucket(data.get("quota"), names, family)
+            or _has_exact_family_bucket(data, names, family))
+
+
+def _data_has_family(data: dict, family: str) -> bool:
+    """True when live payload `data` explicitly carries any bucket for `family`."""
+    return _data_has_family_window(data, family, ALL_WINDOW_NAMES)
+
+
+def _cache_has_recent_api_family(cache: Optional[dict], family: str, now: Optional[float],
+                                 names: tuple = ALL_WINDOW_NAMES) -> bool:
+    """True when `cache` has a recent API-sourced bucket for `family`."""
+    if not isinstance(cache, dict) or now is None:
+        return False
+    quota = cache.get("quota")
+    if not isinstance(quota, dict):
+        return False
+    for name in names:
+        entry = cached_bucket(cache, family, name, allow_other_family=False)
+        if isinstance(entry, dict) and entry.get("source") == SOURCE_API:
+            ts = entry_timestamp(entry, cache)
+            if ts is not None and now - ts <= API_RESULT_MAX_AGE_SECONDS:
+                return True
+    return False
+
+
+def _sources_have_family(data: dict, cache: Optional[dict], family: str) -> bool:
+    """True when either live payload or fresh cache explicitly carries any bucket for `family`."""
+    if _data_has_family(data, family):
+        return True
+    if isinstance(cache, dict) and _has_any_family_bucket(cache.get("quota"), family):
+        return True
+    return False
+
+
+def effective_bucket_family(data: dict, cache: Optional[dict], family: str,
+                            names: tuple = ALL_WINDOW_NAMES,
+                            now: Optional[float] = None) -> str:
+    """Resolves the concrete quota family for the active model and window.
+
+    Gemini 4 Argon has a separate weekly bucket (`gemini-argon-wtu-weekly`) on
+    Pro plans, while sharing the standard `gemini-5h` bucket for the 5-hour
+    window (and sharing both `gemini` buckets on Ultra plans). Resolve per
+    window `names` so weekly uses `gemini-argon` when present and 5h falls
+    back cleanly to `gemini`.
+    """
+    if family != GEMINI_ARGON_FAMILY:
+        return family
+
+    if _cache_has_recent_api_family(cache, GEMINI_ARGON_FAMILY, now, names=names):
+        return GEMINI_ARGON_FAMILY
+    if _cache_has_recent_api_family(cache, GEMINI_FAMILY, now, names=names):
+        return GEMINI_FAMILY
+
+    if _data_has_family_window(data, GEMINI_ARGON_FAMILY, names):
+        return GEMINI_ARGON_FAMILY
+    if _data_has_family_window(data, GEMINI_FAMILY, names):
+        return GEMINI_FAMILY
+
+    if isinstance(cache, dict):
+        if _has_exact_family_bucket(cache.get("quota"), names, GEMINI_ARGON_FAMILY):
+            return GEMINI_ARGON_FAMILY
+        if _has_exact_family_bucket(cache.get("quota"), names, GEMINI_FAMILY):
+            return GEMINI_FAMILY
+    return GEMINI_ARGON_FAMILY
+
+
+def cached_bucket(cache: dict, family: str, canonical_name: str, names: tuple = None,
+                  allow_other_family: bool = True) -> Optional[dict]:
     """Looks up a cached bucket key (e.g. gemini-5h) matching target family, or alias fallback."""
     if not isinstance(cache, dict):
         return None
@@ -641,8 +828,11 @@ def cached_bucket(cache: dict, family: str, canonical_name: str, names: tuple = 
     bucket = quota.get(key)
     if isinstance(bucket, dict):
         return bucket
+    for raw_key, val in quota.items():
+        if isinstance(raw_key, str) and isinstance(val, dict) and normalize_bucket_id(raw_key) == key:
+            return val
     if names:
-        item = select_bucket(quota, names, family)
+        item = select_bucket(quota, names, family, allow_other_family=allow_other_family)
         if isinstance(item, dict):
             return item
     return None
@@ -758,10 +948,15 @@ def bucket_from_cache_entry(entry: dict, family: str, canonical_name: str, now: 
 def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: float) -> Optional[BucketResult]:
     """Resolves one usage window: recent API reading, then live payload, then cache."""
     canonical_name = names[0]  # "5h" or "weekly"
+    fresh_cache = cache if cache_is_fresh(cache, now) else None
+    family = effective_bucket_family(data, fresh_cache, family, names=names, now=now)
+    allow_other_family = not _sources_have_family(data, fresh_cache, family)
 
     cached_item = None
-    if cache_is_fresh(cache, now):
-        cached_item = cached_bucket(cache, family, canonical_name, names=names)
+    if fresh_cache is not None:
+        cached_item = cached_bucket(
+            fresh_cache, family, canonical_name, names=names, allow_other_family=allow_other_family
+        )
     cached_at = entry_timestamp(cached_item, cache)
 
     # 1. A recent API reading outranks the payload. agy refreshes the payload's
@@ -778,9 +973,9 @@ def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: floa
         if api_result is not None:
             if api_result.used_percent == 0.0 and isinstance(data, dict):
                 quota = data.get("quota", {})
-                live_item = select_bucket(quota, names, family)
+                live_item = select_bucket(quota, names, family, allow_other_family=allow_other_family)
                 if live_item is None:
-                    live_item = select_bucket(data, names, family)
+                    live_item = select_bucket(data, names, family, allow_other_family=allow_other_family)
                 parsed_live = parse_item(live_item)
                 if parsed_live is not None and (parsed_live.get("used_percent") or 0.0) > 0.0:
                     live_resets_at, _ = anchor_live_resets_at(parsed_live, cached_item, now)
@@ -796,9 +991,9 @@ def resolve_bucket(data: dict, family: str, names: tuple, cache: dict, now: floa
     # 2. Live stdin payload.
     if isinstance(data, dict):
         quota = data.get("quota", {})
-        live_item = select_bucket(quota, names, family)
+        live_item = select_bucket(quota, names, family, allow_other_family=allow_other_family)
         if live_item is None:
-            live_item = select_bucket(data, names, family)
+            live_item = select_bucket(data, names, family, allow_other_family=allow_other_family)
         parsed_live = parse_item(live_item)
         if parsed_live is not None:
             resets_at, anchor = anchor_live_resets_at(parsed_live, cached_item, now)
@@ -1034,7 +1229,7 @@ def fetch_live_quota_from_api() -> Optional[dict]:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
-                "User-Agent": "antigravity/1.1.26"
+                "User-Agent": QUOTA_API_USER_AGENT
             }
         )
         with urllib.request.urlopen(req, timeout=3) as resp:
@@ -1062,7 +1257,7 @@ def fetch_live_quota_from_api() -> Optional[dict]:
                     continue
                 used_pct = round(max(0.0, min(100.0, (1.0 - rem_frac) * 100.0)), 1)
                 reset_epoch = parse_iso8601(reset_time_str)
-                quota[bid.lower()] = {
+                quota[normalize_bucket_id(bid)] = {
                     "used_percent": used_pct,
                     "resets_at": int(reset_epoch) if reset_epoch is not None else None
                 }
@@ -1127,6 +1322,12 @@ def do_background_fetch():
             _refresh_context_before_write(next_cache)
             atomic_write_json(cache_path, next_cache)
             return
+
+        if (_has_any_family_bucket(live_quota, GEMINI_FAMILY)
+                and not _has_any_family_bucket(live_quota, GEMINI_ARGON_FAMILY)):
+            for k in list(next_cache["quota"]):
+                if normalize_bucket_id(k).startswith(f"{GEMINI_ARGON_FAMILY}-"):
+                    next_cache["quota"].pop(k, None)
 
         for key, entry in live_quota.items():
             entry["source"] = SOURCE_API
@@ -1295,11 +1496,13 @@ def write_cache(resolved_model: str, resolved_buckets: dict, cache: dict, now: f
             new_quota[key] = bucket_entry
 
         model_to_save = resolved_model or (usable_cache.get("model") if usable_cache else "")
+        model_changed = bool(resolved_model and usable_cache and usable_cache.get("model") != resolved_model)
 
-        # A new context_block always needs writing, even when nothing else
-        # changed: it is not reflected in is_cache_equivalent below, so
-        # without this a quiet render would drop it right back on the floor.
-        if (not has_updates and context_block is None
+        # A new context_block or an updated active model always needs writing,
+        # even when nothing else changed: context is not reflected in
+        # is_cache_equivalent below, and an API-sourced render skips has_updates
+        # for buckets so without model_changed a model switch would not persist.
+        if (not has_updates and context_block is None and not model_changed
                 and not (usable_cache is None and (new_quota or model_to_save))):
             return
 

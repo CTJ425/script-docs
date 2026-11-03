@@ -159,6 +159,9 @@ PROJECT_NAME=$(echo "$INPUT_PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/
 if [ "$PROJECT_NAME" != "$INPUT_PROJECT_NAME" ]; then
   log "已自動將專案名稱正規化為符合 Docker 規範的格式: '${PROJECT_NAME}'"
 fi
+if [[ ! "$PROJECT_NAME" =~ ^[a-z0-9] ]]; then
+  die "專案名稱 '${PROJECT_NAME}' 必須以英文字母或數字開頭 (Docker 容器名稱規範)。"
+fi
 
 if [ -d "${PROJECT_NAME}" ]; then
   die "專案目錄 ./${PROJECT_NAME} 已經存在！請更換專案名稱或先移除舊專案。"
@@ -365,7 +368,14 @@ fi
 echo ""
 echo "--> 正在檢測宿主機對外 Port 是否重複佔用..."
 HAS_COLLISION=0
-for p in "$API_GW_HTTP_PORT" "$KONG_HTTPS_PORT" "$POSTGRES_PORT" "$POOLER_PORT"; do
+CHECK_PORTS=("$API_GW_HTTP_PORT" "$POSTGRES_PORT" "$POOLER_PORT")
+# Kong HTTPS Port 只有啟用 kong 模組才會對外開放；互動模式尚未選模組，仍先提醒
+if [ -n "$CLI_OVERRIDES" ]; then
+  [[ ",${CLI_OVERRIDES// /}," == *",kong,"* ]] && CHECK_PORTS+=("$KONG_HTTPS_PORT")
+elif [ "$NON_INTERACTIVE" -eq 0 ]; then
+  CHECK_PORTS+=("$KONG_HTTPS_PORT")
+fi
+for p in "${CHECK_PORTS[@]}"; do
   if command -v ss >/dev/null 2>&1 && ss -tuln | grep -qE "(:|\])${p}\s"; then
     warn "對外 Port ${p} 目前已被主機上的其他程序佔用！請確認是否要更換 Port。"
     HAS_COLLISION=1
@@ -443,11 +453,11 @@ set_env_var() {
   local key=$1
   local value=$2
   local env_file=".env"
+  local escaped
 
   if grep -q "^${key}=" "$env_file" 2>/dev/null; then
     # 自訂密碼可能含 & | \ 這些 sed 取代字串的特殊字元：& 會被代換成整行
     # 比對結果、| 會提早結束指令，所以先跳脫再寫入。
-    local escaped
     escaped=$(printf '%s' "$value" | sed -e 's/[\\&|]/\\&/g')
     sed -i "s|^${key}=.*|${key}=${escaped}|" "$env_file"
   else
@@ -465,6 +475,9 @@ set_env_var "SUPABASE_PUBLIC_URL" "${PUBLIC_URL}"
 set_env_var "API_EXTERNAL_URL" "${API_URL}"
 set_env_var "SITE_URL" "${SITE_URL_FULL}"
 set_env_var "PROXY_DOMAIN" "${FULL_DOMAIN}"
+# nginx 模組申請憑證用的信箱：與官方 setup.sh 相同，取網域最後兩段 (官方預設 admin@example.com 會被 Let's Encrypt 拒絕)
+CERTBOT_DOMAIN_ROOT=$(printf '%s' "$FULL_DOMAIN" | awk -F. 'NF>=2 { print $(NF-1)"."$NF; next } { print }')
+set_env_var "CERTBOT_EMAIL" "admin@${CERTBOT_DOMAIN_ROOT}"
 
 # 核心帳號與密碼覆蓋
 set_env_var "DASHBOARD_USERNAME" "${DASHBOARD_USERNAME}"
@@ -473,15 +486,22 @@ set_env_var "POSTGRES_PASSWORD" "${POSTGRES_PASSWORD}"
 set_env_var "MINIO_ROOT_USER" "${MINIO_ROOT_USER}"
 set_env_var "MINIO_ROOT_PASSWORD" "${MINIO_ROOT_PASSWORD}"
 
-# 5.1 移除 docker-compose 設定中的寫死 container_name 與修訂專案名稱，避免多專案容器名稱衝突
-echo "--> 正在移除 docker-compose 設定檔中寫死的 container_name..."
+# 5.1 將寫死的容器名稱 supabase-<服務> 改為 <專案名稱>-<服務>，避免多專案容器名稱衝突。
+# 不能直接刪除 container_name：Envoy / Kong 以 realtime-dev.supabase-realtime 作為 Realtime 上游主機名稱，
+# Vector 以 supabase-<服務> 比對日誌來源，所以引用這些名稱的設定必須同步改名。
+echo "--> 正在將 docker-compose 設定檔中的容器名稱改為 ${PROJECT_NAME}-<服務>..."
 if [ -f docker-compose.yml ]; then
-  sed -i '/container_name:/d' docker-compose.yml
   sed -i "s/^name: .*/name: ${PROJECT_NAME}/" docker-compose.yml
-  for cf in docker-compose.*.yml; do
-    if [ -f "$cf" ]; then
-      sed -i '/container_name:/d' "$cf"
-    fi
+
+  # Realtime 以主機名稱第一段 (realtime-dev) 作為 tenant ID；底線不適合出現在主機名稱，改用連字號
+  REALTIME_HOST="realtime-dev.${PROJECT_NAME//_/-}-realtime"
+  CONTAINER_SERVICES="studio|envoy|auth|rest|storage|imgproxy|meta|edge-functions|db|pooler|kong|caddy|nginx|analytics|vector|pgbouncer"
+  RENAME_FILES=$(grep -rIlE "supabase-(${CONTAINER_SERVICES})|realtime-dev\.supabase-realtime" docker-compose*.yml volumes 2>/dev/null || true)
+  for rf in $RENAME_FILES; do
+    sed -i -E \
+      -e "s/realtime-dev\.supabase-realtime/${REALTIME_HOST}/g" \
+      -e "s/supabase-(${CONTAINER_SERVICES})([^a-z0-9-]|$)/${PROJECT_NAME}-\1\2/g" \
+      "$rf"
   done
 fi
 

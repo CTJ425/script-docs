@@ -26,6 +26,7 @@ import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
+import { MEDIA_DIRS, postSlug } from './paths.mjs';
 
 loadLanguages([
   'bash',
@@ -139,9 +140,9 @@ const ABSOLUTE = /^[a-z][a-z0-9+.-]*:/i;
 /**
  * Where a link written in a file should really go.
  *
- * README links are written for GitHub. A relative link to a folder that is a
- * published script keeps the reader on the site; any other path goes to the file
- * on GitHub. Anything that leaves the repository, or has no safe destination,
+ * Links are written for GitHub. A relative link to a folder that is a published
+ * script, or to a post or tool file, keeps the reader on the site; any other path
+ * goes to the file on GitHub. Anything that leaves the repository, or has no safe destination,
  * comes back null and renders as plain text instead of a dead or hostile link.
  */
 function makeResolver({ baseDir, base, origin, scriptSlugByDir, repo, repoRoot }) {
@@ -167,6 +168,12 @@ function makeResolver({ baseDir, base, origin, scriptSlugByDir, repo, repoRoot }
     const dir = resolved.replace(/\/README\.md$/, '');
     const slug = scriptSlugByDir.get(dir);
     if (slug) return { href: site(`/scripts/${slug}/${frag}`) };
+
+    const entry = resolved.match(/^(posts|tools)\/([^/]+\.md)$/);
+    if (entry) {
+      const id = entry[1] === 'posts' ? postSlug(entry[2]) : entry[2].replace(/\.md$/, '');
+      return { href: site(`/${entry[1]}/${id}/${frag}`) };
+    }
 
     if (!repo.url) return null;
     let kind = 'blob';
@@ -233,6 +240,15 @@ function rehypeProse(ctx) {
         case 'img': {
           const src = node.properties?.src;
           if (typeof src === 'string' && src.startsWith('/')) node.properties.src = `${ctx.base}${src}`;
+          else if (typeof src === 'string' && !ABSOLUTE.test(src) && !src.startsWith('//')) {
+            // Written relative to the file, as GitHub shows it; the build copies the
+            // media folders and the script folders' images to /media/, so the same
+            // path works on the site.
+            const resolved = posix.normalize(posix.join(ctx.baseDir, src));
+            if ([...MEDIA_DIRS, ...ctx.scriptSlugByDir.keys()].some((d) => resolved.startsWith(`${d}/`))) {
+              node.properties.src = `${ctx.origin}${ctx.base}/media/${resolved}`;
+            }
+          }
           node.properties.loading = 'lazy';
           node.properties.decoding = 'async';
           break;

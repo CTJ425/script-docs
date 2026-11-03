@@ -2,7 +2,7 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { join } from 'node:path';
-import { REPO_ROOT, loadScriptSources } from '../scripts/content-sources.mjs';
+import { REPO_ROOT, loadScriptSources, postSlug } from '../scripts/content-sources.mjs';
 
 /**
  * Four collections, one rule for each about who owns the words.
@@ -25,7 +25,8 @@ const tag = z
 const slugRef = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'a slug: lowercase letters, digits and hyphens');
 
 const posts = defineCollection({
-  loader: glob({ pattern: '*.md', base: '../posts' }),
+  // `2026-10-02-hello.md` is the post `hello`: the date is for the folder, not the URL.
+  loader: glob({ pattern: '*.md', base: '../posts', generateId: ({ entry }) => postSlug(entry) }),
   schema: z.object({
     title: z.string().min(1),
     /** When it was first published. */

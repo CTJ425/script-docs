@@ -1,7 +1,8 @@
 ---
 title: 這個站在放什麼
 date: 2026-10-02
-summary: ivan note 是我的個人資訊部落格：寫過的 script、用過的工具、GitHub 上的專案，以及中間踩過的坑。
+updated: 2026-10-12
+summary: ivan note 是我的個人技術部落格：做過的事、踩過的坑，以及過程中寫出來的 script 和用過的工具。
 tags: [meta]
 ---
 
@@ -25,7 +26,7 @@ tags: [meta]
 
 ## 新增一篇
 
-在 `posts/` 放一個 markdown 檔，開頭寫：
+在 `posts/` 放一個 `YYYY-MM-DD-<slug>.md`，開頭寫：
 
 ```yaml
 ---
@@ -35,5 +36,7 @@ summary: 一兩句話，會出現在列表與搜尋結果裡。
 tags: [kubernetes, linux]
 ---
 ```
+
+檔名的日期要和 `date` 相同，網址只用 `<slug>`；日期是讓 GitHub 上的 `posts/` 依時間排列。圖片放在 `posts/img/<slug>/`，用相對路徑引用，GitHub 和網站兩邊都看得到。
 
 push 之後網站會自動重新產生。

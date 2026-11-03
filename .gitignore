@@ -31,3 +31,9 @@ Thumbs.db
 # Type declarations Claude Code lays beside a mod each time it loads one
 # (.claude-plugin/types/); regenerated per build, never edited.
 **/.claude-plugin/types/
+
+# Supabase CLI local cache / runtime output
+script/deploy-supabase/supabase/
+
+# Local demos / external clones
+AI/demo-holo/

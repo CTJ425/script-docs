@@ -2,6 +2,7 @@
 title: Proxmox VE
 status: using
 summary: 家裡和實驗環境的虛擬化平台。
+updated: 2026-11-03
 url: https://www.proxmox.com/en/products/proxmox-virtual-environment/overview
 tags: [proxmox, virtualization]
 scripts: [pve-link-iso, apollo-windows-vm, pve-antivm]

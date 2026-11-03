@@ -56,10 +56,11 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/depl
    - **手動個別 Port 輸入**：針對特殊網路架構逐一指定個別服務 Port。
 
 4. **Port 衝突預先檢測**：
-   - 執行部署前自動掃描宿主機 Ports（`ss -tuln`），若發現 Gateway、Postgres、Pooler 等 Port 已被佔用即時發出警告或中斷以防衝突。
+   - 執行部署前自動掃描宿主機 Ports（`ss -tuln`），若發現 Gateway、Postgres、Pooler 等 Port 已被佔用即時發出警告或中斷以防衝突。Kong HTTPS Port 僅在啟用 `kong` 模組時納入檢查。
 
 5. **容器名稱衝突排除 (Multi-Tenant Ready)**：
-   - 自動清掃 `docker-compose.yml` 及相關 Override 設定檔中寫死的 `container_name`。
+   - 將 `docker-compose.yml` 及相關 Override 設定檔中寫死的容器名稱由 `supabase-<服務>` 改為 `<專案名稱>-<服務>`（例如 `my-supabase-db`）。
+   - 同步更新引用這些名稱的 Envoy / Kong 上游位址與 Vector 日誌過濾條件（Realtime 主機名稱維持 `realtime-dev.` 開頭，其後為專案名稱），改名後路由與日誌不會失效。
    - 自動將 Compose `name` 修訂為自訂專案名稱，徹底避免同機多 Supabase 實例時 Docker Compose 的命名衝突。
 
 6. **擴充模組整合 (Docker Compose Overrides)**：
@@ -135,7 +136,7 @@ curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/depl
 | :--- | :--- |
 | **Port 衝突警告** | 檢查是否已有其他服務（例如本地已有 PostgreSQL 佔用 5432 埠）。部署時請選擇開啟 Port 自動偏移或透過 `--port-offset` / `--db-port` 調整。 |
 | **無法訪問 Studio 或 API** | 請確認 DNS 解析或測試機 `/etc/hosts` 已將設定的 Domain 指向該 Linux 宿主機 IP。 |
-| **Docker Compose 衝突** | 腳本已自動移除 `container_name` 寫死設定。若為手動調整，請確保 `COMPOSE_PROJECT_NAME` 唯一。 |
+| **Docker Compose 衝突** | 腳本已將 `container_name` 改為以專案名稱為前綴。若為手動調整，請確保專案名稱與 `COMPOSE_PROJECT_NAME` 唯一，且專案名稱以英文字母或數字開頭。 |
 
 ---
 

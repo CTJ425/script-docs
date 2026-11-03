@@ -5,8 +5,9 @@
  * it is deliberately free of Astro and Vite so the same code serves the build
  * (src/content.config.ts), astro.config.mjs and the verify scripts.
  *
- *   posts/<slug>.md                  articles       (frontmatter)
+ *   posts/YYYY-MM-DD-<slug>.md       articles       (frontmatter)
  *   tools/<slug>.md                  tools          (frontmatter)
+ *   posts/img/, tools/img/           images those files link to, relatively
  *   pages/{home,about}.md            fixed pages    (frontmatter)
  *   <category>/<project>/README.md   scripts        (verbatim, no frontmatter)
  *
@@ -19,6 +20,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATEGORY_ORDER } from '../src/lib/categories.mjs';
+
+export { MEDIA_DIRS, POST_FILE, postSlug } from '../src/lib/paths.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const SITE_ROOT = resolve(here, '..');
@@ -35,6 +38,7 @@ const IGNORED = new Set([
   'site',
   'docs',
   'skill',
+  'demo-holo',
   'portal_preview',
   'node_modules',
   'dist',

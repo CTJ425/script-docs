@@ -7,11 +7,17 @@ A Claude Code plugin (function hooks) that shows, in one line under the prompt (
 3. Weekly rate-limit usage (no reset time)
 4. Current session's context window usage (tokens used / max)
 
+and, in a pane beside the transcript, the session's background work: how many
+subagents and background shells are running and for how long (see
+[Background activity](#background-activity)).
+
 ## Scope decisions
 - Account-level rate limits only (5h + weekly), as Claude Code reports them.
   No estimation from transcripts. Missing with nothing stored -> `–`.
 - Requires a Claude.ai Pro/Max login for rate limits to be populated.
-- No extra info beyond model + effort and the three usage items.
+- The HUD line holds model + effort and the three usage items, plus a `Bg`
+  segment only while the activity pane is not on screen. Everything else about
+  background work is in the pane.
 - Color tells a label from a value; one warning threshold (`!`, below), not
   the 1.x two-step yellow/red.
 
@@ -85,6 +91,86 @@ cannot turn the prefix off.
 - A failing read keeps the previous line; no error is surfaced.
 - Non-interactive sessions (`-p`, SDK) draw nothing.
 
+## Background activity
+What the pane answers first is how many jobs are running and the longest
+one's elapsed time; the rows under it are the detail.
+
+### Pane
+- `$.ui.open({ id: 'activity', title: 'Background' })`, drawn by a
+  `ui.render` hook on `{ component: 'Pane', requestId: 'activity' }`.
+- Opened unasked the first time a job runs, and only where the terminal docks
+  panes (`viewport.isFullscreen`, read from the `PromptHint` render); never
+  closed by the plugin when the work ends, so the transcript does not change
+  width under the person.
+- `/hud` (registered at `session.start`) opens it when it is not up, at any
+  width, and closes it when it is. Closed by `/hud` or by the person
+  (`ui.close` origin `person`), `paneOff` is set and it is not opened unasked
+  again this session; `/hud` clears it.
+- Layout, top to bottom:
+  ```
+  2 running
+  longest 4:12
+  ? Claude is asking you
+  
+  Agents
+  > Explore  scan hooks            running  4:12
+  > Plan  refresh design           waiting  1:05
+  
+  Shells
+  + tsc -p .                       exit 0   0:09
+  ```
+  The head is bold; `longest …` is dim, and with nothing running it reads
+  `nothing in the background` (or is left out while ended rows remain). The
+  question line shows while an AskUserQuestion call is open, in the theme's
+  `warning` color. A group with no rows is left out.
+- A row is a mark, the name (cut at the pane's edge), a word and the elapsed
+  time. The mark and word say the state; the tone only adds to it. Marks are
+  ASCII, for the same reason as the labels:
+  | Status | Mark | Word | Tone |
+  | --- | --- | --- | --- |
+  | pending, running, waiting | `>` | the status | `suggestion` |
+  | idle (a teammate between turns) | `-` | `idle` | dim |
+  | done | `+` | `done`, a shell's `exit N` | dim, the name dim too |
+  | failed | `x` | `failed`, a shell's `exit N` | `error` |
+  | killed | `x` | `killed` | `error` |
+- An agent's `waiting` (held on its own background work or a plan's approval)
+  is shown as under way, not as waiting on the person; only an open
+  AskUserQuestion says that.
+- Order: under way first, then ended, each oldest first. Elapsed time reads
+  `m:ss`, `h:mm:ss` past an hour, and stops at the end time once a job ends.
+- A `done` row stays 30 s (`LINGER_MS`), then leaves. A `failed` or `killed`
+  row stays until the person's next prompt (`prompt.submit` origin
+  `composer`), which says they have seen it.
+
+### `Bg` segment
+- While the pane is not drawn and shown (`$.ui.panes()`: `isPlaced` and
+  `isShown`), the HUD line ends with `   Bg <running> · <longest>` and, while a
+  question is open, ` ?<n>` in the `warning` color (`Bg 3 · 4:12 ?1`). With
+  nothing running and nothing asked it is left out.
+- `Bg` is a label like `5h`; the desktop draws it as an icon (`background`,
+  three lines) unless `desktopLabels` is `text`.
+
+### Sources
+| What | From |
+| --- | --- |
+| subagents and their status | `$.agent.list()`; `completed` reads `done` |
+| an agent's start time | `agent.spawn`, after `next`, with the `agentId` it answered; an agent the list shows first is timed from then, and one first seen already ended is hidden |
+| a background shell's start | `tool.call` on Bash whose result carries `backgroundTaskId` (`run_in_background`, ctrl+b, a timeout) |
+| a shell's end | `prompt.submit` with origin `task-notification`: `<task-id>`, `<status>`, and `exit code N` in the summary; `completed` with a non-zero code reads `failed` |
+| a question open | a `tool.call` on AskUserQuestion, from before `next` until it settles |
+| permission prompts | not shown: no event says one is waiting |
+
+All of it is in `$.state` (`jobs`, `asking`, `activity`, `paneShown`,
+`paneOff`), so a hot reload keeps every clock.
+
+### Refresh
+- Each change (spawn, shell start or end, question, prompt, `/hud`, a close)
+  looks at once.
+- While anything runs or a question is open, a 1-second `$.clock.every`
+  timer recomputes the activity, so elapsed times move each second; it stops
+  when nothing does. The 5-second usage timer also looks, which catches
+  agents no `agent.spawn` hook saw start.
+
 ## Data source
 `$.session.usage()` (`SessionUsage`):
 - `rateLimits[]`: `{ kind, percentUsed, resetsAt? }`; only `five_hour` and
@@ -150,8 +236,11 @@ cannot turn the prefix off.
 - `hooks/hooks.json`: `{ "modules": ["./register.tsx"] }`.
 - `hooks/register.tsx`: hooks and the refresh step (every `$` call).
 - `hooks/hud.ts`: pure logic (precedence, store parsing, formatting).
-- `types/index.d.ts`: `Bucket`/`Buckets`/`Span` and the `PluginState`
-  contract (`lastLive`, `effort`, `line`).
+- `hooks/activity.ts`: pure logic of the activity pane (jobs, rows, `Bg`,
+  task notifications).
+- `types/index.d.ts`: `Bucket`/`Buckets`/`Span`, `Job`/`Jobs`/`Row`/`Activity`
+  and the `PluginState` contract (`lastLive`, `effort`, `line`, `jobs`,
+  `asking`, `activity`, `paneShown`, `paneOff`).
 - `tests/usage-hud.test.ts`: `claude plugin test` suite.
 - `/.claude-plugin/marketplace.json` (repo root): lists this folder as
   `usage-hud` in the `script-docs` marketplace.
@@ -182,4 +271,12 @@ window, per-window merge, a replay right after a hot reload, effort from the
 main loop only and dropped for a model without it, the settings' effort
 before the first request, the `!` mark on the
 rounded figure (89.4 -> `89%`, 89.6 -> `90%!`), no weekly reset time, and
-`1M` context windows.
+`1M` context windows. For the activity pane: task-notification parsing,
+elapsed-time format, agents first seen ended, the 30-second linger and the
+failure kept until the next prompt, row order, the `Bg` segment, the pane
+opened by the first agent in a fullscreen terminal (and `Bg` left out while it
+shows), no pane unasked outside fullscreen with `Bg` in the HUD instead, a
+shell's end and exit code from its notification, `?1` while a question is
+open, `/hud` toggling and keeping a hidden pane closed, and the 1-second tick
+stopping once nothing runs. Closing the pane by the person's own key is not
+covered: the test kit raises no `ui.close` with origin `person`.

@@ -172,10 +172,10 @@ export type Tone = NonNullable<Span['tone']>
 // multiplexer that places every non-ASCII cell by cursor address (herdr)
 // then paints the next cell over half of it. Other surfaces draw an icon of
 // their own in its place.
-export const LABEL: Record<Icon, string> = { five_hour: '5h', seven_day: 'Wk', context: 'Ctx' }
+export const LABEL: Record<Icon, string> = { five_hour: '5h', seven_day: 'Wk', context: 'Ctx', background: 'Bg' }
 const label = (icon: Icon): Span => ({ text: LABEL[icon], tone: 'label', icon })
 
-const SEP: Span = { text: '   ' }
+export const SEP: Span = { text: '   ' }
 const BIND: Span = { text: ' · ' }
 const SPACE: Span = { text: ' ' }
 

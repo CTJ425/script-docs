@@ -46,11 +46,20 @@ its prose:
 | Kind | Source | The site may… |
 | --- | --- | --- |
 | **Script** | `<category>/<project>/README.md` | render it **verbatim** and nothing else. No intro, no summary, no badge added to the page. What may sit beside the text is *derived state*: file name, byte count, revision date, category. |
-| **Post** | `posts/<slug>.md` (frontmatter) | render it. Written for this site, in the author's voice. |
+| **Post** | `posts/YYYY-MM-DD-<slug>.md` (frontmatter) | render it. Written for this site, in the author's voice. |
 | **Tool** | `tools/<slug>.md` (frontmatter) | render it. Same. |
 | **Page** | `pages/{home,about}.md` (frontmatter) | render it. Same. |
 | **Chrome** | `.astro` / `.ts` / `.css` | hold the product name, the tagline, nav and UI labels (搜尋, 本頁目錄…) and **no other prose**. |
 
+- **The repo must read completely on GitHub.** It is the blog's manuscript and its
+  backup. Write links and images relative to the file: posts and tools link to each
+  other by file name (`./2026-10-02-x.md`, `../tools/ollama.md`), images sit in
+  `posts/img/<slug>/`, `tools/img/` or the script's own folder. The renderer maps
+  both to site routes and `/media/`; `verify-dist` fails on a dead one.
+- **A post file is `YYYY-MM-DD-<slug>.md`**, the date equal to frontmatter `date`. The
+  URL is the slug alone, so the date never moves a page. `verify-content` asserts it.
+- **Drafts go on a branch, not `draft: true`**: the repo is public, so a draft flag
+  hides a post from the site but not from GitHub.
 - **Never hand-write content into `.astro` / `.ts`.** If a sentence belongs to a
   reader, it belongs in a markdown file.
 - **Never edit generated output**: `site/dist/`, `site/.astro/`.
@@ -120,7 +129,7 @@ Full rules are in `site/DESIGN.md`; the ones a change must not break:
 - **State is a mark plus a word**, never colour alone (status squares, TOC circle /
   crease / hole).
 - **One motion grammar:** `--hinge` (90ms, two steps). No easing, no fade, no smooth scroll.
-- **The command is the product.** The command window keeps its `sudo` / `dry-run`
+- **On a script page, the command is the product.** The command window keeps its `sudo` / `dry-run`
   flags (literal reads of the text) and its copy button reads the `<pre>`'s own text.
 - **Light and dark both**, with the stored choice applied before first paint.
 

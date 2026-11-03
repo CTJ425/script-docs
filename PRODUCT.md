@@ -27,27 +27,33 @@ index search engines can read.
 
 ## Users
 
-Three readers, all of whom read Traditional Chinese:
+Four readers, all of whom read Traditional Chinese:
 
-- **Peers** — engineers and sysadmins who arrive from GitHub or a search result with
-  a task (a Kubernetes node to prepare, a template VM to seal) and want to know
-  whether to trust a script before pasting it into a root shell.
+- **Readers of the posts** — engineers and sysadmins who arrive from a search, the
+  feed or a link to read what the author built or ran, why, and what went wrong.
+- **Peers with a task** — who arrive from GitHub or a search result with a task (a
+  Kubernetes node to prepare, a template VM to seal) and want to know whether to
+  trust a script before pasting it into a root shell.
 - **The author, later** — returning to find one command, or to remember why a tool
   was dropped.
 - **Anyone judging the work** — a hiring manager or collaborator reading the site to
   see how the author thinks and what they have actually run.
 
-**Priority:** the first two. A page earns the third reader by being honest and
+**Priority:** the first three. A page earns the fourth reader by being honest and
 specific, not by being written for them.
 
 ## Product Purpose
 
-A personal information blog. It publishes what the author has written (scripts),
-what the author has used (tools, with an honest status), and the notes in between
-(posts) — and it connects them: a post names the tools and scripts it is about, and
-those pages point back.
+A personal technical blog. Its centre is the posts: what the author built or ran,
+why, and what went wrong. The scripts written along the way (their READMEs,
+verbatim) and the tools used (with an honest status) are what the posts point to,
+and those pages point back.
 
-Success: a stranger reaches a script page, understands what it will do to their
+The repository is the blog's complete manuscript and its backup: every published
+page is a file that reads completely on GitHub as well.
+
+Success: a reader finishes a post and follows it to the script or tool it names, or
+subscribes; a stranger reaches a script page, understands what it will do to their
 machine, and copies a command they trust; and a returning reader can find what the
 author used, whether they still do, and why.
 
@@ -73,7 +79,7 @@ What this does *not* claim: that a script works on the reader's machine. That is
 
 | Kind | Where | Authored as | Owner of the words |
 | --- | --- | --- | --- |
-| Post | `posts/<slug>.md` | frontmatter + markdown | the author, for this site |
+| Post | `posts/YYYY-MM-DD-<slug>.md` | frontmatter + markdown | the author, for this site |
 | Tool | `tools/<slug>.md` | frontmatter + markdown | the author, for this site |
 | Script | `<category>/<project>/README.md` | markdown, no frontmatter | the file — rendered verbatim |
 | Page | `pages/{home,about}.md` | frontmatter + markdown | the author, for this site |
@@ -83,6 +89,11 @@ What this does *not* claim: that a script works on the reader's machine. That is
 - **Links between kinds** are by slug: a post lists `tools:` and `scripts:`; a tool
   lists `scripts:`. The destination pages list the posts that mention them. An unknown
   slug fails the build.
+- **Post files** carry their date so GitHub lists them in order; the URL is the slug
+  alone (`/posts/<slug>/`), and the date must equal the frontmatter `date`.
+- **Images** sit beside the writing (`posts/img/`, `tools/img/`, a script's own folder)
+  and are linked relatively, so GitHub shows them; the site serves the same files
+  under `/media/`.
 - **Tags** are shared across all three kinds; `/tags/<tag>/` lists everything.
 - **Scripts** are `<category>/<project>/README.md`, exactly two levels; the first level
   is the category and the only thing that groups them.
@@ -124,8 +135,8 @@ What this does *not* claim: that a script works on the reader's machine. That is
 
 - Product name: **ivan note** — the root `README.md`'s H1. The masthead, the home
   `<title>` and the feed read it from there, and `verify-dist` asserts it.
-- Tagline: the root README's first paragraph (個人資訊部落格：我寫過的 script、用過的工具，
-  以及 GitHub 上的專案筆記。).
+- Tagline: the root README's first paragraph (個人技術部落格：記下我做過的事、踩過的坑，
+  以及過程中寫出來的 script 和用過的工具。).
 - Published on Cloudflare Pages. License: MIT.
 - No logo, wordmark or illustration exists. The favicon is the binder: a tan square
   with two punched holes.
@@ -148,8 +159,9 @@ What this does *not* claim: that a script works on the reader's machine. That is
 
 ## Product Principles
 
-1. **The command is the product.** A script page exists to get one trustworthy line
-   onto a reader's clipboard; everything else is supporting evidence.
+1. **The writing is the product.** Posts lead the home page, the navigation and the
+   feed. On a script page the command is the product: the page exists to get one
+   trustworthy line onto a reader's clipboard.
 2. **Earn the root shell.** The reader is about to run this as root on a machine they
    care about. Risk, reversibility and `--dry-run` are first-class content, not
    footnotes.
@@ -157,9 +169,11 @@ What this does *not* claim: that a script works on the reader's machine. That is
    better restated in a template, it belongs in the README.
 4. **Honest status.** A tool is `using`, `tried` or `dropped`, and an old page admits
    its age. The site never claims a freshness the file does not have.
-5. **Structure comes from the filesystem.** Categories, titles, slugs and ordering are
+5. **GitHub reads the same.** Links and images are written relative to the file, so
+   the repository on its own is a complete, readable copy of the site.
+6. **Structure comes from the filesystem.** Categories, titles, slugs and ordering are
    derived from folders and files, never authored in the front end.
-6. **Degrade, don't crash.** A missing doc, an unknown language, an unsafe link
+7. **Degrade, don't crash.** A missing doc, an unknown language, an unsafe link
    protocol and a missing search index all render as something safe.
 
 ## Accessibility & Inclusion

@@ -1908,6 +1908,217 @@ def build_unit_checks() -> list:
                  hud.read_cache().get("quota", {}).get("gemini-5h", {}).get("used_percent") == 25.0
              )[2])(tempfile.mkdtemp())
          )),
+        ("UC-52", "model_family maps Gemini 4 Argon to gemini-argon",
+         lambda: (
+             hud.model_family("Gemini 4 Argon (Medium)") == "gemini-argon"
+             and hud.model_family("Gemini 3.6 Flash (High)") == "gemini"
+             and hud.model_family("Claude Sonnet 4.6") == "3p"
+         )),
+        ("UC-53", "normalize_bucket_id normalizes gemini-argon-wtu-weekly to gemini-argon-weekly",
+         lambda: (
+             hud.normalize_bucket_id("gemini-argon-wtu-weekly") == "gemini-argon-weekly"
+             and hud.normalize_bucket_id("gemini-weekly") == "gemini-weekly"
+         )),
+        ("UC-54", "select_bucket for gemini-argon prefers gemini-argon-wtu-weekly for weekly and falls back to gemini-5h for 5h",
+         lambda: (
+             hud.select_bucket(
+                 {
+                     "3p-weekly": {"remaining_fraction": 1.0},
+                     "gemini-weekly": {"remaining_fraction": 0.99},
+                     "gemini-argon-wtu-weekly": {"remaining_fraction": 0.75},
+                 },
+                 hud.WEEKLY_NAMES,
+                 "gemini-argon"
+             ) == {"remaining_fraction": 0.75}
+             and hud.select_bucket(
+                 {
+                     "3p-5h": {"remaining_fraction": 1.0},
+                     "gemini-5h": {"remaining_fraction": 0.98},
+                     "gemini-argon-wtu-weekly": {"remaining_fraction": 0.75},
+                 },
+                 hud.FIVE_H_NAMES,
+                 "gemini-argon"
+             ) == {"remaining_fraction": 0.98}
+             and hud.select_bucket(
+                 {
+                     "3p-5h": {"remaining_fraction": 1.0},
+                     "gemini-5h": {"remaining_fraction": 0.98},
+                 },
+                 hud.FIVE_H_NAMES,
+                 "gemini-argon"
+             ) == {"remaining_fraction": 0.98}
+         )),
+        ("UC-55", "resolve_bucket for gemini-argon resolves weekly as gemini-argon and falls back to gemini-5h for 5h on Pro pool, or falls back to gemini on Ultra pool",
+         lambda: (
+             (lambda pro_payload, ultra_payload: (
+                 hud.resolve_bucket(pro_payload, "gemini-argon", hud.WEEKLY_NAMES, {}, now).used_percent == 25.0
+                 and hud.resolve_bucket(pro_payload, "gemini-argon", hud.WEEKLY_NAMES, {}, now).family == "gemini-argon"
+                 and hud.resolve_bucket(pro_payload, "gemini-argon", hud.FIVE_H_NAMES, {}, now).used_percent == 2.0
+                 and hud.resolve_bucket(pro_payload, "gemini-argon", hud.FIVE_H_NAMES, {}, now).family == "gemini"
+                 and hud.resolve_bucket(ultra_payload, "gemini-argon", hud.WEEKLY_NAMES, {}, now).used_percent == 1.0
+                 and hud.resolve_bucket(ultra_payload, "gemini-argon", hud.WEEKLY_NAMES, {}, now).family == "gemini"
+                 and hud.resolve_bucket(ultra_payload, "gemini-argon", hud.FIVE_H_NAMES, {}, now).used_percent == 2.0
+                 and hud.resolve_bucket(ultra_payload, "gemini-argon", hud.FIVE_H_NAMES, {}, now).family == "gemini"
+             ))(
+                 {
+                     "quota": {
+                         "3p-5h": {"remaining_fraction": 1.0, "reset_in_seconds": 3600},
+                         "3p-weekly": {"remaining_fraction": 1.0, "reset_in_seconds": 86400},
+                         "gemini-5h": {"remaining_fraction": 0.98, "reset_in_seconds": 3600},
+                         "gemini-weekly": {"remaining_fraction": 0.99, "reset_in_seconds": 86400},
+                         "gemini-argon-wtu-weekly": {"remaining_fraction": 0.75, "reset_in_seconds": 86400},
+                     }
+                 },
+                 {
+                     "quota": {
+                         "3p-5h": {"remaining_fraction": 1.0, "reset_in_seconds": 3600},
+                         "3p-weekly": {"remaining_fraction": 1.0, "reset_in_seconds": 86400},
+                         "gemini-5h": {"remaining_fraction": 0.98, "reset_in_seconds": 3600},
+                         "gemini-weekly": {"remaining_fraction": 0.99, "reset_in_seconds": 86400},
+                     }
+                 }
+             )
+         )),
+        ("UC-56", "QUOTA_API_USER_AGENT uses antigravity/cli/ prefix for CLI 1.4.2 quota groups",
+         lambda: hud.QUOTA_API_USER_AGENT.startswith("antigravity/cli/")),
+        ("UC-57", "parse_context_window includes cache_read_input_tokens and cache_read_tokens in current_usage",
+         lambda: (
+             hud.parse_context_window({
+                 "context_window": {
+                     "context_window_size": 1000000,
+                     "current_usage": {
+                         "input_tokens": 3000,
+                         "output_tokens": 600,
+                         "cache_read_input_tokens": 280000,
+                     },
+                 }
+             }) == hud.ContextResult(used_tokens=283600, total_tokens=1000000, used_percent=28.4)
+             and hud.parse_context_window({
+                 "context_window": {
+                     "context_window_size": 1000000,
+                     "current_usage": {
+                         "input_tokens": 3000,
+                         "output_tokens": 600,
+                         "cache_read_tokens": 280000,
+                     },
+                 }
+             }) == hud.ContextResult(used_tokens=283600, total_tokens=1000000, used_percent=28.4)
+         )),
+        ("UC-58", "parse_context_window recovers cache_read_tokens from transcript.jsonl when omitted from current_usage (CLI 1.4.2)",
+         lambda: (
+             (lambda p: (
+                 p.write_text(
+                     json.dumps({"step_index": 1, "type": "PLANNER_RESPONSE", "input_tokens": 4936, "cache_read_tokens": 283584, "output_tokens": 1181}) + "\n",
+                     encoding="utf-8"
+                 ),
+                 hud.parse_context_window({
+                     "transcript_path": str(p),
+                     "context_window": {
+                         "context_window_size": 1000000,
+                         "used_percentage": 0.6,
+                         "current_usage": {
+                             "input_tokens": 4936,
+                             "output_tokens": 1181,
+                         },
+                     },
+                 }) == hud.ContextResult(used_tokens=289701, total_tokens=1000000, used_percent=29.0)
+             )[1])(Path(tempfile.mkdtemp()) / "transcript.jsonl")
+         )),
+        ("UC-59", "Cross-family isolation prevents stealing another family's bucket when active family has partial buckets",
+         lambda: (
+             hud.select_bucket(
+                 {
+                     "gemini-weekly": {"remaining_fraction": 0.8},
+                     "3p-5h": {"remaining_fraction": 0.5},
+                 },
+                 hud.FIVE_H_NAMES,
+                 "gemini"
+             ) is None
+             and hud.resolve_bucket(
+                 {"quota": {"gemini-weekly": {"remaining_fraction": 0.8, "reset_in_seconds": 86400}, "3p-5h": {"remaining_fraction": 0.5, "reset_in_seconds": 3600}}},
+                 "gemini",
+                 hud.FIVE_H_NAMES,
+                 {},
+                 now
+             ) is None
+         )),
+        ("UC-60", "write_cache persists updated model even when all live buckets are SOURCE_API and context_block is None",
+         lambda: (
+             (lambda p: (
+                 os.environ.__setitem__("USAGE_HUD_CACHE", str(p / "cache.json")),
+                 hud.atomic_write_json(str(p / "cache.json"), {
+                     "version": hud.CACHE_VERSION,
+                     "saved_at": int(now),
+                     "model": "Gemini 3.6 Flash (High)",
+                     "quota": {
+                         "gemini-argon-weekly": {
+                             "used_percent": 31.0,
+                             "source": "api",
+                             "fetched_at": now,
+                             "resets_at": int(now) + 86400,
+                         }
+                     },
+                 }),
+                 hud.write_cache(
+                     "Gemini 4 Argon (High)",
+                     {
+                         "5h": None,
+                         "weekly": hud.BucketResult(
+                             used_percent=31.0,
+                             reset_in_seconds=86400,
+                             resets_at=int(now) + 86400,
+                             is_live=True,
+                             family="gemini-argon",
+                             canonical_name="weekly",
+                             source=hud.SOURCE_API,
+                             is_stale=False,
+                         ),
+                     },
+                     hud.read_cache(),
+                     now,
+                     context_block=None,
+                 ),
+                 hud.read_cache().get("model") == "Gemini 4 Argon (High)"
+             )[3])(Path(tempfile.mkdtemp()))
+         )),
+        ("UC-61", "effective_bucket_family prefers recent API or live Ultra gemini buckets over stale payload-sourced gemini-argon cache",
+         lambda: (
+             hud.resolve_bucket(
+                 {"quota": {"gemini-5h": {"used_percent": 3.0, "reset_in_seconds": 3600}, "gemini-weekly": {"used_percent": 4.0, "reset_in_seconds": 86400}}},
+                 "gemini-argon",
+                 hud.FIVE_H_NAMES,
+                 {
+                     "version": hud.CACHE_VERSION,
+                     "saved_at": int(now),
+                     "quota": {
+                         "gemini-argon-5h": {"used_percent": 10.0, "source": "payload", "fetched_at": now - 60},
+                         "gemini-5h": {"used_percent": 3.0, "source": "api", "fetched_at": now, "resets_at": int(now) + 3600},
+                     },
+                 },
+                 now,
+             ).family == "gemini"
+         )),
+        ("UC-62", "parse_context_window honours explicit cache_read_input_tokens: 0 and explicit used_percentage without reading transcript.jsonl",
+         lambda: (
+             (lambda p: (
+                 p.write_text(
+                     json.dumps({"step_index": 1, "type": "PLANNER_RESPONSE", "cache_read_tokens": 500000}) + "\n",
+                     encoding="utf-8"
+                 ),
+                 hud.parse_context_window({
+                     "transcript_path": str(p),
+                     "context_window": {
+                         "context_window_size": 1000000,
+                         "used_percentage": 5.0,
+                         "current_usage": {
+                             "input_tokens": 50000,
+                             "output_tokens": 0,
+                             "cache_read_input_tokens": 0,
+                         },
+                     },
+                 }) == hud.ContextResult(used_tokens=50000, total_tokens=1000000, used_percent=5.0)
+             )[1])(Path(tempfile.mkdtemp()) / "transcript.jsonl")
+         )),
     ]
 
 

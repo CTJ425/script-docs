@@ -1,21 +1,22 @@
 # ivan note
 
-> 最後更新：2026-10-12
+> 最後更新：2026-11-03
 
-個人資訊部落格：我寫過的 script、用過的工具，以及 GitHub 上的專案筆記。
+個人技術部落格：記下我做過的事、踩過的坑，以及過程中寫出來的 script 和用過的工具。
 
 ---
 
 ## 這個 repo 是什麼
 
-這個 repo 同時是兩件事：**腳本的原始碼**，和**從它們長出來的網站**。網站沒有另一份內容，每一頁都直接來自這個 repo 裡的檔案：
+這個 repo 是部落格的全部原稿，也是它的備份：文章、工具筆記，以及文章裡提到的腳本原始碼。網站沒有另一份內容，每一頁都直接來自這個 repo 裡的檔案，所以在 GitHub 上直接讀也是完整的：
 
 | 內容 | 放在哪 | 檔案格式 |
 | --- | --- | --- |
-| 文章 | [`posts/`](./posts) | `<slug>.md`，開頭有 frontmatter |
+| 文章 | [`posts/`](./posts) | `YYYY-MM-DD-<slug>.md`，開頭有 frontmatter；資料夾裡依日期排列 |
 | 工具 | [`tools/`](./tools) | `<slug>.md`，開頭有 frontmatter |
 | 腳本 | `AI/`、`container/`、`script/` | `<分類>/<專案>/README.md`，原文照登 |
 | 首頁、關於 | [`pages/`](./pages) | `home.md`、`about.md` |
+| 圖片 | `posts/img/`、`tools/img/` | 跟引用它的文章放在一起，用相對路徑 |
 
 腳本頁是特別的一種：它是該資料夾 `README.md` 的**逐位元組渲染**，網站上看到的和 GitHub 上看到的是同一份。這也是這個專案的核心約束 —— 自動化腳本最常見的死法不是寫錯邏輯，而是文件與腳本各自漂移，所以：
 
@@ -57,7 +58,9 @@
 | 專案 | 說明 |
 | --- | --- |
 | [RHEL-Family-Temp](./script/RHEL-Family-Temp) | 把已裝好的 RHEL/Rocky/Alma 虛擬機清理成乾淨範本，並裝上首次開機的互動式網路設定精靈 |
+| [apollo-windows-vm](./script/apollo-windows-vm) | 把 Proxmox VE 上 Windows VM 的串流主機換成 Apollo（內建虛擬螢幕），並依客戶端解析度自動設定 DPI |
 | [deploy-supabase](./script/deploy-supabase) | Supabase Self-Hosted 自動化部署，支援多專案同機部署、Port 智慧偏移與擴充模組 |
+| [pve-antivm](./script/pve-antivm) | Proxmox VE 客製化 CPU（`cpu-models.conf`）與反偵測 Windows 11 虛擬機一鍵建立腳本（相容 Intel SR-IOV iGPU VF） |
 | [pve_link_iso](./script/pve_link_iso) | 用 symbolic link 把 NAS 上的 ISO 掛進 Proxmox VE 的 ISO 目錄，PVE 看得到但不必複製檔案 |
 | [setup-en-cli-zh-tw-desktop](./script/setup-en-cli-zh-tw-desktop) | 終端機輸出英文訊息、桌面環境維持繁體中文 |
 | [setup-windows-terminal](./script/setup-windows-terminal) | Windows 11 終端機一鍵設定：安裝或升級 Oh My Posh、PowerShell 7、Coreutils 與 Nerd Font，並設定 Windows Terminal |
@@ -75,6 +78,7 @@
 | **Kubernetes 節點前置環境**<br>關閉 swap、載入核心模組、設定 sysctl | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_env_init/k8s_env_initialization.sh \| sudo bash -s -- --yes` |
 | **建立 Kubernetes Control Plane**<br>CRI-O + kubeadm + Calico | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/container/k8s_install/k8s_cluster_install.sh \| sudo bash -s -- --role cp --yes` |
 | **Proxmox VE ISO 軟連結同步** | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve_link_iso/pve_link_iso.sh \| sudo bash -s -- -s /mnt/pve/ISO -t /mnt/pve/ISO/template/iso` |
+| **Proxmox VE 反偵測 Win11 VM 建立**<br>含客製化 CPU 與硬體偽裝 | `curl -fsSL https://raw.githubusercontent.com/CTJ425/script-docs/main/script/pve-antivm/pve_antivm_create.sh -o /root/pve_antivm_create.sh && chmod +x /root/pve_antivm_create.sh` |
 | **Windows 11 終端機設定**<br>在 Windows PowerShell 執行 | `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/CTJ425/script-docs/main/script/setup-windows-terminal/setup-windows-terminal.ps1 \| iex"` |
 | **Ollama + Open WebUI** | `git clone https://github.com/CTJ425/script-docs.git && cd script-docs/container/ollama && docker compose up -d` |
 
@@ -88,7 +92,7 @@
 
 ## 新增內容
 
-**一篇文章**：在 `posts/` 放一個 `<slug>.md`。
+**一篇文章**：在 `posts/` 放一個 `YYYY-MM-DD-<slug>.md`，日期與 frontmatter 的 `date` 相同。網址只用 `<slug>`（`/posts/<slug>/`），日期只是讓 GitHub 上的資料夾依時間排列。
 
 ```markdown
 ---
@@ -100,6 +104,15 @@ tools: [ollama]          # 這篇在講哪些工具（tools/ 裡的檔名）
 scripts: [k8s-install]   # 這篇在講哪些腳本（網址上的 slug）
 ---
 ```
+
+圖片放在 `posts/img/<slug>/`，連結都用相對路徑，GitHub 和網站兩邊都會正確：
+
+```markdown
+![叢集拓樸](img/k8s-install/topology.png)
+[上一篇](./2026-10-02-script-docs-drift.md)、[Ollama](../tools/ollama.md)、[k8s_install](../container/k8s_install)
+```
+
+repo 是公開的，`draft: true` 只會讓文章不出現在網站上，GitHub 上仍然看得到。還沒準備公開的稿子寫在分支上，合併進 `main` 才發佈。
 
 **一項工具**：在 `tools/` 放一個 `<slug>.md`。`status` 是 `using`（使用中）、`tried`（試過）或 `dropped`（已淘汰）；自己寫的 GitHub 專案加 `mine: true` 並填 `repo: owner/name`。
 

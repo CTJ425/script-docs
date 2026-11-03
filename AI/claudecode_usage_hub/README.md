@@ -2,7 +2,7 @@
 
 > 最後更新：2026-10-12
 
-一個 Claude Code plugin：在輸入框正下方、和模式標籤（mode pill）同一行，用一行文字顯示模型與 reasoning effort、5 小時用量與重置倒數、每週用量，以及目前 session 的 context window 用量。
+一個 Claude Code plugin：在輸入框正下方、和模式標籤（mode pill）同一行，用一行文字顯示模型與 reasoning effort、5 小時用量與重置倒數、每週用量，以及目前 session 的 context window 用量。旁邊另有一個面板，顯示背景工作：有幾個 subagent 和背景 shell 正在執行、跑了多久。
 
 ```
 ⏵⏵ auto mode on · Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M
@@ -15,11 +15,29 @@
 - **每段都有標籤**：`5h` 是 5 小時視窗，`Wk` 是每週，`Ctx` 是 context window。終端機裡標籤維持純文字，任何字型和多工器（multiplexer）都畫成一格寬；Claude Desktop 則改畫小型向量圖示，也可以選擇和終端機一樣用文字（見[選項](#選項)）。
 - **顏色分出「是什麼」和「多少」**：標籤與分隔符是暗色，數值用主題的強調色；視窗用量到 90% 以上時改用錯誤色，並加上 `!` 標記（`5h 93%!`）。
 
-補充：
+## 背景面板
+
+```
+2 running
+longest 4:12
+
+Agents
+> Explore  scan hooks            running  4:12
+> Plan  refresh design           waiting  1:05
+
+Shells
+x npm test                       exit 1   2:31
+```
+
+第一次有 subagent 或背景 shell 啟動時，對話紀錄旁會開一個標題為 *Background* 的面板。第一行是正在執行的工作數，下一行是執行最久的那個跑了多久；底下每個工作一列。每一列用一個記號加一個字標出狀態：`>` running、`+` done、`x` failed，不靠顏色也讀得出來。完成的列保留 30 秒；失敗的列保留到你下一次送出 prompt。Claude 正在問你問題時，面板會用警告色標出來。
+
+面板只在 144 欄以上的全螢幕終端機自動打開，放在對話紀錄旁邊。其他情況，或面板關著時，HUD 那一行的最後會給出同樣的資訊：`Bg 2 · 4:12`，有問題等你回答時加上 `?1`。任何寬度下都可以輸入 `/hud` 顯示或隱藏面板；關掉之後，會一直關著，直到你再輸入 `/hud`。權限提示不會顯示在面板上。
+
+## 補充
 
 - **Effort** 取自 session 的模型請求。第一個請求之前，先用設定檔裡該模型的 `effortLevel`（`modelSettings.<model>`，沒有就用最上層的）代替；沒有 effort 設定的模型就不顯示。
 - 還沒有數字的視窗顯示 `–`。
-- **其他 mod 可以接在同一行後面。** 一個 hook 同一行（`PromptHint` 上的 `ui.render`）的 mod，把自己的文字放進 `tail` prop，例如 `next({ ...e, props: { ...e.props, tail } })`，這段文字就會以暗色畫在 HUD 的最後、`Ctx` 之後空三格的位置，終端機和 Claude Desktop 都一樣：
+- **其他 mod 可以接在同一行後面。** 一個 hook 同一行（`PromptHint` 上的 `ui.render`）的 mod，把自己的文字放進 `tail` prop，例如 `next({ ...e, props: { ...e.props, tail } })`，這段文字就會以暗色畫在 HUD 的最後、最後一段之後空三格的位置，終端機和 Claude Desktop 都一樣：
   ```
   ⏵⏵ auto mode on · Opus 5.5 · high   5h 45% · 2h10m   Wk 23%   Ctx 156K/1M   agents 1 0:12
   ```

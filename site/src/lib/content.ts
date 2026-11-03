@@ -185,8 +185,8 @@ function pick<T extends { id: string }>(all: T[], ids: string[], from: string, f
 export async function refsOfPost(post: Post) {
   const [tools, scripts] = await Promise.all([getTools(), getScripts()]);
   return {
-    tools: pick(tools, post.data.tools, `posts/${post.id}.md`, 'tool'),
-    scripts: pick(scripts, post.data.scripts, `posts/${post.id}.md`, 'script'),
+    tools: pick(tools, post.data.tools, post.filePath ?? post.id, 'tool'),
+    scripts: pick(scripts, post.data.scripts, post.filePath ?? post.id, 'script'),
   };
 }
 
